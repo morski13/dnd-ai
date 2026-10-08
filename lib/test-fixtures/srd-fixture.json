@@ -1,0 +1,1267 @@
+{
+ "party": {
+  "Brakka Stonehew": {
+   "proficiencies": {
+    "saves": [
+     "STR",
+     "CON"
+    ],
+    "skills": [
+     "Athletics",
+     "Intimidation",
+     "Perception",
+     "Survival"
+    ],
+    "expertise": [],
+    "armor": [
+     "Light",
+     "Medium",
+     "Shields"
+    ],
+    "weapons": [
+     "Simple",
+     "Martial"
+    ],
+    "languages": [
+     "Common",
+     "Giant"
+    ]
+   },
+   "spells": {},
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "kind": "weapon",
+     "ability": "STR",
+     "damage": "1d12",
+     "damage_type": "slashing",
+     "add_mod": true,
+     "note": "Heavy, two-handed · Mastery: Cleave"
+    },
+    {
+     "name": "Handaxe",
+     "kind": "weapon",
+     "ability": "STR",
+     "damage": "1d6",
+     "damage_type": "slashing",
+     "add_mod": true,
+     "range": "20/60",
+     "note": "Light, thrown · Mastery: Vex"
+    },
+    {
+     "name": "Rage",
+     "kind": "boost",
+     "action": "bonus",
+     "resource": "Rage",
+     "applies": "str_weapon",
+     "damage_bonus": 2,
+     "note": "+2 damage on Strength attacks, resistance to bludgeoning/piercing/slashing"
+    },
+    {
+     "name": "Reckless Attack",
+     "kind": "boost",
+     "action": "free",
+     "applies": "str_weapon",
+     "gives_advantage": true,
+     "drawback": "Attacks against you have advantage until your next turn"
+    },
+    {
+     "name": "Frenzy",
+     "kind": "boost",
+     "action": "free",
+     "applies": "str_weapon",
+     "damage": "2d6",
+     "once_per_turn": true,
+     "requires": [
+      "Rage",
+      "Reckless Attack"
+     ],
+     "note": "First Strength hit each turn while raging and reckless"
+    }
+   ],
+   "features": [
+    {
+     "name": "Rage",
+     "source": "Barbarian 1",
+     "description": "Bonus Action. Lasts until the end of your next turn and keeps going if you attack, force a saving throw or spend a Bonus Action each turn (up to 10 minutes). You can't be wearing Heavy armor. While raging you have Resistance to Bludgeoning, Piercing and Slashing damage, +2 damage on attacks that use Strength, and Advantage on Strength checks and Strength saving throws, but you can't cast spells or concentrate. 3 uses: one comes back on a Short Rest, all on a Long Rest."
+    },
+    {
+     "name": "Unarmored Defense",
+     "source": "Barbarian 1",
+     "description": "While you aren't wearing armor, your AC is 10 + your Dexterity modifier + your Constitution modifier. You can still use a Shield."
+    },
+    {
+     "name": "Weapon Mastery",
+     "source": "Barbarian 1",
+     "description": "You can use the mastery property of two kinds of weapons. Greataxe (Cleave): when you hit with a melee attack, you can attack a second creature within 5 feet of the first (once per turn); you don't add your ability modifier to that damage. Handaxe (Vex): when you hit and deal damage, you have Advantage on your next attack against that creature before the end of your next turn."
+    },
+    {
+     "name": "Danger Sense",
+     "source": "Barbarian 2",
+     "description": "You have Advantage on Dexterity saving throws unless you have the Incapacitated condition."
+    },
+    {
+     "name": "Reckless Attack",
+     "source": "Barbarian 2",
+     "description": "When you make your first attack roll on your turn, you can attack recklessly: you have Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you also have Advantage until then."
+    },
+    {
+     "name": "Primal Knowledge",
+     "source": "Barbarian 3",
+     "description": "You learn one more Barbarian skill. While raging, you can make Acrobatics, Intimidation, Perception, Stealth and Survival checks as Strength checks."
+    },
+    {
+     "name": "Frenzy",
+     "source": "Path of the Berserker 3",
+     "description": "If you use Reckless Attack while raging, the first creature you hit on your turn with a Strength attack takes extra damage: a number of d6s equal to your Rage Damage bonus (2d6 at this level), of the same type as the attack."
+    },
+    {
+     "name": "Giant Ancestry: Stone's Endurance",
+     "source": "Goliath",
+     "description": "When you take damage, you can use your Reaction to roll 1d12, add your Constitution modifier and reduce the damage by that total. You can do this a number of times equal to your Proficiency Bonus per Long Rest."
+    },
+    {
+     "name": "Powerful Build",
+     "source": "Goliath",
+     "description": "You have Advantage on checks to end the Grappled condition, and you count as one size larger when working out how much you can carry."
+    },
+    {
+     "name": "Savage Attacker",
+     "source": "Origin feat (Soldier)",
+     "feat": true
+    }
+   ],
+   "resources": [
+    {
+     "name": "Rage",
+     "max": 3,
+     "used": 0,
+     "recharge": "long rest (one back on a short rest)"
+    }
+   ],
+   "inventory": [
+    "Greataxe",
+    "Handaxe x4",
+    "Explorer's Pack",
+    "Grub's Iron Key",
+    "15 gp"
+   ]
+  },
+  "Lyra Venn": {
+   "proficiencies": {
+    "saves": [
+     "WIS",
+     "CHA"
+    ],
+    "skills": [
+     "Insight",
+     "Medicine",
+     "Religion",
+     "Persuasion"
+    ],
+    "expertise": [],
+    "armor": [
+     "Light",
+     "Medium",
+     "Heavy",
+     "Shields"
+    ],
+    "weapons": [
+     "Simple",
+     "Martial"
+    ],
+    "languages": [
+     "Common",
+     "Celestial"
+    ]
+   },
+   "spells": {
+    "ability": "WIS",
+    "slots": {
+     "1": 4,
+     "2": 2
+    },
+    "slots_used": {},
+    "heal_bonus": {
+     "base": 2,
+     "per_slot_level": 1
+    },
+    "known": [
+     "Guidance",
+     "Sacred Flame",
+     "Thaumaturgy",
+     "Aid",
+     "Bless",
+     "Cure Wounds",
+     "Lesser Restoration",
+     "Healing Word",
+     "Guiding Bolt",
+     "Shield of Faith",
+     "Sanctuary",
+     "Spiritual Weapon",
+     "Prayer of Healing"
+    ]
+   },
+   "attacks": [
+    {
+     "name": "Mace",
+     "kind": "weapon",
+     "ability": "STR",
+     "damage": "1d6",
+     "damage_type": "bludgeoning",
+     "add_mod": true
+    },
+    {
+     "name": "Divine Spark (harm)",
+     "kind": "save",
+     "ability": "spell",
+     "save_ability": "CON",
+     "damage": "1d8",
+     "damage_type": "radiant",
+     "half_on_save": true,
+     "resource": "Channel Divinity",
+     "range": "30 ft",
+     "note": "Channel Divinity"
+    },
+    {
+     "name": "Divine Spark (heal)",
+     "kind": "heal",
+     "ability": "spell",
+     "damage": "1d8",
+     "add_mod": true,
+     "resource": "Channel Divinity",
+     "range": "30 ft",
+     "note": "Channel Divinity"
+    },
+    {
+     "name": "Preserve Life",
+     "kind": "heal",
+     "damage": "15",
+     "resource": "Channel Divinity",
+     "range": "30 ft",
+     "note": "Channel Divinity · split among creatures, up to half their HP max each"
+    }
+   ],
+   "features": [
+    {
+     "name": "Spellcasting",
+     "source": "Cleric 1",
+     "description": "You cast cleric spells using Wisdom (spell save DC 13, spell attack +5). You can change your prepared spells after a Long Rest. You regain all spell slots on a Long Rest."
+    },
+    {
+     "name": "Divine Order: Protector",
+     "source": "Cleric 1",
+     "description": "Trained for battle: you gain proficiency with Martial weapons and training with Heavy armor."
+    },
+    {
+     "name": "Channel Divinity",
+     "source": "Cleric 2",
+     "description": "2 uses: one comes back on a Short Rest, all on a Long Rest. Divine Spark: as a Magic action, point your Holy Symbol at a creature within 30 feet and either heal it 1d8 + your Wisdom modifier, or force a Constitution save: 1d8 Radiant or Necrotic damage on a failure, half on a success. Turn Undead: undead within 30 feet make a Wisdom save or are Frightened and Incapacitated for 1 minute."
+    },
+    {
+     "name": "Disciple of Life",
+     "source": "Life Domain 3",
+     "description": "When a spell you cast with a spell slot restores Hit Points to a creature, it regains extra Hit Points equal to 2 + the slot's level. (The app adds this to your healing rolls.)"
+    },
+    {
+     "name": "Preserve Life",
+     "source": "Life Domain 3",
+     "description": "Channel Divinity, as a Magic action: restore up to 15 Hit Points (5 × your Cleric level), divided as you choose among creatures within 30 feet. A creature can't be healed above half its Hit Point maximum this way."
+    },
+    {
+     "name": "Life Domain Spells",
+     "source": "Life Domain 3",
+     "description": "Aid, Bless, Cure Wounds and Lesser Restoration are always prepared and don't count against your prepared spells."
+    },
+    {
+     "name": "Resourceful",
+     "source": "Human",
+     "description": "You gain Heroic Inspiration whenever you finish a Long Rest."
+    },
+    {
+     "name": "Skillful",
+     "source": "Human",
+     "description": "You gain proficiency in one skill of your choice (Persuasion)."
+    },
+    {
+     "name": "Skilled",
+     "source": "Origin feat (Human: Versatile)",
+     "feat": true
+    }
+   ],
+   "resources": [
+    {
+     "name": "Channel Divinity",
+     "max": 2,
+     "used": 0,
+     "recharge": "long rest (one back on a short rest)"
+    }
+   ],
+   "inventory": [
+    "Chain Mail",
+    "Shield",
+    "Mace",
+    "Holy Symbol (Abbey Medallion)",
+    "Priest's Pack",
+    "10 gp"
+   ]
+  },
+  "Vex": {
+   "proficiencies": {
+    "saves": [
+     "DEX",
+     "INT"
+    ],
+    "skills": [
+     "Stealth",
+     "Sleight of Hand",
+     "Acrobatics",
+     "Perception",
+     "Deception"
+    ],
+    "expertise": [
+     "Stealth",
+     "Sleight of Hand"
+    ],
+    "armor": [
+     "Light"
+    ],
+    "weapons": [
+     "Simple",
+     "Martial (Finesse or Light)"
+    ],
+    "tools": [
+     "Thieves' Tools"
+    ],
+    "languages": [
+     "Common",
+     "Halfling",
+     "Thieves' Cant"
+    ]
+   },
+   "spells": {},
+   "attacks": [
+    {
+     "name": "Shortbow",
+     "kind": "weapon",
+     "ability": "DEX",
+     "ranged": true,
+     "damage": "1d6",
+     "damage_type": "piercing",
+     "add_mod": true,
+     "range": "80/320",
+     "note": "Mastery: Vex"
+    },
+    {
+     "name": "Shortsword",
+     "kind": "weapon",
+     "ability": "finesse",
+     "damage": "1d6",
+     "damage_type": "piercing",
+     "add_mod": true,
+     "note": "Finesse, light · Mastery: Vex"
+    },
+    {
+     "name": "Dagger",
+     "kind": "weapon",
+     "ability": "finesse",
+     "damage": "1d4",
+     "damage_type": "piercing",
+     "add_mod": true,
+     "range": "20/60",
+     "note": "Finesse, light, thrown · Mastery: Nick"
+    },
+    {
+     "name": "Sneak Attack",
+     "kind": "boost",
+     "action": "free",
+     "applies": "finesse_ranged",
+     "damage": "2d6",
+     "once_per_turn": true,
+     "needs_advantage_or_ally": true,
+     "note": "Once per turn: finesse or ranged hit with advantage, or an ally next to the target"
+    },
+    {
+     "name": "Steady Aim",
+     "kind": "boost",
+     "action": "bonus",
+     "gives_advantage": true,
+     "note": "Only if you haven't moved this turn; your Speed becomes 0 until the end of the turn"
+    }
+   ],
+   "features": [
+    {
+     "name": "Expertise",
+     "source": "Rogue 1",
+     "description": "Your Proficiency Bonus is doubled for Stealth and Sleight of Hand."
+    },
+    {
+     "name": "Sneak Attack",
+     "source": "Rogue 1",
+     "description": "Once per turn, you deal an extra 2d6 damage to one creature you hit with a Finesse or Ranged weapon attack, if you have Advantage on the roll, or if an ally of the target is within 5 feet of it (and you don't have Disadvantage). The extra damage is the weapon's type."
+    },
+    {
+     "name": "Thieves' Cant",
+     "source": "Rogue 1",
+     "description": "You know the secret mix of dialect, jargon and code of rogues, and one other language."
+    },
+    {
+     "name": "Weapon Mastery",
+     "source": "Rogue 1",
+     "description": "You can use the mastery property of two kinds of weapons. Shortbow and Shortsword (Vex): when you hit and deal damage, you have Advantage on your next attack against that creature before the end of your next turn. Dagger (Nick): the extra Light-weapon attack can be part of the Attack action instead of a Bonus Action."
+    },
+    {
+     "name": "Cunning Action",
+     "source": "Rogue 2",
+     "description": "Your quick thinking lets you take the Dash, Disengage or Hide action as a Bonus Action."
+    },
+    {
+     "name": "Steady Aim",
+     "source": "Rogue 3",
+     "description": "As a Bonus Action, you give yourself Advantage on your next attack roll this turn. You can only do this if you haven't moved this turn, and your Speed is 0 until the end of the turn."
+    },
+    {
+     "name": "Fast Hands",
+     "source": "Thief 3",
+     "description": "As a Bonus Action you can make a Sleight of Hand check, use Thieves' Tools to disarm a trap or open a lock, or take the Utilize action."
+    },
+    {
+     "name": "Second-Story Work",
+     "source": "Thief 3",
+     "description": "You have a Climb Speed equal to your Speed, and you can use Dexterity instead of Strength to work out your jump distance."
+    },
+    {
+     "name": "Brave",
+     "source": "Halfling",
+     "description": "You have Advantage on saving throws you make to avoid or end the Frightened condition."
+    },
+    {
+     "name": "Halfling Nimbleness",
+     "source": "Halfling",
+     "description": "You can move through the space of any creature that is a size larger than you, but you can't stop there."
+    },
+    {
+     "name": "Luck",
+     "source": "Halfling",
+     "description": "When you roll a 1 on the d20 of a D20 Test, you can reroll the die, and you must use the new roll."
+    },
+    {
+     "name": "Naturally Stealthy",
+     "source": "Halfling",
+     "description": "You can take the Hide action even when only hidden behind a creature at least one size larger than you."
+    },
+    {
+     "name": "Skilled",
+     "source": "Origin feat (Criminal)",
+     "feat": true
+    }
+   ],
+   "resources": [],
+   "inventory": [
+    "Leather Armor",
+    "Shortbow + 20 arrows",
+    "Shortsword",
+    "Dagger x2",
+    "Thieves' Tools",
+    "Burglar's Pack",
+    "Debt to Pell: 80 gp"
+   ]
+  },
+  "Orrin Ashby": {
+   "proficiencies": {
+    "saves": [
+     "INT",
+     "WIS"
+    ],
+    "skills": [
+     "Arcana",
+     "History",
+     "Investigation",
+     "Insight"
+    ],
+    "expertise": [
+     "History"
+    ],
+    "armor": [],
+    "weapons": [
+     "Simple"
+    ],
+    "languages": [
+     "Common",
+     "Gnomish",
+     "Draconic"
+    ]
+   },
+   "spells": {
+    "ability": "INT",
+    "slots": {
+     "1": 4,
+     "2": 2
+    },
+    "slots_used": {},
+    "potent_cantrip": true,
+    "known": [
+     "Fire Bolt",
+     "Ray of Frost",
+     "Mage Hand",
+     "Minor Illusion",
+     "Magic Missile",
+     "Shield",
+     "Burning Hands",
+     "Mage Armor",
+     "Detect Magic",
+     "Shatter",
+     "Scorching Ray"
+    ]
+   },
+   "attacks": [
+    {
+     "name": "Dagger",
+     "kind": "weapon",
+     "ability": "finesse",
+     "damage": "1d4",
+     "damage_type": "piercing",
+     "add_mod": true,
+     "range": "20/60",
+     "note": "Finesse, light, thrown"
+    },
+    {
+     "name": "Quarterstaff",
+     "kind": "weapon",
+     "ability": "STR",
+     "damage": "1d6",
+     "damage_type": "bludgeoning",
+     "add_mod": true,
+     "note": "Versatile (1d8)"
+    }
+   ],
+   "features": [
+    {
+     "name": "Spellcasting",
+     "source": "Wizard 1",
+     "description": "You cast wizard spells using Intelligence (spell save DC 13, spell attack +5) from your spellbook. You can change your prepared spells after a Long Rest. You regain all spell slots on a Long Rest."
+    },
+    {
+     "name": "Ritual Adept",
+     "source": "Wizard 1",
+     "description": "You can cast any spell in your spellbook that has the Ritual tag as a ritual (10 extra minutes) without preparing it."
+    },
+    {
+     "name": "Arcane Recovery",
+     "source": "Wizard 1",
+     "description": "Once per day, when you finish a Short Rest, you can recover spell slots with a combined level of up to 2 (half your Wizard level, rounded up). None of them can be level 6 or higher."
+    },
+    {
+     "name": "Scholar",
+     "source": "Wizard 2",
+     "description": "You have Expertise in History: your Proficiency Bonus is doubled for it."
+    },
+    {
+     "name": "Evocation Savant",
+     "source": "Evoker 3",
+     "description": "Add two Evocation spells to your spellbook for free. Whenever you gain a new spell slot level, you can add one more Evocation spell for free."
+    },
+    {
+     "name": "Potent Cantrip",
+     "source": "Evoker 3",
+     "description": "When you cast a damaging cantrip and miss, or the target succeeds on its save, the target still takes half the cantrip's damage (but no other effect). (The app includes this in Best moves.)"
+    },
+    {
+     "name": "Darkvision",
+     "source": "Gnome",
+     "description": "You can see in Dim Light within 60 feet as if it were Bright Light, and in Darkness as if it were Dim Light (in shades of gray)."
+    },
+    {
+     "name": "Gnomish Cunning",
+     "source": "Gnome",
+     "description": "You have Advantage on Intelligence, Wisdom and Charisma saving throws."
+    },
+    {
+     "name": "Gnomish Lineage: Forest Gnome",
+     "source": "Gnome",
+     "description": "You know the Minor Illusion cantrip, and you always have Speak with Animals prepared; you can cast it without a slot a number of times equal to your Proficiency Bonus per Long Rest."
+    },
+    {
+     "name": "Skilled",
+     "source": "Origin feat (Sage)",
+     "feat": true
+    }
+   ],
+   "resources": [
+    {
+     "name": "Arcane Recovery",
+     "max": 1,
+     "used": 0,
+     "recharge": "long rest"
+    }
+   ],
+   "inventory": [
+    "Spellbook",
+    "Quarterstaff",
+    "Dagger",
+    "Arcane Focus (crystal)",
+    "Scholar's Pack",
+    "Notes on the old empire"
+   ]
+  }
+ },
+ "spells": [
+  {
+   "name": "Aid",
+   "level": 2,
+   "school": "Abjuration",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Druid",
+    "Paladin",
+    "Ranger"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V, S, M (a strip of white cloth)",
+   "duration": "8 hours",
+   "concentration": false,
+   "description": "Choose up to three creatures within range. Each target’s Hit Point maximum and current Hit Points increase by 5 for the duration.",
+   "higher_levels": "Using a Higher-Level Spell Slot. Each target’s Hit Points increase by 5 for each spell slot level above 2.",
+   "action": "action"
+  },
+  {
+   "name": "Bless",
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V, S, M (a Holy Symbol worth 5+ GP)",
+   "duration": "Concentration, up to 1 minute",
+   "concentration": true,
+   "description": "You bless up to three creatures within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save.",
+   "higher_levels": "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
+   "action": "action"
+  },
+  {
+   "name": "Burning Hands",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "Self",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A thin sheet of flames shoots forth from you. Each creature in a 15-foot Cone makes a Dexterity saving throw, taking 3d6 Fire damage on a failed save or half as much damage on a successful one.\n\nFlammable objects in the Cone that aren’t being worn or carried start burning.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.",
+   "action": "action",
+   "roll": {
+    "kind": "save",
+    "damage": "3d6",
+    "damage_type": "fire",
+    "save_ability": "DEX",
+    "half_on_save": true,
+    "per_level": "1d6"
+   }
+  },
+  {
+   "name": "Cure Wounds",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Druid",
+    "Paladin",
+    "Ranger"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "Touch",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A creature you touch regains a number of Hit Points equal to 2d8 plus your spellcasting ability modifier.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 2d8 for each spell slot level above 1.",
+   "action": "action",
+   "roll": {
+    "kind": "heal",
+    "damage": "2d8",
+    "add_mod": true,
+    "per_level": "2d8"
+   }
+  },
+  {
+   "name": "Detect Magic",
+   "level": 1,
+   "school": "Divination",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Druid",
+    "Paladin",
+    "Ranger",
+    "Sorcerer",
+    "Warlock",
+    "Wizard"
+   ],
+   "casting_time": "Action or Ritual",
+   "ritual": true,
+   "range": "Self",
+   "components": "V, S",
+   "duration": "Concentration, up to 10 minutes",
+   "concentration": true,
+   "description": "For the duration, you sense the presence of magical effects within 30 feet of yourself. If you sense such effects, you can take the Magic action to see a faint aura around any visible creature or object in the area that bears the magic, and if an effect was created by a spell, you learn the spell’s school of magic.\n\nThe spell is blocked by 1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead.",
+   "higher_levels": null,
+   "action": "action"
+  },
+  {
+   "name": "Fireball",
+   "level": 3,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "150 feet",
+   "components": "V, S, M (a ball of bat guano and sulfur)",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A bright streak flashes from you to a point you choose within range and then blossoms with a low roar into a fiery explosion. Each creature in a 20-foot-radius Sphere centered on that point makes a Dexterity saving throw, taking 8d6 Fire damage on a failed save or half as much damage on a successful one.\n\nFlammable objects in the area that aren’t being worn or carried start burning.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 3.",
+   "action": "action",
+   "roll": {
+    "kind": "save",
+    "damage": "8d6",
+    "damage_type": "fire",
+    "save_ability": "DEX",
+    "half_on_save": true,
+    "per_level": "1d6"
+   }
+  },
+  {
+   "name": "Fire Bolt",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "120 feet",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "You hurl a mote of fire at a creature or an object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Fire damage. A flammable object hit by this spell starts burning if it isn’t being worn or carried.",
+   "higher_levels": "Cantrip Upgrade. The damage increases by 1d10 when you reach levels 5 (2d10), 11 (3d10), and 17 (4d10).",
+   "action": "action",
+   "roll": {
+    "kind": "spell_attack",
+    "damage": "1d10",
+    "damage_type": "fire",
+    "cantrip_scaling": true
+   }
+  },
+  {
+   "name": "Guidance",
+   "level": 0,
+   "school": "Divination",
+   "classes": [
+    "Cleric",
+    "Druid"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "Touch Component: V, S",
+   "components": "",
+   "duration": "Concentration, up to 1 minute",
+   "concentration": true,
+   "description": "You touch a willing creature and choose a skill. Until the spell ends, the creature adds 1d4 to any ability check using the chosen skill.",
+   "higher_levels": null,
+   "action": "action"
+  },
+  {
+   "name": "Guiding Bolt",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "120 feet",
+   "components": "V, S",
+   "duration": "1 round",
+   "concentration": false,
+   "description": "You hurl a bolt of light toward a creature within range. Make a ranged spell attack against the target. On a hit, it takes 4d6 Radiant damage, and the next attack roll made against it before the end of your next turn has Advantage.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.",
+   "action": "action",
+   "roll": {
+    "kind": "spell_attack",
+    "damage": "4d6",
+    "damage_type": "radiant",
+    "per_level": "1d6"
+   }
+  },
+  {
+   "name": "Healing Word",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Druid"
+   ],
+   "casting_time": "Bonus Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A creature of your choice that you can see within range regains Hit Points equal to 2d4 plus your spellcasting ability modifier.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 2d4 for each spell slot level above 1.",
+   "action": "bonus",
+   "roll": {
+    "kind": "heal",
+    "damage": "2d4",
+    "add_mod": true,
+    "per_level": "2d4"
+   }
+  },
+  {
+   "name": "Lesser Restoration",
+   "level": 2,
+   "school": "Abjuration",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Druid",
+    "Paladin",
+    "Ranger"
+   ],
+   "casting_time": "Bonus Action",
+   "ritual": false,
+   "range": "Touch",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "You touch a creature and end one condition on it: Blinded, Deafened, Paralyzed, or Poisoned.",
+   "higher_levels": null,
+   "action": "bonus"
+  },
+  {
+   "name": "Mage Armor",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "Touch",
+   "components": "V, S, M (a piece of cured leather)",
+   "duration": "8 hours",
+   "concentration": false,
+   "description": "You touch a willing creature who isn’t wearing armor. Until the spell ends, the target’s base AC becomes 13 plus its Dexterity modifier. The spell ends early if the target dons armor.",
+   "higher_levels": null,
+   "action": "action"
+  },
+  {
+   "name": "Mage Hand",
+   "level": 0,
+   "school": "Conjuration",
+   "classes": [
+    "Bard",
+    "Sorcerer",
+    "Warlock",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V, S",
+   "duration": "1 minute",
+   "concentration": false,
+   "description": "A spectral, floating hand appears at a point you choose within range. The hand lasts for the duration. The hand vanishes if it is ever more than 30 feet away from you or if you cast this spell again.\n\nWhen you cast the spell, you can use the hand to manipulate an object, open an unlocked door or container, stow or retrieve an item from an open container, or pour the contents out of a vial.\n\nAs a Magic action on your later turns, you can control the hand thus again. As part of that action, you can move the hand up to 30 feet.\n\nThe hand can’t attack, activate magic items, or carry more than 10 pounds.",
+   "higher_levels": null,
+   "action": "action"
+  },
+  {
+   "name": "Magic Missile",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "120 feet",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "You create three glowing darts of magical force. Each dart strikes a creature of your choice that you can see within range. A dart deals 1d4 + 1 Force damage to its target. The darts all strike simultaneously, and you can direct them to hit one creature or several.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The spell creates one more dart for each spell slot level above 1.",
+   "action": "action",
+   "roll": {
+    "kind": "damage_only",
+    "damage": "3d4+3",
+    "damage_type": "force",
+    "per_level": "1d4+1"
+   }
+  },
+  {
+   "name": "Minor Illusion",
+   "level": 0,
+   "school": "Illusion",
+   "classes": [
+    "Bard",
+    "Sorcerer",
+    "Warlock",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "S, M (a bit of fleece)",
+   "duration": "1 minute",
+   "concentration": false,
+   "description": "You create a sound or an image of an object within range that lasts for the duration. See the descriptions below for the effects of each. The illusion ends if you cast this spell again.\n\nIf a creature takes a Study action to examine the sound or image, the creature can determine that it is an illusion with a successful Intelligence (Investigation) check against your spell save DC. If a creature discerns the illusion for what it is, the illusion becomes faint to the creature.\n\nSound. If you create a sound, its volume can range from a whisper to a scream. It can be your voice, someone else’s voice, a lion’s roar, a beating of drums, or any other sound you choose. The sound continues unabated throughout the duration, or you can make discrete sounds at different times before the spell ends.\n\nImage. If you create an image of an object—such as a chair, muddy footprints, or a small chest—it must be no larger than a 5-foot Cube. The image can’t create sound, light, smell, or any other sensory effect. Physical interaction with the image reveals it to be an illusion, since things can pass through it.",
+   "higher_levels": null,
+   "action": "action"
+  },
+  {
+   "name": "Prayer of Healing",
+   "level": 2,
+   "school": "Abjuration",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "casting_time": "10 minutes",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "Up to five creatures of your choice who remain within range for the spell’s entire casting gain the benefits of a Short Rest and also regain 2d8 Hit Points. A creature can’t be affected by this spell again until that creature finishes a Long Rest.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 1d8 for each spell slot level above 2.",
+   "action": "other",
+   "roll": {
+    "kind": "heal",
+    "damage": "2d8",
+    "add_mod": false,
+    "per_level": "1d8"
+   }
+  },
+  {
+   "name": "Ray of Frost",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A frigid beam of blue-white light streaks toward a creature within range. Make a ranged spell attack against the target. On a hit, it takes 1d8 Cold damage, and its Speed is reduced by 10 feet until the start of your next turn.",
+   "higher_levels": "Cantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8).",
+   "action": "action",
+   "roll": {
+    "kind": "spell_attack",
+    "damage": "1d8",
+    "damage_type": "cold",
+    "cantrip_scaling": true
+   }
+  },
+  {
+   "name": "Sacred Flame",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "Flame-like radiance descends on a creature that you can see within range. The target must succeed on a Dexterity saving throw or take 1d8 Radiant damage. The target gains no benefit from Half Cover or Three-Quarters Cover for this save.",
+   "higher_levels": "Cantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8).",
+   "action": "action",
+   "roll": {
+    "kind": "save",
+    "damage": "1d8",
+    "damage_type": "radiant",
+    "save_ability": "DEX",
+    "half_on_save": false,
+    "cantrip_scaling": true
+   }
+  },
+  {
+   "name": "Sanctuary",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Cleric"
+   ],
+   "casting_time": "Bonus Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V, S, M (a shard of glass from a mirror)",
+   "duration": "1 minute",
+   "concentration": false,
+   "description": "You ward a creature within range. Until the spell ends, any creature who targets the warded creature with an attack roll or a damaging spell must succeed on a Wisdom saving throw or either choose a new target or lose the attack or spell. This spell doesn’t protect the warded creature from areas of effect. The spell ends if the warded creature makes an attack roll, casts a spell, or deals damage.",
+   "higher_levels": null,
+   "action": "bonus"
+  },
+  {
+   "name": "Scorching Ray",
+   "level": 2,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "120 feet",
+   "components": "V, S",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray. On a hit, the target takes 2d6 Fire damage.",
+   "higher_levels": "Using a Higher-Level Spell Slot. You create one additional ray for each spell slot level above 2.",
+   "action": "action",
+   "roll": {
+    "kind": "spell_attack",
+    "damage": "6d6",
+    "damage_type": "fire",
+    "per_level": "2d6",
+    "note": "three rays of 2d6"
+   }
+  },
+  {
+   "name": "Shatter",
+   "level": 2,
+   "school": "Evocation",
+   "classes": [
+    "Bard",
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V, S, M (a chip of mica)",
+   "duration": "Instantaneous",
+   "concentration": false,
+   "description": "A loud noise erupts from a point of your choice within range. Each creature in a 10-foot-radius Sphere centered there makes a Constitution saving throw, taking 3d8 Thunder damage on a failed save or half as much damage on a successful one. A Construct has Disadvantage on the save.\n\nA nonmagical object that isn’t being worn or carried also takes the damage if it’s in the spell’s area.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 2.",
+   "action": "action",
+   "roll": {
+    "kind": "save",
+    "damage": "3d8",
+    "damage_type": "thunder",
+    "save_ability": "CON",
+    "half_on_save": true,
+    "per_level": "1d8"
+   }
+  },
+  {
+   "name": "Shield",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "casting_time": "Reaction, which you take when you are hit by an attack roll or targeted by the Magic Missile spell",
+   "ritual": false,
+   "range": "Self",
+   "components": "V, S",
+   "duration": "1 round",
+   "concentration": false,
+   "description": "An imperceptible barrier of magical force protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from Magic Missile.",
+   "higher_levels": null,
+   "action": "reaction"
+  },
+  {
+   "name": "Shield of Faith",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "casting_time": "Bonus Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V, S, M (a prayer scroll)",
+   "duration": "Concentration, up to 10 minutes",
+   "concentration": true,
+   "description": "A shimmering field surrounds a creature of your choice within range, granting it a +2 bonus to AC for the duration.",
+   "higher_levels": null,
+   "action": "bonus"
+  },
+  {
+   "name": "Spiritual Weapon",
+   "level": 2,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "casting_time": "Bonus Action",
+   "ritual": false,
+   "range": "60 feet",
+   "components": "V, S",
+   "duration": "Concentration, up to 1 minute",
+   "concentration": true,
+   "description": "You create a floating, spectral force that resembles a weapon of your choice and lasts for the duration. The force appears within range in a space of your choice, and you can immediately make one melee spell attack against one creature within 5 feet of the force. On a hit, the target takes Force damage equal to 1d8 plus your spellcasting ability modifier.\n\nAs a Bonus Action on your later turns, you can move the force up to 20 feet and repeat the attack against a creature within 5 feet of it.",
+   "higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d8 for every slot level above 2.",
+   "action": "bonus",
+   "roll": {
+    "kind": "spell_attack",
+    "damage": "1d8",
+    "damage_type": "force",
+    "add_mod": true
+   }
+  },
+  {
+   "name": "Thaumaturgy",
+   "level": 0,
+   "school": "Transmutation",
+   "classes": [
+    "Cleric"
+   ],
+   "casting_time": "Action",
+   "ritual": false,
+   "range": "30 feet",
+   "components": "V",
+   "duration": "Up to 1 minute",
+   "concentration": false,
+   "description": "You manifest a minor wonder within range. You create one of the effects below within range. If you cast this spell multiple times, you can have up to three of its 1-minute effects active at a time.\n\nAltered Eyes. You alter the appearance of your eyes for 1 minute.\n\nBooming Voice. Your voice booms up to three times as loud as normal for 1 minute. For the duration, you have Advantage on Charisma (Intimidation) checks.\n\nFire Play. You cause flames to flicker, brighten, dim, or change color for 1 minute.\n\nInvisible Hand. You instantaneously cause an unlocked door or window to fly open or slam shut.\n\nPhantom Sound. You create an instantaneous sound that originates from a point of your choice within range, such as a rumble of thunder, the cry of a raven, or ominous whispers.\n\nTremors. You cause harmless tremors in the ground for 1 minute.",
+   "higher_levels": null,
+   "action": "action"
+  }
+ ],
+ "feats": [
+  {
+   "name": "Alert",
+   "category": "Origin",
+   "prerequisite": null,
+   "description": "You gain the following benefits.\n\nInitiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.\n\nInitiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can’t make this swap if you or the ally has the Incapacitated condition."
+  },
+  {
+   "name": "Magic Initiate",
+   "category": "Origin",
+   "prerequisite": null,
+   "description": "You gain the following benefits.\n\nTwo Cantrips. You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell list. Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat’s spells (choose when you select this feat).\n\nLevel 1 Spell. Choose a level 1 spell from the same list you selected for this feat’s cantrips. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have.\n\nSpell Change. Whenever you gain a new level, you can replace one of the spells you chose for this feat with a different spell of the same level from the chosen spell list.\n\nRepeatable. You can take this feat more than once, but you must choose a different spell list each time."
+  },
+  {
+   "name": "Savage Attacker",
+   "category": "Origin",
+   "prerequisite": null,
+   "description": "You’ve trained to deal particularly damaging strikes. Once per turn when you hit a target with a weapon, you can roll the weapon’s damage dice twice and use either roll against the target."
+  },
+  {
+   "name": "Skilled",
+   "category": "Origin",
+   "prerequisite": null,
+   "description": "You gain proficiency in any combination of three skills or tools of your choice.\n\nRepeatable. You can take this feat more than once."
+  },
+  {
+   "name": "Ability Score Improvement",
+   "category": "General",
+   "prerequisite": "Level 4+",
+   "description": "Increase one ability score of your choice by 2, or increase two ability scores of your choice by 1. This feat can’t increase an ability score above 20.\n\nRepeatable. You can take this feat more than once."
+  },
+  {
+   "name": "Grappler",
+   "category": "General",
+   "prerequisite": "Level 4+, Strength or Dexterity 13+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase your Strength or Dexterity score by 1, to a maximum of 20.\n\nPunch and Grab. When you hit a creature with an Unarmed Strike as part of the Attack action on your turn, you can use both the Damage and the Grapple option. You can use this benefit only once per turn.\n\nAttack Advantage. You have Advantage on attack rolls against a creature Grappled by you.\n\nFast Wrestler. You don’t have to spend extra movement to move a creature Grappled by you if the creature is your size or smaller."
+  },
+  {
+   "name": "Archery",
+   "category": "Fighting Style",
+   "prerequisite": "Fighting Style Feature",
+   "description": "You gain a +2 bonus to attack rolls you make with Ranged weapons."
+  },
+  {
+   "name": "Defense",
+   "category": "Fighting Style",
+   "prerequisite": "Fighting Style Feature",
+   "description": "While you’re wearing Light, Medium, or Heavy armor, you gain a +1 bonus to Armor Class."
+  },
+  {
+   "name": "Great Weapon Fighting",
+   "category": "Fighting Style",
+   "prerequisite": "Fighting Style Feature",
+   "description": "When you roll damage for an attack you make with a Melee weapon that you are holding with two hands, you can treat any 1 or 2 on a damage die as a 3. The weapon must have the Two-Handed or Versatile property to gain this benefit."
+  },
+  {
+   "name": "Two-Weapon Fighting",
+   "category": "Fighting Style",
+   "prerequisite": "Fighting Style Feature",
+   "description": "When you make an extra attack as a result of using a weapon that has the Light property, you can add your ability modifier to the damage of that attack if you aren’t already adding it to the damage."
+  },
+  {
+   "name": "Boon of Combat Prowess",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\n\nPeerless Aim. When you miss with an attack roll, you can hit instead. Once you use this benefit, you can’t use it again until the start of your next turn."
+  },
+  {
+   "name": "Boon of Dimensional Travel",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\n\nBlink Steps. Immediately after you take the Attack action or the Magic action, you can teleport up to 30 feet to an unoccupied space you can see."
+  },
+  {
+   "name": "Boon of Fate",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\n\nImprove Fate. When you or another creature within 60 feet of you succeeds on or fails a D20 Test, you can roll 2d4 and apply the total rolled as a bonus or penalty to the d20 roll. Once you use this benefit, you can’t use it again until you roll Initiative or finish a Short or Long Rest."
+  },
+  {
+   "name": "Boon of Irresistible Offense",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase your Strength or Dexterity score by 1, to a maximum of 30.\n\nOvercome Defenses. The Bludgeoning, Piercing, and Slashing damage you deal always ignores Resistance.\n\nOverwhelming Strike. When you roll a 20 on the d20 for an attack roll, you can deal extra damage to the target equal to the ability score increased by this feat. The extra damage’s type is the same as the attack’s type."
+  },
+  {
+   "name": "Boon of Spell Recall",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+, Spellcasting Feature",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase your Intelligence, Wisdom, or Charisma score by 1, to a maximum of 30.\n\nFree Casting. Whenever you cast a spell with a level 1–4 spell slot, roll 1d4. If the number you roll is the same as the slot’s level, the slot isn’t expended."
+  },
+  {
+   "name": "Boon of the Night Spirit",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\n\nMerge with Shadows. While within Dim Light or Darkness, you can give yourself the Invisible condition as a Bonus Action. The condition ends on you immediately after you take an action, a Bonus Action, or a Reaction.\n\nShadowy Form. While within Dim Light or Darkness, you have Resistance to all damage except Psychic and Radiant."
+  },
+  {
+   "name": "Boon of Truesight",
+   "category": "Epic Boon",
+   "prerequisite": "Level 19+",
+   "description": "You gain the following benefits.\n\nAbility Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\n\nTruesight. You have Truesight with a range of 60 feet.\n\nSelling Equipment\n\nEquipment fetches half its cost when sold. In contrast, trade goods and valuables—like gems and art objects—retain their full value in the marketplace. “Magic Items” has prices for magic items."
+  }
+ ]
+}

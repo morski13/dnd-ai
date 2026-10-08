@@ -1,5 +1,6 @@
 "use client";
 // Filter chips + character cards (runs in the browser so the chips switch instantly).
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { CharacterCard } from "@/lib/characters-data";
 import { claimCharacter, type ActionState } from "../campaign-actions";
@@ -95,7 +96,8 @@ function Card({ c, color, isMine, canClaim }: {
   const who = isMine ? "You" : c.ownerName ?? (c.playerName ? `${c.playerName} · not claimed` : "Not claimed");
 
   return (
-    <article className="rounded-[18px] border border-line bg-surface p-4">
+    <article className="rounded-[18px] border border-line bg-surface p-4 active:border-accent">
+      <Link href={`/characters/${c.id}`} className="block">
       <div className="flex items-center gap-4">
         <div
           className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl font-heading text-3xl font-bold"
@@ -119,6 +121,7 @@ function Card({ c, color, isMine, canClaim }: {
           ))}
         </div>
       )}
+      </Link>
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className={`text-xs ${isMine ? "font-semibold text-accent" : "text-muted"}`}>Played by {who}</p>
