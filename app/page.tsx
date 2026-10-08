@@ -1,9 +1,11 @@
 // Home screen: your campaign, the session card and the main menu.
+import Link from "next/link";
 import { Suspense } from "react";
 import { getHomeData } from "@/lib/home-data";
 import { logOut } from "./auth-actions";
 import { BottomNav } from "./components/bottom-nav";
 import { DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
+import { JoinForm } from "./join-form";
 
 export default function HomePage() {
   return (
@@ -26,8 +28,9 @@ async function Home() {
       <>
         <Header label="Welcome" title={data.displayName} subtitle={null} initial={data.displayName} />
         <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
-          <p className="font-semibold">You&apos;re not in a campaign yet.</p>
-          <p className="mt-1 text-sm text-muted">Ask your DM for an invite code. Joining comes in the next step.</p>
+          <p className="font-semibold">Join your campaign</p>
+          <p className="mt-1 text-sm text-muted">Ask your DM for the invite code and enter it here.</p>
+          <JoinForm />
         </div>
       </>
     );
@@ -39,8 +42,9 @@ async function Home() {
     .join(" · ");
   const live = data.activeSessionNumber !== null;
 
-  const tiles = [
+  const tiles: { Icon: typeof PersonIcon; title: string; sub: string; href?: string }[] = [
     {
+      href: "/characters",
       Icon: PersonIcon,
       title: "Your characters",
       sub: data.isDm
@@ -88,14 +92,34 @@ async function Home() {
 
       {/* Menu grid */}
       <section className="mt-5 grid grid-cols-2 gap-3">
-        {tiles.map(({ Icon, title, sub }) => (
-          <div key={title} className="min-h-36 rounded-2xl border border-line bg-surface p-4">
-            <Icon className="h-7 w-7 text-accent" />
-            <p className="mt-4 font-bold leading-snug">{title}</p>
-            <p className="mt-1.5 text-sm text-muted">{sub}</p>
-          </div>
-        ))}
+        {tiles.map(({ Icon, title, sub, href }) => {
+          const inner = (
+            <>
+              <Icon className="h-7 w-7 text-accent" />
+              <p className="mt-4 font-bold leading-snug">{title}</p>
+              <p className="mt-1.5 text-sm text-muted">{sub}</p>
+            </>
+          );
+          const cls = "block min-h-36 rounded-2xl border border-line bg-surface p-4";
+          return href ? (
+            <Link key={title} href={href} className={`${cls} active:border-accent`}>{inner}</Link>
+          ) : (
+            <div key={title} className={cls}>{inner}</div>
+          );
+        })}
       </section>
+
+      {data.isDm && (
+        <section className="mt-5 rounded-2xl border border-line bg-surface-2 p-4">
+          <p className="text-xs uppercase tracking-[0.12em] text-muted">Invite your players</p>
+          <p className="mt-2 text-sm text-soft">
+            Players create an account, then enter this code:
+          </p>
+          <p className="mt-2 font-heading text-2xl font-bold tracking-[0.2em] text-accent">
+            {campaign.inviteCode}
+          </p>
+        </section>
+      )}
 
       {data.lastSession && (
         <p className="mt-6 text-center text-xs text-muted">

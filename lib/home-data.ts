@@ -28,7 +28,7 @@ export async function getHomeData() {
   // Your campaign (the first one you joined) and your role in it.
   const { data: membership } = await supabase
     .from("campaign_members")
-    .select("role, campaigns(id, name, settings)")
+    .select("role, campaigns(id, name, settings, invite_code)")
     .eq("user_id", userId)
     .order("joined_at", { ascending: true })
     .limit(1)
@@ -36,7 +36,7 @@ export async function getHomeData() {
 
   const displayName = profile?.display_name ?? "Adventurer";
   const campaign = membership?.campaigns as unknown as
-    | { id: string; name: string; settings: CampaignSettings }
+    | { id: string; name: string; settings: CampaignSettings; invite_code: string }
     | null;
 
   if (!membership || !campaign) {
@@ -68,6 +68,7 @@ export async function getHomeData() {
       homeBase: campaign.settings?.home_base ?? null,
       partyLevel: campaign.settings?.party_level ?? null,
       schedule: campaign.settings?.schedule?.split("–")[0]?.trim() ?? null,
+      inviteCode: campaign.invite_code,
     },
     isDm,
     myCharacters: characters.count ?? 0,
