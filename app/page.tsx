@@ -1,38 +1,148 @@
+// Home screen: your campaign, the session card and the main menu.
 import { Suspense } from "react";
+import { getHomeData } from "@/lib/home-data";
+import { logOut } from "./auth-actions";
+import { BottomNav } from "./components/bottom-nav";
+import { DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
 
-async function checkSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return { ok: false, message: "Missing keys: check .env.local, then restart the app." };
-  try {
-    const res = await fetch(`${url}/auth/v1/health`, { headers: { apikey: key }, cache: "no-store" });
-    if (res.ok) return { ok: true, message: "Connected to Supabase" };
-    if (res.status === 401) return { ok: false, message: "Supabase answered, but the anon key is wrong." };
-    return { ok: false, message: `Supabase answered with error ${res.status}.` };
-  } catch {
-    return { ok: false, message: "Can't reach Supabase: check the Project URL." };
-  }
-}
-
-async function DatabaseStatus() {
-  const s = await checkSupabase();
+export default function HomePage() {
   return (
-    <div className={`mt-8 rounded-2xl border p-5 ${s.ok ? "border-success-line bg-success-bg" : "border-danger-line bg-danger-bg"}`}>
-      <p className="text-xs uppercase tracking-[0.12em] text-muted">Database</p>
-      <p className={`mt-2 font-semibold ${s.ok ? "text-success" : "text-danger"}`}>{s.message}</p>
-    </div>
+    <>
+      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
+        <Suspense fallback={<HomeSkeleton />}>
+          <Home />
+        </Suspense>
+      </main>
+      <BottomNav active="home" />
+    </>
   );
 }
 
-export default function Home() {
+async function Home() {
+  const data = await getHomeData();
+
+  if (!data.campaign) {
+    return (
+      <>
+        <Header label="Welcome" title={data.displayName} subtitle={null} initial={data.displayName} />
+        <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
+          <p className="font-semibold">You&apos;re not in a campaign yet.</p>
+          <p className="mt-1 text-sm text-muted">Ask your DM for an invite code. Joining comes in the next step.</p>
+        </div>
+      </>
+    );
+  }
+
+  const { campaign } = data;
+  const subtitle = [campaign.homeBase, campaign.partyLevel && `Party level ${campaign.partyLevel}`]
+    .filter(Boolean)
+    .join(" · ");
+  const live = data.activeSessionNumber !== null;
+
+  const tiles = [
+    {
+      Icon: PersonIcon,
+      title: "Your characters",
+      sub: data.isDm
+        ? `${data.partySize} in the party`
+        : `${data.myCharacters} character${data.myCharacters === 1 ? "" : "s"}`,
+    },
+    { Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
+    { Icon: MapIcon, title: campaign.name, sub: "Map, NPCs, quests" },
+    { Icon: DieIcon, title: "Dice roller", sub: "Any roll, any time" },
+    { Icon: SwordsIcon, title: "Fight planner", sub: data.isDm ? "DM · balance a boss" : "See how a fight might go" },
+    { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
+  ];
+
   return (
-    <main className="mx-auto w-full max-w-md flex-1 px-5 pt-14">
-      <p className="text-xs uppercase tracking-[0.12em] text-muted">Your campaign</p>
-      <h1 className="font-heading text-3xl font-bold">The Ashen Crown</h1>
-      <p className="mt-1 text-sm text-muted">Hollowford · Party level 3</p>
-      <Suspense fallback={<div className="mt-8 rounded-2xl border border-line bg-surface p-5 text-muted">Checking the database…</div>}>
-        <DatabaseStatus />
-      </Suspense>
-    </main>
+    <>
+      <Header label="Your campaign" title={campaign.name} subtitle={subtitle} initial={data.displayName} />
+
+      {/* Session card */}
+      <section className="mt-7 rounded-[18px] border border-[#5A4024] bg-accent-surface p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">
+            {live ? "Live now" : "Session mode"}
+          </p>
+          {campaign.schedule && <p className="text-sm text-soft">{campaign.schedule}</p>}
+        </div>
+        <h2 className="mt-3 font-heading text-2xl font-semibold">
+          {live ? `Session ${data.activeSessionNumber} is live` : `Session ${data.nextSessionNumber} is ready`}
+        </h2>
+        <p className="mt-3 text-[15px] leading-relaxed text-soft">
+          All rolls are saved and turned into stats when the session ends.
+        </p>
+        {data.isDm ? (
+          <button
+            type="button"
+            disabled
+            title="Session mode is built in a later step"
+            className="mt-5 h-12 rounded-xl bg-accent px-6 text-[15px] font-bold text-accent-text disabled:opacity-60"
+          >
+            Start session
+          </button>
+        ) : (
+          <p className="mt-5 text-sm text-muted">Waiting for the DM to start.</p>
+        )}
+      </section>
+
+      {/* Menu grid */}
+      <section className="mt-5 grid grid-cols-2 gap-3">
+        {tiles.map(({ Icon, title, sub }) => (
+          <div key={title} className="min-h-36 rounded-2xl border border-line bg-surface p-4">
+            <Icon className="h-7 w-7 text-accent" />
+            <p className="mt-4 font-bold leading-snug">{title}</p>
+            <p className="mt-1.5 text-sm text-muted">{sub}</p>
+          </div>
+        ))}
+      </section>
+
+      {data.lastSession && (
+        <p className="mt-6 text-center text-xs text-muted">
+          Last session: {data.lastSession.number}
+          {data.lastSession.title ? ` · ${data.lastSession.title}` : ""}
+        </p>
+      )}
+    </>
+  );
+}
+
+function Header({ label, title, subtitle, initial }: {
+  label: string; title: string; subtitle: string | null; initial: string;
+}) {
+  return (
+    <header className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.12em] text-muted">{label}</p>
+        <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">{title}</h1>
+        {subtitle && <p className="mt-1 text-[15px] text-muted">{subtitle}</p>}
+      </div>
+      {/* Tap your initial to log out */}
+      <details className="relative shrink-0">
+        <summary className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-surface font-bold [&::-webkit-details-marker]:hidden">
+          {initial.charAt(0).toUpperCase()}
+        </summary>
+        <form action={logOut} className="absolute right-0 z-10 mt-2">
+          <button className="h-11 whitespace-nowrap rounded-xl border border-line bg-surface-2 px-4 text-sm">
+            Log out
+          </button>
+        </form>
+      </details>
+    </header>
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="h-3 w-28 rounded bg-surface" />
+      <div className="mt-3 h-8 w-56 rounded bg-surface" />
+      <div className="mt-7 h-52 rounded-[18px] bg-surface" />
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-36 rounded-2xl bg-surface" />
+        ))}
+      </div>
+    </div>
   );
 }
