@@ -52,7 +52,7 @@ export function ResultLine({ roll: r }: { roll: RollLike }) {
     <div>
       <p className="text-xs text-muted">{r.label}{r.target ? ` → ${r.target}` : ""}</p>
       <p className="text-xs text-muted">{r.expression} {dice}{r.modifier ? ` ${signed(r.modifier)}` : ""}</p>
-      <p className={`text-lg font-bold ${r.isCrit ? "text-accent" : r.isFumble ? "text-danger" : ""}`}>
+      <p key={`${r.label}|${r.total}|${r.diceAll.join(",")}`} className={`text-lg font-bold ${r.isCrit ? "animate-pop text-accent" : r.isFumble ? "animate-shake text-danger" : "animate-pop"}`}>
         {r.total}{verdict ? ` · ${verdict}` : ""}
       </p>
     </div>

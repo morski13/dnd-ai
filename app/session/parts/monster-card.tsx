@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Combatant, QuickAction } from "@/lib/session-data";
 import { monsterRoll, type QuickRoll } from "../actions";
+import { useDice } from "../../components/dice/dice-provider";
 import { ResultLine, Segment } from "./bits";
 
 const KINDS = [
@@ -23,12 +24,14 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault }: {
   const [last, setLast] = useState<QuickRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const dice = useDice();
 
   function doRoll() {
     setError(null);
     start(async () => {
       const res = await monsterRoll(monster.id, { label, expression, kind, hidden, targetCharacterId: targetId });
       if ("error" in res) return setError(res.error);
+      await dice.show({ ...res, tone: kind === "damage" ? "damage" : "plain" });
       setLast(res);
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
     });

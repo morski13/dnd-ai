@@ -20,7 +20,7 @@ export function ResultCard({ analysis: a, calculating, hasEnemies, hasParty }: {
   return (
     <section className="rounded-[18px] border p-4" style={{ borderColor: style.border, background: style.bg }} aria-live="polite">
       <div className="flex items-center justify-between">
-        <TierBadge tier={a.tier} size="lg" />
+        <span key={a.tier} className="animate-pop inline-block"><TierBadge tier={a.tier} size="lg" /></span>
         <span className="text-xs text-muted">{calculating ? "Calculating…" : `${s.runs.toLocaleString()} fights · ${Math.max(1, Math.round(a.ms))} ms`}</span>
       </div>
       <ul className="mt-2 space-y-0.5 text-sm text-soft">
@@ -50,7 +50,7 @@ export function ResultCard({ analysis: a, calculating, hasEnemies, hasParty }: {
             <div key={t.name} className="mt-1.5 flex items-center gap-2 text-sm">
               <span className="w-32 shrink-0 truncate">{t.name}</span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg">
-                <div className="h-full rounded-full" style={{ width: pct(t.share), background: style.text }} />
+                <div className="bar-fill h-full rounded-full" style={{ width: pct(t.share), background: style.text }} />
               </div>
               <span className="w-10 text-right text-xs text-muted">{pct(t.share)}</span>
             </div>

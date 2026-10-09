@@ -8,6 +8,9 @@ export function HpCard({ cur, temp, max, canEdit, pending, onChange }: {
   const [mode, setMode] = useState<"damage" | "heal" | "temp" | null>(null);
   const [value, setValue] = useState("");
   const pct = max ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+  // Remember the last HP we showed, to animate the change (damage drains, healing glows)
+  const [seen, setSeen] = useState({ cur, pct, kind: null as "damage" | "heal" | null, n: 0, from: pct });
+  if (seen.cur !== cur) setSeen({ cur, pct, kind: cur < seen.cur ? "damage" : "heal", n: seen.n + 1, from: seen.pct });
   const barColor = pct > 50 ? "#7BC86C" : pct > 25 ? "#E0913A" : "#F07A6A";
 
   function apply() {
@@ -18,18 +21,23 @@ export function HpCard({ cur, temp, max, canEdit, pending, onChange }: {
   }
 
   return (
-    <section className="mt-5 rounded-[18px] border border-line bg-surface p-4">
-      <div className="flex items-baseline justify-between">
+    <section className="relative mt-5 overflow-hidden rounded-[18px] border border-line bg-surface p-4">
+      {seen.kind && <div key={seen.n} className={`pointer-events-none absolute inset-0 ${seen.kind === "damage" ? "flash-damage" : "flash-heal"}`} aria-hidden />}
+      <div className="relative flex items-baseline justify-between">
         <p className="text-[15px] text-soft">Hit points</p>
         <p className="font-bold">
-          {cur} / {max}
+          <span key={seen.n} className={`inline-block ${seen.kind === "damage" ? "animate-shake" : seen.kind === "heal" ? "animate-pop" : ""}`}>{cur}</span> / {max}
           {temp > 0 && <span className="ml-2 text-sm text-[#7FB8D4]">+{temp} temp</span>}
         </p>
       </div>
-      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-bg">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+      <div className="relative mt-3 h-2.5 overflow-hidden rounded-full bg-bg">
+        {seen.kind === "damage" && (
+          <div key={seen.n} className="hp-ghost absolute inset-y-0 left-0 rounded-full bg-[#F07A6A]/70"
+            style={{ "--from": `${seen.from}%`, "--to": `${pct}%` } as React.CSSProperties} />
+        )}
+        <div className="bar-fill relative h-full rounded-full" style={{ width: `${pct}%`, background: barColor, boxShadow: seen.kind === "heal" ? "0 0 12px #7BC86C" : undefined }} />
       </div>
-      {cur === 0 && max > 0 && <p className="mt-2 text-sm font-semibold text-danger">Down! Make death saves.</p>}
+      {cur === 0 && max > 0 && <p key={seen.n} className="animate-shake mt-2 text-sm font-semibold text-danger">Down! Make death saves.</p>}
 
       {canEdit && mode === null && (
         <div className="mt-4 grid grid-cols-[1fr_1fr_auto] gap-2">

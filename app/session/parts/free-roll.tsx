@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { freeRoll, type QuickRoll } from "../actions";
+import { useDice } from "../../components/dice/dice-provider";
 import { ResultLine } from "./bits";
 
 const QUICK = ["1d20", "1d20 adv", "2d6", "1d8", "4d6kh3", "1d100"];
@@ -15,12 +16,14 @@ export function FreeRoll({ characterId, isDm }: { characterId: string | null; is
   const [last, setLast] = useState<QuickRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const dice = useDice();
 
   function go(e = expr) {
     setError(null);
     start(async () => {
       const res = await freeRoll(e, label, characterId, hidden);
       if ("error" in res) return setError(res.error);
+      await dice.show({ ...res, label: res.label });
       setLast(res);
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
     });

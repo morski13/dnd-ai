@@ -26,10 +26,10 @@ export function TableLog({ rows }: { rows: LogRow[] }) {
       <p className="text-xs uppercase tracking-[0.12em] text-muted">Table log</p>
       {rows.length === 0 && <p className="mt-3 text-sm text-muted">No rolls yet this session.</p>}
       <ul className="mt-1 divide-y divide-line">
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const res = result(r);
           return (
-            <li key={r.id} className="flex items-center justify-between gap-3 py-3">
+            <li key={r.id} className="animate-rise flex items-center justify-between gap-3 py-3" style={{ "--i": Math.min(i, 6) } as React.CSSProperties}>
               <p className="min-w-0 text-[15px] leading-snug">
                 <span className="font-bold">{r.actor.split(" ")[0]}</span>{" "}
                 <span className="text-soft">{r.masked ? "rolled" : r.source}{r.spell_slot ? ` (lvl ${r.spell_slot})` : ""}</span>

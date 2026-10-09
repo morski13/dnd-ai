@@ -32,14 +32,14 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
             )}
           </div>
           {last && !pending && last.rollType !== "other" && (
-            <p className={`font-heading text-4xl font-bold ${last.isCrit ? "text-accent" : last.isFumble ? "text-danger" : last.rollType === "heal" ? "text-success" : ""}`}>
+            <p key={last.id} className={`animate-pop font-heading text-4xl font-bold ${last.isCrit ? "text-accent" : last.isFumble ? "text-danger" : last.rollType === "heal" ? "text-success" : ""}`}>
               {last.total ?? `DC ${last.dc}`}
             </p>
           )}
         </div>
 
         {last && !pending && (last.isCrit || last.isFumble) && (
-          <p className={`mt-1 text-sm font-bold ${last.isCrit ? "text-accent" : "text-danger"}`}>
+          <p key={last.id} className={`mt-1 text-sm font-bold ${last.isCrit ? "animate-pop text-accent" : "animate-shake text-danger"}`}>
             {last.isCrit ? "Natural 20!" : "Natural 1…"}
           </p>
         )}

@@ -10,6 +10,7 @@ import {
   allOptions, damageExpression, lowestFreeSlot, optionButtonLabel, type Option, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import { rollForCharacter, type SavedRoll } from "../../characters/[id]/actions";
+import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
 
 export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative }: {
@@ -33,6 +34,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const [damage, setDamage] = useState<SavedRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const dice = useDice();
 
   const selected = options.find((o) => o.key === key) ?? null;
   const target = targets.find((t) => t.id === targetId) ?? null;
@@ -50,6 +52,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     start(async () => {
       const res = await fn();
       if ("error" in res) return setError(res.error);
+      await dice.show(asShown(res.roll));
       setSpells(res.spells);
       setResources(res.resources);
       onDone(res.roll);
@@ -64,7 +67,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     : "Roll attack";
 
   return (
-    <section className={`rounded-[18px] border p-4 ${isTurn ? "border-[#8A5A24] bg-accent-surface" : "border-line bg-surface"}`}>
+    <section className={`rounded-[18px] border p-4 ${isTurn ? "animate-turn border-[#8A5A24] bg-accent-surface" : "border-line bg-surface"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-lg font-bold">{isTurn ? `Your turn, ${short}` : short}</p>

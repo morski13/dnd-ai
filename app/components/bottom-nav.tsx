@@ -7,7 +7,7 @@ const items = [
   { key: "home", label: "Home", Icon: HomeIcon, href: "/" },
   { key: "characters", label: "Characters", Icon: PersonIcon, href: "/characters" },
   { key: "session", label: "Session", Icon: DieIcon, href: "/session" },
-  { key: "stats", label: "Stats", Icon: StatsIcon, href: null },
+  { key: "stats", label: "Stats", Icon: StatsIcon, href: "/stats" },
   { key: "campaign", label: "Campaign", Icon: MapIcon, href: null },
 ] as const;
 
@@ -21,7 +21,7 @@ export function BottomNav({ active }: { active: (typeof items)[number]["key"] })
           }`;
           const inner = (
             <>
-              <Icon className="h-6 w-6" />
+              <Icon className={`h-6 w-6 ${key === active ? "animate-pop" : ""}`} />
               {label}
             </>
           );

@@ -11,6 +11,7 @@ import {
 import {
   changeHp, restoreAllSlots, rollForCharacter, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
+import { asShown, useDice } from "../../components/dice/dice-provider";
 import { BestMoves } from "./parts/best-moves";
 import { FeaturesTab } from "./parts/features-tab";
 import { HpCard } from "./parts/hp-card";
@@ -32,6 +33,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [last, setLast] = useState<SavedRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const dice = useDice();
 
   // The character as it is right now (slots and spell list change while you play).
   const c: SheetCharacter & { features: (string | Feature)[] } = useMemo(() => ({ ...character, spells }), [character, spells]);
@@ -45,6 +47,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     startTransition(async () => {
       const res = await rollForCharacter(character.id, request, advantage);
       if ("error" in res) return setError(res.error);
+      await dice.show(asShown(res.roll));
       setLast(res.roll);
       setSpells(res.spells);
       setResources(res.resources);

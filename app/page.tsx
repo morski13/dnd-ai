@@ -52,9 +52,9 @@ async function Home() {
         ? `${data.partySize} in the party`
         : `${data.myCharacters} character${data.myCharacters === 1 ? "" : "s"}`,
     },
-    { Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
+    { href: "/stats", Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
     { Icon: MapIcon, title: campaign.name, sub: "Map, NPCs, quests" },
-    { Icon: DieIcon, title: "Dice roller", sub: "Any roll, any time" },
+    { href: "/dice", Icon: DieIcon, title: "Your dice", sub: "Design 3D dice & test-throw" },
     { Icon: SwordsIcon, title: "Fight planner", sub: data.isDm ? "DM · plan & balance fights" : "DM only", href: data.isDm ? "/fights" : undefined },
     { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
   ];
@@ -90,7 +90,7 @@ async function Home() {
 
       {/* Menu grid */}
       <section className="mt-5 grid grid-cols-2 gap-3">
-        {tiles.map(({ Icon, title, sub, href }) => {
+        {tiles.map(({ Icon, title, sub, href }, i) => {
           const inner = (
             <>
               <Icon className="h-7 w-7 text-accent" />
@@ -98,11 +98,12 @@ async function Home() {
               <p className="mt-1.5 text-sm text-muted">{sub}</p>
             </>
           );
-          const cls = "block min-h-36 rounded-2xl border border-line bg-surface p-4";
+          const cls = "animate-rise block min-h-36 rounded-2xl border border-line bg-surface p-4";
+          const style = { "--i": i } as React.CSSProperties;
           return href ? (
-            <Link key={title} href={href} className={`${cls} active:border-accent`}>{inner}</Link>
+            <Link key={title} href={href} className={`${cls} active:border-accent`} style={style}>{inner}</Link>
           ) : (
-            <div key={title} className={cls}>{inner}</div>
+            <div key={title} className={cls} style={style}>{inner}</div>
           );
         })}
       </section>
