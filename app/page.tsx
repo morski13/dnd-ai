@@ -6,6 +6,7 @@ import { logOut } from "./auth-actions";
 import { BottomNav } from "./components/bottom-nav";
 import { DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
 import { JoinForm } from "./join-form";
+import { StartSessionButton } from "./session/start-button";
 
 export default function HomePage() {
   return (
@@ -54,7 +55,7 @@ async function Home() {
     { Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
     { Icon: MapIcon, title: campaign.name, sub: "Map, NPCs, quests" },
     { Icon: DieIcon, title: "Dice roller", sub: "Any roll, any time" },
-    { Icon: SwordsIcon, title: "Fight planner", sub: data.isDm ? "DM · balance a boss" : "See how a fight might go" },
+    { Icon: SwordsIcon, title: "Fight planner", sub: data.isDm ? "DM · plan & balance fights" : "DM only", href: data.isDm ? "/fights" : undefined },
     { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
   ];
 
@@ -76,15 +77,12 @@ async function Home() {
         <p className="mt-3 text-[15px] leading-relaxed text-soft">
           All rolls are saved and turned into stats when the session ends.
         </p>
-        {data.isDm ? (
-          <button
-            type="button"
-            disabled
-            title="Session mode is built in a later step"
-            className="mt-5 h-12 rounded-xl bg-accent px-6 text-[15px] font-bold text-accent-text disabled:opacity-60"
-          >
-            Start session
-          </button>
+        {live ? (
+          <Link href="/session" className="mt-5 inline-flex h-12 items-center rounded-xl bg-accent px-6 text-[15px] font-bold text-accent-text">
+            Join the table
+          </Link>
+        ) : data.isDm ? (
+          <StartSessionButton />
         ) : (
           <p className="mt-5 text-sm text-muted">Waiting for the DM to start.</p>
         )}

@@ -17,6 +17,8 @@ export type Combo = {
   maxDamage: number;     // if everything hits and rolls max (no crits)
   costs: string[];       // "level 2 slot", "1 Rage", "bonus action"
   notes: string[];
+  /** The pieces, for the fight simulator. */
+  parts: { main: Option; bonus: Option | null; boosts: Option[]; advantage: boolean };
 };
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -141,6 +143,7 @@ export function findCombos(c: SheetCharacter, options: Option[], t: Target): Com
           maxDamage: m.max + (b?.max ?? 0),
           costs,
           notes: set.map((x) => x.drawback).filter(Boolean) as string[],
+          parts: { main, bonus, boosts: set, advantage },
         });
       }
     }

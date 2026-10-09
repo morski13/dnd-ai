@@ -6,7 +6,7 @@ import { DieIcon, HomeIcon, MapIcon, PersonIcon, StatsIcon } from "./icons";
 const items = [
   { key: "home", label: "Home", Icon: HomeIcon, href: "/" },
   { key: "characters", label: "Characters", Icon: PersonIcon, href: "/characters" },
-  { key: "session", label: "Session", Icon: DieIcon, href: null },
+  { key: "session", label: "Session", Icon: DieIcon, href: "/session" },
   { key: "stats", label: "Stats", Icon: StatsIcon, href: null },
   { key: "campaign", label: "Campaign", Icon: MapIcon, href: null },
 ] as const;

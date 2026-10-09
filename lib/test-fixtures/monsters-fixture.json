@@ -1,0 +1,789 @@
+[
+ {
+  "name": "Goblin Warrior",
+  "size_type": "Small Fey (Goblinoid), Chaotic Neutral",
+  "ac": 15,
+  "init": 2,
+  "hp": 10,
+  "hp_dice": "3d6",
+  "speed": "30 ft.",
+  "abilities": {
+   "STR": {
+    "mod": -1,
+    "save": -1
+   },
+   "DEX": {
+    "mod": 2,
+    "save": 2
+   },
+   "CON": {
+    "mod": 0,
+    "save": 0
+   },
+   "INT": {
+    "mod": 0,
+    "save": 0
+   },
+   "WIS": {
+    "mod": -1,
+    "save": -1
+   },
+   "CHA": {
+    "mod": -1,
+    "save": -1
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 9",
+  "languages": "Common, Goblin",
+  "skills": "Stealth +6",
+  "cr": "1/4",
+  "cr_num": 0.25,
+  "xp": 50,
+  "actions": [
+   {
+    "name": "Scimitar",
+    "kind": "attack",
+    "bonus": 4,
+    "damage": "1d6+2",
+    "avg": 5,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Shortbow",
+    "kind": "attack",
+    "bonus": 4,
+    "damage": "1d6+2",
+    "avg": 5,
+    "damage_type": "piercing",
+    "ranged": true
+   }
+  ],
+  "bonus_actions": []
+ },
+ {
+  "name": "Goblin Boss",
+  "size_type": "Small Fey (Goblinoid), Chaotic Neutral",
+  "ac": 17,
+  "init": 2,
+  "hp": 21,
+  "hp_dice": "6d6",
+  "speed": "30 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 0,
+    "save": 0
+   },
+   "DEX": {
+    "mod": 2,
+    "save": 2
+   },
+   "CON": {
+    "mod": 0,
+    "save": 0
+   },
+   "INT": {
+    "mod": 0,
+    "save": 0
+   },
+   "WIS": {
+    "mod": -1,
+    "save": -1
+   },
+   "CHA": {
+    "mod": 0,
+    "save": 0
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 9",
+  "languages": "Common, Goblin",
+  "skills": "Stealth +6",
+  "cr": "1",
+  "cr_num": 1.0,
+  "xp": 200,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 2
+   },
+   {
+    "name": "Scimitar",
+    "kind": "attack",
+    "bonus": 4,
+    "damage": "1d6+2",
+    "avg": 5,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Shortbow",
+    "kind": "attack",
+    "bonus": 4,
+    "damage": "1d6+2",
+    "avg": 5,
+    "damage_type": "piercing",
+    "ranged": true
+   }
+  ],
+  "multiattack": {
+   "count": 2,
+   "uses": [
+    "Scimitar",
+    "Shortbow"
+   ]
+  },
+  "bonus_actions": []
+ },
+ {
+  "name": "Ogre",
+  "size_type": "Large Giant, Chaotic Evil",
+  "ac": 11,
+  "init": -1,
+  "hp": 68,
+  "hp_dice": "8d10 + 24",
+  "speed": "40 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 4,
+    "save": 4
+   },
+   "DEX": {
+    "mod": -1,
+    "save": -1
+   },
+   "CON": {
+    "mod": 3,
+    "save": 3
+   },
+   "INT": {
+    "mod": -3,
+    "save": -3
+   },
+   "WIS": {
+    "mod": -2,
+    "save": -2
+   },
+   "CHA": {
+    "mod": -2,
+    "save": -2
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 8",
+  "languages": "Common, Giant",
+  "cr": "2",
+  "cr_num": 2.0,
+  "xp": 450,
+  "actions": [
+   {
+    "name": "Greatclub",
+    "kind": "attack",
+    "bonus": 6,
+    "damage": "2d8+4",
+    "avg": 13,
+    "damage_type": "bludgeoning",
+    "ranged": false
+   },
+   {
+    "name": "Javelin",
+    "kind": "attack",
+    "bonus": 6,
+    "damage": "2d6+4",
+    "avg": 11,
+    "damage_type": "piercing",
+    "ranged": false
+   }
+  ],
+  "bonus_actions": []
+ },
+ {
+  "name": "Young Red Dragon",
+  "size_type": "Large Dragon (Chromatic), Chaotic Evil",
+  "ac": 18,
+  "init": 4,
+  "hp": 178,
+  "hp_dice": "17d10 + 85",
+  "speed": "40 ft., Climb 40 ft., Fly 80 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 6,
+    "save": 6
+   },
+   "DEX": {
+    "mod": 0,
+    "save": 4
+   },
+   "CON": {
+    "mod": 5,
+    "save": 5
+   },
+   "INT": {
+    "mod": 2,
+    "save": 2
+   },
+   "WIS": {
+    "mod": 0,
+    "save": 4
+   },
+   "CHA": {
+    "mod": 4,
+    "save": 4
+   }
+  },
+  "immunities": "Fire",
+  "senses": "Blindsight 30 ft., Darkvision 120 ft.;",
+  "languages": "Common, Draconic",
+  "skills": "Perception +8, Stealth +4",
+  "cr": "10",
+  "cr_num": 10.0,
+  "xp": 5900,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 3
+   },
+   {
+    "name": "Rend",
+    "kind": "attack",
+    "bonus": 10,
+    "damage": "2d6+6+1d6",
+    "avg": 16,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Fire Breath (Recharge 5-6)",
+    "recharge": 5,
+    "kind": "save",
+    "save_ability": "DEX",
+    "dc": 17,
+    "damage": "16d6",
+    "avg": 56,
+    "damage_type": "fire",
+    "half": true,
+    "targets": 3
+   }
+  ],
+  "multiattack": {
+   "count": 3,
+   "uses": [
+    "Rend"
+   ]
+  },
+  "bonus_actions": []
+ },
+ {
+  "name": "Wolf",
+  "size_type": "Medium Beast, Unaligned",
+  "ac": 12,
+  "init": 2,
+  "hp": 11,
+  "hp_dice": "2d8 + 2",
+  "speed": "40 ft.",
+  "abilities": {
+   "INT": {
+    "mod": -4,
+    "save": -4
+   },
+   "WIS": {
+    "mod": 1,
+    "save": 1
+   },
+   "CHA": {
+    "mod": -2,
+    "save": -2
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 15",
+  "languages": "None",
+  "skills": "Perception +5, Stealth +4",
+  "cr": "1/4",
+  "cr_num": 0.25,
+  "xp": 50,
+  "actions": [
+   {
+    "name": "Bite",
+    "kind": "attack",
+    "bonus": 4,
+    "damage": "1d6+2",
+    "avg": 5,
+    "damage_type": "piercing",
+    "ranged": false
+   }
+  ],
+  "bonus_actions": []
+ },
+ {
+  "name": "Zombie",
+  "size_type": "Medium Undead, Neutral Evil",
+  "ac": 8,
+  "init": -2,
+  "hp": 15,
+  "hp_dice": "2d8 + 6",
+  "speed": "20 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 1,
+    "save": 1
+   },
+   "DEX": {
+    "mod": -2,
+    "save": -2
+   },
+   "CON": {
+    "mod": 3,
+    "save": 3
+   },
+   "INT": {
+    "mod": -4,
+    "save": -4
+   },
+   "WIS": {
+    "mod": -2,
+    "save": 0
+   },
+   "CHA": {
+    "mod": -3,
+    "save": -3
+   }
+  },
+  "immunities": "Poison; Exhaustion, Poisoned",
+  "senses": "Darkvision 60 ft.; Passive Perception 8",
+  "languages": "Understands Common plus one other language",
+  "cr": "1/4",
+  "cr_num": 0.25,
+  "xp": 50,
+  "actions": [
+   {
+    "name": "Slam",
+    "kind": "attack",
+    "bonus": 3,
+    "damage": "1d8+1",
+    "avg": 5,
+    "damage_type": "bludgeoning",
+    "ranged": false
+   }
+  ],
+  "bonus_actions": []
+ },
+ {
+  "name": "Bandit Captain",
+  "size_type": "Medium or Small Humanoid, Neutral",
+  "ac": 15,
+  "init": 3,
+  "hp": 52,
+  "hp_dice": "8d8 + 16",
+  "speed": "30 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 2,
+    "save": 4
+   },
+   "DEX": {
+    "mod": 3,
+    "save": 5
+   },
+   "CON": {
+    "mod": 2,
+    "save": 2
+   },
+   "INT": {
+    "mod": 2,
+    "save": 2
+   },
+   "WIS": {
+    "mod": 0,
+    "save": 2
+   },
+   "CHA": {
+    "mod": 2,
+    "save": 2
+   }
+  },
+  "senses": "Passive Perception 10",
+  "languages": "Common, Thieves\u2019 Cant",
+  "skills": "Athletics +4, Deception +4",
+  "cr": "2",
+  "cr_num": 2.0,
+  "xp": 450,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 2
+   },
+   {
+    "name": "Scimitar",
+    "kind": "attack",
+    "bonus": 5,
+    "damage": "1d6+3",
+    "avg": 6,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Pistol",
+    "kind": "attack",
+    "bonus": 5,
+    "damage": "1d10+3",
+    "avg": 8,
+    "damage_type": "piercing",
+    "ranged": true
+   }
+  ],
+  "multiattack": {
+   "count": 2,
+   "uses": [
+    "Scimitar",
+    "Pistol"
+   ]
+  },
+  "bonus_actions": []
+ },
+ {
+  "name": "Owlbear",
+  "size_type": "Large Monstrosity, Unaligned",
+  "ac": 13,
+  "init": 1,
+  "hp": 59,
+  "hp_dice": "7d10 + 21",
+  "speed": "40 ft., Climb 40 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 5,
+    "save": 5
+   },
+   "DEX": {
+    "mod": 1,
+    "save": 1
+   },
+   "CON": {
+    "mod": 3,
+    "save": 3
+   },
+   "INT": {
+    "mod": -4,
+    "save": -4
+   },
+   "WIS": {
+    "mod": 1,
+    "save": 1
+   },
+   "CHA": {
+    "mod": -2,
+    "save": -2
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 15",
+  "languages": "None",
+  "skills": "Perception +5",
+  "cr": "3",
+  "cr_num": 3.0,
+  "xp": 700,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 2
+   },
+   {
+    "name": "Rend",
+    "kind": "attack",
+    "bonus": 7,
+    "damage": "2d8+5",
+    "avg": 14,
+    "damage_type": "slashing",
+    "ranged": false
+   }
+  ],
+  "multiattack": {
+   "count": 2,
+   "uses": [
+    "Rend"
+   ]
+  },
+  "bonus_actions": []
+ },
+ {
+  "name": "Troll",
+  "size_type": "Large Giant, Chaotic Evil",
+  "ac": 15,
+  "init": 1,
+  "hp": 94,
+  "hp_dice": "9d10 + 45",
+  "speed": "30 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 4,
+    "save": 4
+   },
+   "DEX": {
+    "mod": 1,
+    "save": 1
+   },
+   "CON": {
+    "mod": 5,
+    "save": 5
+   },
+   "INT": {
+    "mod": -2,
+    "save": -2
+   },
+   "WIS": {
+    "mod": -1,
+    "save": -1
+   },
+   "CHA": {
+    "mod": -2,
+    "save": -2
+   }
+  },
+  "senses": "Darkvision 60 ft.; Passive Perception 15",
+  "languages": "Giant",
+  "skills": "Perception +5",
+  "cr": "5",
+  "cr_num": 5.0,
+  "xp": 1800,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 3
+   },
+   {
+    "name": "Rend",
+    "kind": "attack",
+    "bonus": 7,
+    "damage": "2d6+4",
+    "avg": 11,
+    "damage_type": "slashing",
+    "ranged": false
+   }
+  ],
+  "multiattack": {
+   "count": 3,
+   "uses": [
+    "Rend"
+   ]
+  },
+  "bonus_actions": [],
+  "regeneration": 15
+ },
+ {
+  "name": "Hell Hound",
+  "size_type": "Medium Fiend, Lawful Evil",
+  "ac": 15,
+  "init": 1,
+  "hp": 58,
+  "hp_dice": "9d8 + 18",
+  "speed": "50 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 3,
+    "save": 3
+   },
+   "DEX": {
+    "mod": 1,
+    "save": 1
+   },
+   "CON": {
+    "mod": 2,
+    "save": 2
+   },
+   "INT": {
+    "mod": -2,
+    "save": -2
+   },
+   "WIS": {
+    "mod": 1,
+    "save": 1
+   },
+   "CHA": {
+    "mod": -2,
+    "save": -2
+   }
+  },
+  "immunities": "Fire",
+  "senses": "Darkvision 60 ft.; Passive Perception 15",
+  "languages": "Understands Infernal but can\u2019t speak",
+  "skills": "Perception +5",
+  "cr": "3",
+  "cr_num": 3.0,
+  "xp": 700,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 2
+   },
+   {
+    "name": "Bite",
+    "kind": "attack",
+    "bonus": 5,
+    "damage": "1d8+3+1d6",
+    "avg": 10,
+    "damage_type": "piercing",
+    "ranged": false
+   },
+   {
+    "name": "Fire Breath (Recharge 5-6)",
+    "recharge": 5,
+    "kind": "save",
+    "save_ability": "DEX",
+    "dc": 12,
+    "damage": "5d6",
+    "avg": 17,
+    "damage_type": "fire",
+    "half": true,
+    "targets": 2
+   }
+  ],
+  "multiattack": {
+   "count": 2,
+   "uses": [
+    "Bite"
+   ]
+  },
+  "bonus_actions": []
+ },
+ {
+  "name": "Adult Red Dragon",
+  "size_type": "Huge Dragon (Chromatic), Chaotic Evil",
+  "ac": 19,
+  "init": 12,
+  "hp": 256,
+  "hp_dice": "19d12 + 133",
+  "speed": "40 ft., Climb 40 ft., Fly 80 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 8,
+    "save": 8
+   },
+   "DEX": {
+    "mod": 0,
+    "save": 6
+   },
+   "CON": {
+    "mod": 7,
+    "save": 7
+   },
+   "INT": {
+    "mod": 3,
+    "save": 3
+   },
+   "WIS": {
+    "mod": 1,
+    "save": 7
+   },
+   "CHA": {
+    "mod": 6,
+    "save": 6
+   }
+  },
+  "immunities": "Fire",
+  "senses": "Blindsight 60 ft., Darkvision 120 ft.;",
+  "languages": "Common, Draconic",
+  "skills": "Perception +13, Stealth +6",
+  "cr": "17",
+  "cr_num": 17.0,
+  "xp": 18000,
+  "actions": [
+   {
+    "name": "Multiattack",
+    "kind": "multiattack",
+    "count": 3
+   },
+   {
+    "name": "Rend",
+    "kind": "attack",
+    "bonus": 14,
+    "damage": "1d10+8+2d4",
+    "avg": 18,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Fire Breath (Recharge 5-6)",
+    "recharge": 5,
+    "kind": "save",
+    "save_ability": "DEX",
+    "dc": 21,
+    "damage": "17d6",
+    "avg": 59,
+    "damage_type": "fire",
+    "half": true,
+    "targets": 4
+   }
+  ],
+  "multiattack": {
+   "count": 3,
+   "uses": [
+    "Rend"
+   ]
+  },
+  "bonus_actions": [],
+  "legendary_uses": 3
+ },
+ {
+  "name": "Bandit",
+  "size_type": "Medium or Small Humanoid, Neutral",
+  "ac": 12,
+  "init": 1,
+  "hp": 11,
+  "hp_dice": "2d8 + 2",
+  "speed": "30 ft.",
+  "abilities": {
+   "STR": {
+    "mod": 0,
+    "save": 0
+   },
+   "DEX": {
+    "mod": 1,
+    "save": 1
+   },
+   "CON": {
+    "mod": 1,
+    "save": 1
+   },
+   "INT": {
+    "mod": 0,
+    "save": 0
+   },
+   "WIS": {
+    "mod": 0,
+    "save": 0
+   },
+   "CHA": {
+    "mod": 0,
+    "save": 0
+   }
+  },
+  "senses": "Passive Perception 10",
+  "languages": "Common, Thieves\u2019 Cant",
+  "cr": "1/8",
+  "cr_num": 0.125,
+  "xp": 25,
+  "actions": [
+   {
+    "name": "Scimitar",
+    "kind": "attack",
+    "bonus": 3,
+    "damage": "1d6+1",
+    "avg": 4,
+    "damage_type": "slashing",
+    "ranged": false
+   },
+   {
+    "name": "Light Crossbow",
+    "kind": "attack",
+    "bonus": 3,
+    "damage": "1d8+1",
+    "avg": 5,
+    "damage_type": "piercing",
+    "ranged": true
+   }
+  ],
+  "bonus_actions": []
+ }
+]

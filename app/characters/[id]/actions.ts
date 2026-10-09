@@ -1,10 +1,12 @@
 "use server";
 // Rolling, casting, HP, resources and the spell list for the character sheet.
-// Dice are rolled HERE on the server, and every bonus comes from the character's data,
-// so a roll can't be faked from the browser.
+// Dice are rolled HERE on the server, every bonus comes from the character's data, and only
+// the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { roll, type Advantage } from "@/lib/dice";
 import { planRoll, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
 
 export type SavedRoll = {
   id: string;
@@ -22,26 +24,19 @@ export type SavedRoll = {
   inSession: boolean;
   request: RollRequest;
   followUp?: { key: string; slot?: number }; // offer this damage roll next
+  success?: boolean | null;                  // attack: hit (true) / miss (false)
+  target?: string | null;                    // "Ogre"
 };
 export type RollResponse = { roll: SavedRoll; spells: SpellBook; resources: Resource[] };
 
 type Fail = { error: string };
-type Supa = Awaited<ReturnType<typeof loadCharacter>>["supabase"];
-
-async function activeSessionId(supabase: Supa, campaignId: string) {
-  const { data } = await supabase
-    .from("sessions").select("id")
-    .eq("campaign_id", campaignId).not("started_at", "is", null).is("ended_at", null)
-    .limit(1).maybeSingle();
-  return data?.id ?? null;
-}
-
 export async function rollForCharacter(
   characterId: string,
   request: RollRequest,
-  advantage: Advantage
+  advantage: Advantage,
+  target?: Target | null
 ): Promise<RollResponse | Fail> {
-  const { supabase, character: c, canEdit, library } = await loadCharacter(characterId);
+  const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only roll for your own character." };
 
@@ -72,13 +67,15 @@ export async function rollForCharacter(
   // Damage after a critical hit rolls double dice. Check the attack really was a crit.
   let critical = false;
   let parentRollId: string | null = null;
+  let parentTarget: Target | null = null;
   if (request.kind === "damage" && request.parentRollId) {
     const { data: parent } = await supabase
-      .from("roll_events").select("id, is_crit, character_id")
+      .from("roll_events").select("id, is_crit, character_id, target_character_id, target_monster_id")
       .eq("id", request.parentRollId).maybeSingle();
     if (parent && parent.character_id === c.id) {
       parentRollId = parent.id;
       critical = !!parent.is_crit;
+      parentTarget = { characterId: parent.target_character_id, monsterId: parent.target_monster_id };
     }
   }
 
@@ -95,13 +92,21 @@ export async function rollForCharacter(
     if (error) return { error: "Couldn't save the spell slot / resource. " + error.message };
   }
 
-  const sessionId = await activeSessionId(supabase, c.campaign_id);
+  const admin = createAdminClient();
+  const { session, combat } = await liveState(admin, c.campaign_id);
+  const tgt = await lookupTarget(admin, c.campaign_id, parentTarget ?? target);
+  const success = plan.rollType === "attack" && result
+    ? hitOrMiss(result.total, tgt?.ac, result.isCrit, result.isFumble)
+    : null;
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
-  const { data: saved, error } = await supabase
+  const { data: saved, error } = await admin
     .from("roll_events")
     .insert({
       campaign_id: c.campaign_id,
-      session_id: sessionId,
+      session_id: session?.id ?? null,
+      combat_id: combat?.id ?? null,
+      round: combat?.round ?? null,
+      rolled_by: userId,
       character_id: c.id,
       roll_type: plan.rollType,
       source: plan.source,
@@ -113,15 +118,22 @@ export async function rollForCharacter(
       advantage: plan.d20 && result?.diceAll.length === 2 && result.expression.startsWith("2d20k") ? advantage : "normal",
       is_crit: plan.rollType === "attack" && !!result?.isCrit,
       is_fumble: plan.rollType === "attack" && !!result?.isFumble,
+      success,
       dc: plan.dc ?? null,
       ability: plan.ability ?? null,
       damage_type: plan.damageType ?? null,
       spell_slot: plan.spellSlot ?? null,
       parent_roll_id: parentRollId,
+      target_character_id: tgt?.characterId ?? null,
+      target_monster_id: tgt?.monsterId ?? null,
     })
     .select("id")
     .single();
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
+
+  if (plan.rollType === "initiative" && combat && result) {
+    await recordInitiative(admin, combat.id, { characterId: c.id }, result.total);
+  }
 
   const label =
     plan.rollType === "attack" ? `${plan.source} attack`
@@ -144,9 +156,11 @@ export async function rollForCharacter(
       isFumble: !!result?.isFumble && plan.d20,
       dc: plan.dc,
       ability: plan.ability,
-      inSession: !!sessionId,
+      inSession: !!session,
       request,
       followUp: plan.followUp && request.kind === "use" ? { key: request.key, slot: plan.spellSlot } : undefined,
+      success,
+      target: tgt?.name ?? null,
     },
     spells,
     resources,
@@ -160,7 +174,7 @@ export async function changeHp(characterId: string, kind: "damage" | "heal" | "t
   const n = Math.floor(Number(amount));
   if (!Number.isFinite(n) || n <= 0 || n > 999) return { error: "Enter a number from 1 to 999." };
 
-  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  const { supabase, userId, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
 
@@ -184,9 +198,14 @@ export async function changeHp(characterId: string, kind: "damage" | "heal" | "t
   const { error } = await supabase.from("characters").update({ hp_current: hp, temp_hp: temp }).eq("id", character.id);
   if (error) return { error: "Couldn't save HP. " + error.message };
 
-  await supabase.from("effects").insert({
+  const admin = createAdminClient();
+  const { session, combat } = await liveState(admin, character.campaign_id);
+  await admin.from("effects").insert({
     campaign_id: character.campaign_id,
-    session_id: await activeSessionId(supabase, character.campaign_id),
+    session_id: session?.id ?? null,
+    combat_id: combat?.id ?? null,
+    round: combat?.round ?? null,
+    created_by: userId,
     target_character_id: character.id,
     kind: kind === "temp" ? "temp_hp" : kind,
     amount: kind === "temp" ? n : applied,
