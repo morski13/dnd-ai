@@ -6,9 +6,10 @@ import { simulateThrow, STEP, type SimResult, type Tray } from "./sim";
 import type { DiceSkin } from "./skin";
 import { faceLayout, loadImages, paintD4Face, paintFace, rotatedVerts, type Images } from "./textures";
 import { playHit, unlockAudio } from "./sound";
+import { DEFAULT_TUNING, type DiceTuning } from "./tuning";
 
 export type StageDie = { type: DieType; value: number; dropped?: boolean };
-export type PlayOptions = { sound?: boolean; onSettle?: () => void };
+export type PlayOptions = { sound?: boolean; onSettle?: () => void; tuning?: DiceTuning };
 
 const geometryCache = new Map<DieType, THREE.BufferGeometry>();
 
@@ -102,6 +103,7 @@ export class DiceStage {
   private skipTo: (() => void) | null = null;
   private sun: THREE.DirectionalLight;
   private diceCount = 1;
+  private sizeScale = 1;
   idleSpin = false;
 
   constructor(private host: HTMLElement) {
@@ -147,7 +149,7 @@ export class DiceStage {
     this.camera.aspect = w / h;
     // Far enough back that the tray is at least ~8.5 units wide, even on a narrow phone.
     const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const needW = 12 + Math.max(0, this.diceCount - 2) * 0.35;
+    const needW = (3.7 + Math.max(0, this.diceCount - 2) * 0.35) / this.sizeScale;
     const dist = Math.max(17, needW / (tan * this.camera.aspect * 0.9));
     this.camera.position.set(0, dist, dist * 0.18);
     this.camera.lookAt(0, 0, 0.4);
@@ -193,12 +195,14 @@ export class DiceStage {
     cancelAnimationFrame(this.raf);
     this.idleSpin = false;
     this.diceCount = dice.length;
+    const tuning = opts.tuning ?? DEFAULT_TUNING;
+    this.sizeScale = tuning.size;
     this.resize();
     if (opts.sound) unlockAudio();
-    const sim = simulateThrow(dice.map((d) => ({ type: d.type, value: d.value })), this.tray);
+    const sim = simulateThrow(dice.map((d) => ({ type: d.type, value: d.value })), this.tray, undefined, tuning);
     this.buildMeshes(sim, dice);
     const end = Math.min(sim.frames.length - 1, sim.settledAt);
-    const rate = Math.max(1, end / (60 * 2.1));
+    const rate = Math.max(1, end / (60 * tuning.seconds));
     let hitIdx = 0;
     let lastSound = -1;
     return new Promise((resolve) => {

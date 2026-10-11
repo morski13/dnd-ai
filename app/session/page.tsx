@@ -1,7 +1,9 @@
 // Session mode: live session, initiative, your turn, and the table log.
 import Link from "next/link";
 import { Suspense } from "react";
+import { itemsSummary } from "@/lib/items-data";
 import { getSessionData } from "@/lib/session-data";
+import { createClient } from "@/lib/supabase/server";
 import { BottomNav } from "../components/bottom-nav";
 import { SessionView } from "./session-view";
 
@@ -30,5 +32,6 @@ async function Session({ searchParams }: { searchParams: Promise<Record<string, 
       </div>
     );
   }
-  return <SessionView data={data} />;
+  const items = await itemsSummary(await createClient(), data.campaign.id, data.isDm);
+  return <SessionView data={data} shops={items.openShops} />;
 }

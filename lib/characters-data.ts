@@ -30,7 +30,7 @@ export async function getCharactersData() {
     .from("campaign_members")
     .select("role, campaign_id")
     .eq("user_id", userId)
-    .order("joined_at", { ascending: true })
+    .order("last_active_at", { ascending: false, nullsFirst: false }).order("joined_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

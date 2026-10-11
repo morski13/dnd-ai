@@ -9,13 +9,15 @@ import type { Combatant } from "@/lib/session-data";
 import {
   allOptions, damageExpression, lowestFreeSlot, optionButtonLabel, type Option, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
-import { rollForCharacter, type SavedRoll } from "../../characters/[id]/actions";
+import { rollForCharacter, type RollResponse, type SavedRoll } from "../../characters/[id]/actions";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
+import { AppliedNote, Conditions, DeathSavePanel, HpBar } from "./moderator";
+import { healthOf } from "@/lib/moderator/hp";
 
-export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative }: {
+export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative, isDm = false, deathSavesSecret = false }: {
   character: FullCharacter; library: SpellInfo[]; canEdit: boolean; combatants: Combatant[];
-  isTurn: boolean; inCombat: boolean; myInitiative: number | null | undefined;
+  isTurn: boolean; inCombat: boolean; myInitiative: number | null | undefined; isDm?: boolean; deathSavesSecret?: boolean;
 }) {
   const router = useRouter();
   const [spells, setSpells] = useState<SpellBook>(character.spells);
@@ -25,9 +27,16 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     () => allOptions(c, library).filter((o) => o.kind !== "boost" && (o.damage || o.kind === "heal")),
     [c, library]
   );
-  const targets = combatants.filter((x) => x.characterId !== character.id);
-  const enemies = targets.filter((x) => x.monsterId && !x.ally);
+  const meC = combatants.find((x) => x.characterId === character.id) ?? null;
+  const others = combatants.filter((x) => x.characterId !== character.id);
+  const targets = meC ? [...others, meC] : others;
+  const enemies = others.filter((x) => x.monsterId && !x.ally && !x.out);
+  const hp = meC?.hp ?? character.hp_current ?? character.hp_max ?? 0;
+  const dying = hp === 0 && (character.hp_max ?? 0) > 0;
   const [targetId, setTargetId] = useState<string | null>(enemies[0]?.id ?? null);
+  const [also, setAlso] = useState<string[]>([]);            // save spells (Fireball): more targets
+  const [saves, setSaves] = useState<RollResponse["saves"]>(undefined);
+  const [appliedAll, setAppliedAll] = useState<RollResponse["appliedAll"]>(undefined);
   const [key, setKey] = useState<string | null>(options[0]?.key ?? null);
   const [adv, setAdv] = useState<Advantage>("normal");
   const [attack, setAttack] = useState<SavedRoll | null>(null);
@@ -39,6 +48,8 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const selected = options.find((o) => o.key === key) ?? null;
   const target = targets.find((t) => t.id === targetId) ?? null;
   const targetRef = target ? { characterId: target.characterId, monsterId: target.monsterId } : null;
+  const multi = selected?.kind === "save";
+  const moreRefs = multi ? targets.filter((t) => also.includes(t.id) && t.id !== targetId).map((t) => ({ characterId: t.characterId, monsterId: t.monsterId })) : [];
   const short = character.name.split(" ")[0];
   const left = (o: Option) => {
     if (o.level && lowestFreeSlot(c, o.level) === null) return "No slots";
@@ -55,9 +66,25 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       await dice.show(asShown(res.roll));
       setSpells(res.spells);
       setResources(res.resources);
+      if (res.roll.rollType === "save_dc") { setSaves(res.saves); setAppliedAll(undefined); }
+      else if (res.roll.rollType === "damage") setAppliedAll(res.appliedAll);
+      else { setSaves(undefined); setAppliedAll(undefined); }
       onDone(res.roll);
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
     });
+  }
+
+  // Picking a healing spell aims it at the most hurt friend; an attack at the first enemy still standing.
+  function pickOption(o: Option) {
+    setKey(o.key);
+    const t = targets.find((x) => x.id === targetId);
+    if (o.kind === "heal") {
+      const friends = targets.filter((x) => (x.characterId || x.ally) && x.hp != null && x.hpMax);
+      const hurt = friends.sort((a, b) => a.hp! / a.hpMax! - b.hp! / b.hpMax!)[0];
+      if (hurt && (!t || !(t.characterId || t.ally))) setTargetId(hurt.id);
+    } else if (!t || !(t.monsterId && !t.ally) || t.out) {
+      setTargetId(enemies[0]?.id ?? null);
+    }
   }
 
   const bigLabel = !selected ? "Roll"
@@ -76,6 +103,14 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
         <Link href={`/characters/${character.id}`} className="shrink-0 text-xs text-accent underline">Full sheet</Link>
       </div>
 
+      <div className="mt-2">
+        <HpBar hp={hp} max={character.hp_max} temp={meC?.temp ?? character.temp_hp ?? 0} health={healthOf(hp, character.hp_max)} />
+      </div>
+      {meC && <Conditions key={meC.conditions.join()} combatant={meC} canEdit={canEdit} />}
+
+      {dying ? (
+        <DeathSavePanel combatant={meC} characterId={character.id} name={short} canRoll={canEdit} isDm={isDm} secret={deathSavesSecret} />
+      ) : (<>
       {inCombat && myInitiative == null && canEdit && (
         <button type="button" disabled={pending}
           onClick={() => go(() => rollForCharacter(character.id, { kind: "initiative" }, adv), (r) => { setAttack(r); setDamage(null); })}
@@ -86,12 +121,17 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
 
       {targets.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs text-muted">Target</p>
+          <p className="text-xs text-muted">{multi ? "Targets (tap several for an area spell)" : "Target"}</p>
           <div className="mt-1 flex gap-1.5 overflow-x-auto pb-1">
             <Segment active={targetId === null} onClick={() => setTargetId(null)}>None</Segment>
             {[...enemies, ...targets.filter((t) => !enemies.includes(t))].map((t) => (
-              <Segment key={t.id} active={targetId === t.id} tone={enemies.includes(t) ? "danger" : "normal"} onClick={() => setTargetId(t.id)}>
-                {t.shortName}
+              <Segment key={t.id} active={targetId === t.id || (multi && also.includes(t.id))} tone={enemies.includes(t) ? "danger" : "normal"}
+                onClick={() => {
+                  if (!multi || targetId === null) return setTargetId(t.id);
+                  if (t.id === targetId) { const [next, ...rest] = also; setTargetId(next ?? null); setAlso(rest); return; }
+                  setAlso(also.includes(t.id) ? also.filter((x) => x !== t.id) : [...also, t.id]);
+                }}>
+                {t.id === meC?.id ? "Me" : t.shortName}{t.out ? " ✕" : ""}
               </Segment>
             ))}
           </div>
@@ -105,7 +145,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
           {options.map((o) => {
             const blocked = left(o);
             return (
-              <button key={o.key} type="button" onClick={() => setKey(o.key)} disabled={!!blocked}
+              <button key={o.key} type="button" onClick={() => pickOption(o)} disabled={!!blocked}
                 className={`min-h-12 rounded-xl border px-2 py-1.5 text-left text-sm leading-tight disabled:opacity-40 ${key === o.key ? "border-[#8A5A24] bg-bg font-bold" : "border-line text-soft"}`}>
                 {o.name} <span className="font-normal text-muted">{blocked ?? optionButtonLabel(c, o)}</span>
               </button>
@@ -117,7 +157,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       <div className="mt-3"><AdvToggle value={adv} onChange={setAdv} /></div>
 
       <button type="button" disabled={!canEdit || !selected || pending || !!(selected && left(selected))}
-        onClick={() => selected && go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef), (r) => { setAttack(r); setDamage(null); })}
+        onClick={() => selected && go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); })}
         className="mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50">
         {pending ? "Rolling…" : bigLabel}
       </button>
@@ -133,6 +173,8 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
                 <p className="text-xs text-muted">{damage.label}</p>
                 <p className="text-lg font-bold text-accent">{damage.total} {damage.rollType === "heal" ? "HP" : (selected?.damage_type ?? "")}</p>
               </>
+            ) : attack.followUp && attack.success === false ? (
+              <p className="pt-2 text-sm font-semibold text-muted">Missed: no damage</p>
             ) : attack.followUp ? (
               <button type="button" disabled={pending}
                 onClick={() => {
@@ -148,6 +190,26 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
           </div>
         </div>
       )}
+      {saves && saves.length > 0 && !damage && (
+        <ul className="mt-2 space-y-1 rounded-xl bg-bg p-3 text-sm" aria-label="Saving throws">
+          {saves.map((sv, i) => (
+            <li key={i} className="flex justify-between gap-2">
+              <span>{sv.name}</span>
+              {sv.success === null ? <span className="text-muted">rolled in secret</span>
+                : <span className={sv.success ? "text-soft" : "font-semibold text-danger"}>{sv.total} vs DC {sv.dc} · {sv.success ? "saved" : "failed"}{sv.secret && <span className="text-muted"> (secret)</span>}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {appliedAll && appliedAll.length > 1 ? (
+        <div className="mt-2 space-y-2">{appliedAll.map((a) => <AppliedNote key={a.effectId} applied={a} />)}</div>
+      ) : (attack?.applied || damage?.applied) && (
+        <div className="mt-2">
+          <AppliedNote key={(damage ?? attack)!.id} applied={(damage?.applied ?? attack?.applied)!} />
+        </div>
+      )}
+      {damage?.missed && <p className="mt-2 text-sm text-muted">That attack missed, so the damage wasn&apos;t applied.</p>}
+      </>)}
     </section>
   );
 }

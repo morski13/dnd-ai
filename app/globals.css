@@ -46,6 +46,8 @@ body {
 @keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(224, 145, 58, 0) } 50% { box-shadow: 0 0 0 4px rgba(224, 145, 58, 0.18) } }
 @keyframes flash-red { 0% { background-color: rgba(240, 122, 106, 0.35) } 100% { background-color: transparent } }
 @keyframes flash-green { 0% { background-color: rgba(181, 224, 168, 0.3) } 100% { background-color: transparent } }
+@keyframes sheet-up { from { translate: 0 100% } to { translate: 0 0 } }
+@keyframes coin-bump { 0% { scale: 1 } 40% { scale: 1.18 } 100% { scale: 1 } }
 @keyframes spark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(1) } 100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) scale(0.3) } }
 
 /* Screens fade in; their sections rise in one after another */
@@ -61,6 +63,8 @@ body {
 .animate-flip { animation: flip-in 520ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 70ms); }
 .animate-shake { animation: shake 420ms ease-in-out; }
 .animate-turn { animation: glow-pulse 2.2s ease-in-out infinite; }
+.animate-sheet { animation: sheet-up 280ms var(--ease-out) backwards; }
+.animate-coin { animation: coin-bump 380ms var(--ease-spring); }
 .flash-damage { animation: flash-red 700ms ease-out; }
 .flash-heal { animation: flash-green 700ms ease-out; }
 
@@ -110,3 +114,41 @@ button:disabled { opacity: 0.6; }
 .tabular { font-variant-numeric: tabular-nums; }
 @keyframes grow { from { width: 0 } }
 .bar-grow { animation: grow 700ms var(--ease-out) backwards; }
+
+/* =====================================================================
+   Campaign documents
+   ===================================================================== */
+.vault-doc { font-size: 15px; line-height: 1.6; color: var(--color-text); word-wrap: break-word; }
+.vault-doc > * + * { margin-top: 0.6em; }
+.vault-doc h1 { font-family: var(--font-spectral), Georgia, serif; font-size: 1.75rem; font-weight: 700; line-height: 1.2; margin-top: 0.8em; }
+.vault-doc h2 { font-family: var(--font-spectral), Georgia, serif; font-size: 1.35rem; font-weight: 700; line-height: 1.25; margin-top: 1.1em; color: #f2c48d; }
+.vault-doc h3 { font-size: 1.05rem; font-weight: 700; margin-top: 1em; letter-spacing: 0.01em; }
+.vault-doc > :first-child { margin-top: 0; }
+.vault-doc ul { list-style: disc; padding-left: 1.4em; }
+.vault-doc ol { list-style: decimal; padding-left: 1.4em; }
+.vault-doc li > p { margin: 0; }
+.vault-doc li + li { margin-top: 0.2em; }
+.vault-doc li::marker { color: var(--color-accent); }
+.vault-doc a { color: var(--color-accent); text-decoration: underline; }
+.vault-doc blockquote { border-left: 3px solid var(--color-line); padding-left: 0.9em; color: var(--color-soft); }
+.vault-doc hr { border: 0; border-top: 1px solid var(--color-line); margin: 1.2em 0; }
+.vault-doc img.vault-img { max-width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--color-line); }
+.vault-doc img.ProseMirror-selectednode { outline: 2px solid var(--color-accent); }
+.vault-doc p.is-editor-empty:first-child::before,
+.vault-doc .is-empty::before { content: attr(data-placeholder); color: var(--color-muted); float: left; height: 0; pointer-events: none; }
+
+/* Secret (DM only) blocks: players never receive these */
+.dm-secret {
+  position: relative;
+  border: 1px dashed #8a5a24;
+  background: rgba(224, 145, 58, 0.07);
+  border-radius: 12px;
+  padding: 1.6em 0.9em 0.7em;
+  margin-top: 0.9em;
+}
+.dm-secret::before {
+  content: "DM ONLY · players never see this";
+  position: absolute; top: 0.45em; left: 0.9em;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--color-accent);
+}
+.dm-secret > :first-child { margin-top: 0; }

@@ -8,11 +8,13 @@ import { endCombat, startSession } from "./actions";
 import { DmPanel } from "./parts/dm-panel";
 import { FreeRoll } from "./parts/free-roll";
 import { MonsterCard } from "./parts/monster-card";
+import { TableDice } from "./parts/table-dice";
 import { TableLog } from "./parts/table-log";
 import { TurnCard } from "./parts/turn-card";
 import { useLive } from "./use-live";
+import { HEALTH_LABEL, HpBar } from "./parts/moderator";
 
-export function SessionView({ data }: { data: SessionData }) {
+export function SessionView({ data, shops = [] }: { data: SessionData; shops?: { id: string; name: string }[] }) {
   useLive(data.campaign.id, data.session?.id ?? null);
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -37,6 +39,7 @@ export function SessionView({ data }: { data: SessionData }) {
           )}
           {error && <p className="mt-2 text-sm text-danger">{error}</p>}
         </section>
+        <ShopsStrip shops={shops} isDm={data.isDm} />
         <div className="mt-5"><FreeRoll characterId={data.myCharacterIds[0] ?? null} isDm={data.isDm} /></div>
       </>
     );
@@ -68,17 +71,29 @@ export function SessionView({ data }: { data: SessionData }) {
         )}
       </header>
 
+      <ShopsStrip shops={shops} isDm={data.isDm} />
+
       {/* Initiative order */}
       {combat && (
         <nav className="-mx-5 mt-5 flex gap-2 overflow-x-auto px-5 pb-1" aria-label="Initiative order">
           {combatants.map((c) => {
             const isCurrent = current?.id === c.id;
-            const cls = `flex min-h-16 min-w-20 shrink-0 flex-col items-center justify-center rounded-2xl border px-3 ${
-              isCurrent ? "border-accent bg-accent-surface" : c.monsterId && !c.ally ? "border-danger-line bg-danger-bg" : "border-line bg-surface"}`;
+            const cls = `relative flex min-h-[4.5rem] min-w-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border px-3 transition-[opacity,filter] ${
+              isCurrent ? "border-accent bg-accent-surface" : c.monsterId && !c.ally ? "border-danger-line bg-danger-bg" : "border-line bg-surface"} ${c.out ? "opacity-45 grayscale" : ""}`;
+            const dying = !!c.characterId && c.hp === 0;
             const inner = (
               <>
-                <span className={`text-[15px] font-bold ${c.monsterId && !c.ally ? "text-danger" : ""}`}>{c.shortName}</span>
+                <span className={`text-[15px] font-bold ${c.monsterId && !c.ally ? "text-danger" : ""}`}>{c.out ? "✕ " : ""}{c.shortName}</span>
                 <span className="text-xs text-muted">{c.initiative ?? (c.hidden ? "hidden" : "–")}</span>
+                <span className="w-12"><HpBar hp={c.hp} max={c.hpMax} temp={c.temp} health={c.health} size="sm" /></span>
+                <span className="sr-only">{c.hp != null && c.hpMax ? `${c.hp} of ${c.hpMax} HP` : HEALTH_LABEL[c.health]}</span>
+                {(dying || c.conditions.length > 0) && (
+                  <span className={`text-[10px] leading-none ${dying ? "font-bold text-danger" : "text-accent"}`}>
+                    {dying ? (c.deathSaves?.dead ? "dead" : c.deathSaves?.stable ? "stable" : "dying") : c.conditions.length === 1 ? c.conditions[0] : `${c.conditions.length} conditions`}
+                  </span>
+                )}
+                {c.concentration && <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border border-accent text-[8px] text-accent" title={`Concentrating on ${c.concentration}`} aria-label={`concentrating on ${c.concentration}`}>◎</span>}
+                {c.monsterId && !c.ally && c.health === "bloodied" && !data.isDm && <span className="text-[10px] font-bold leading-none text-[#E0913A]">bloodied</span>}
               </>
             );
             const href = c.controllable ? `/session?focus=${c.monsterId ? `m:${c.monsterId}` : `c:${c.characterId}`}` : null;
@@ -100,6 +115,7 @@ export function SessionView({ data }: { data: SessionData }) {
             isTurn={current?.monsterId === data.focusMonster.id}
             party={combatants.filter((c) => c.characterId)}
             hiddenByDefault={data.monstersHiddenByDefault}
+            me={combatants.find((c) => c.monsterId === data.focusMonster!.id) ?? null}
           />
         ) : focusChar && data.focus ? (
           <TurnCard
@@ -111,6 +127,8 @@ export function SessionView({ data }: { data: SessionData }) {
             isTurn={!!combat && current?.characterId === focusChar.id}
             inCombat={!!combat}
             myInitiative={focusCombatant ? focusCombatant.initiative : undefined}
+            isDm={data.isDm}
+            deathSavesSecret={data.deathSavesSecret}
           />
         ) : !data.isDm ? (
           <div className="rounded-2xl border border-line bg-surface p-5">
@@ -128,12 +146,27 @@ export function SessionView({ data }: { data: SessionData }) {
             hiddenByDefault={data.monstersHiddenByDefault}
             waitingForInitiative={waiting}
             savedFights={data.savedFights}
+            autoApply={data.autoApply}
           />
         )}
 
         <FreeRoll characterId={mine?.characterId ?? data.myCharacterIds[0] ?? null} isDm={data.isDm} />
-        <TableLog rows={data.log} />
+        <TableLog rows={data.log} isDm={data.isDm} />
+        <TableDice rows={data.log} me={data.userId} />
       </div>
     </>
+  );
+}
+
+/** Shops the DM has opened (players can walk in and buy). The DM also gets a shortcut to give loot. */
+function ShopsStrip({ shops, isDm }: { shops: { id: string; name: string }[]; isDm: boolean }) {
+  if (!shops.length && !isDm) return null;
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[#5A4024] bg-accent-surface px-3 py-2" aria-label="Shops">
+      {shops.length > 0 && <span className="text-xs uppercase tracking-[0.12em] text-accent">Shops open</span>}
+      {shops.map((s) => <Link key={s.id} href={`/shop/${s.id}`} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-bold text-accent-text">{s.name}</Link>)}
+      {isDm && <Link href="/items?tab=give" className="ml-auto rounded-lg border border-line px-3 py-1.5 text-sm text-soft">Give loot</Link>}
+      {isDm && <Link href="/items?tab=shops" className="rounded-lg border border-line px-3 py-1.5 text-sm text-soft">Shops</Link>}
+    </div>
   );
 }

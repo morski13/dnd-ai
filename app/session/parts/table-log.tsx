@@ -1,4 +1,8 @@
-// The table log: everyone's rolls, newest first. Secret DM rolls show as hidden to players.
+"use client";
+// The table log: everyone's rolls, newest first. Secret DM rolls show as hidden to players; the DM can reveal one early.
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { revealRoll } from "../moderator-actions";
 import type { LogRow } from "@/lib/session-data";
 
 function result(r: LogRow): { text: string; tone: "muted" | "accent" | "success" | "danger" | "text" } {
@@ -20,7 +24,7 @@ function result(r: LogRow): { text: string; tone: "muted" | "accent" | "success"
 
 const TONE = { muted: "text-muted", accent: "text-accent font-bold", success: "text-success font-bold", danger: "text-danger", text: "text-text font-bold" };
 
-export function TableLog({ rows }: { rows: LogRow[] }) {
+export function TableLog({ rows, isDm = false }: { rows: LogRow[]; isDm?: boolean }) {
   return (
     <section>
       <p className="text-xs uppercase tracking-[0.12em] text-muted">Table log</p>
@@ -36,11 +40,26 @@ export function TableLog({ rows }: { rows: LogRow[] }) {
                 {r.target && !r.masked && <span className="text-soft"> → {r.target.split(" ")[0]}</span>}
                 {r.advantage !== "normal" && !r.masked && <span className="ml-1 text-xs text-muted">{r.advantage === "advantage" ? "adv" : "dis"}</span>}
               </p>
-              <p className={`shrink-0 text-[15px] ${TONE[res.tone]}`}>{res.text}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                {isDm && r.secret && <Reveal id={r.id} />}
+                <p className={`text-[15px] ${TONE[res.tone]}`}>{res.text}</p>
+              </div>
             </li>
           );
         })}
       </ul>
     </section>
+  );
+}
+
+/** DM: a secret roll. Tap to show it to the players now. */
+function Reveal({ id }: { id: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button type="button" disabled={pending} onClick={() => start(async () => { await revealRoll(id); router.refresh(); })}
+      className="rounded-lg border border-line px-2 py-1 text-xs text-muted" title="Only you see this roll. Tap to show it to the players.">
+      {pending ? "…" : "🔒 Reveal"}
+    </button>
   );
 }

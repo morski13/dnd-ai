@@ -67,6 +67,16 @@ export function Pips({ max, used, label, disabled, onChange }: {
   max: number; used: number; label: string; disabled: boolean; onChange: (used: number) => void;
 }) {
   const left = max - used;
+  if (max > 10) {
+    // big pools (Lay on Hands, Focus Points): a number with − / +
+    return (
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={disabled || left <= 0} aria-label={`Use 1 ${label}`} onClick={() => onChange(used + 1)} className="h-11 w-11 rounded-lg border border-line text-xl text-soft">−</button>
+        <span className="min-w-12 text-center text-lg font-bold">{left}</span>
+        <button type="button" disabled={disabled || used <= 0} aria-label={`Restore 1 ${label}`} onClick={() => onChange(used - 1)} className="h-11 w-11 rounded-lg border border-line text-xl text-soft">+</button>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap">
       {Array.from({ length: max }).map((_, p) => (

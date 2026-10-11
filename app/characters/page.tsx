@@ -9,7 +9,10 @@ export default function CharactersPage() {
   return (
     <>
       <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
-        <h1 className="font-heading text-3xl font-bold">Your characters</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="font-heading text-3xl font-bold">Your characters</h1>
+          <Link href="/characters/new" className="mt-1 shrink-0 rounded-xl bg-accent px-3 py-2 text-sm font-bold text-accent-text">+ New</Link>
+        </div>
         <Suspense fallback={<ListSkeleton />}>
           <Characters />
         </Suspense>

@@ -19,8 +19,8 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
 
 async function Sheet({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { character, canEdit, library, featText } = await getCharacterSheet(id);
-  return <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} />;
+  const { character, canEdit, library, featText, gear } = await getCharacterSheet(id);
+  return <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} />;
 }
 
 function SheetSkeleton() {

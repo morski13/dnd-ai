@@ -3,15 +3,18 @@
 import { redirect } from "next/navigation";
 import { roll } from "@/lib/dice";
 import { initiative, type SheetCharacter } from "@/lib/rules";
+import { applyHp, campaignAutoApply, type Applied } from "@/lib/moderator/apply";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCharacter } from "@/lib/character-data";
+import { sortCombatants } from "@/lib/session-data";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat } from "@/lib/roll-service";
 
 type Fail = { error: string };
 export type QuickRoll = {
   label: string; expression: string; total: number; dice: number[]; diceAll: number[]; modifier: number;
   isCrit: boolean; isFumble: boolean; success: boolean | null; target: string | null; hidden: boolean;
+  applied?: Applied | null;
 };
 
 /** Who is asking, and their role in their campaign. */
@@ -22,7 +25,7 @@ async function me() {
   if (!userId) return { supabase, userId: null, campaignId: null, isDm: false };
   const { data: m } = await supabase
     .from("campaign_members").select("campaign_id, role").eq("user_id", userId)
-    .order("joined_at", { ascending: true }).limit(1).maybeSingle();
+    .order("last_active_at", { ascending: false, nullsFirst: false }).order("joined_at", { ascending: true }).limit(1).maybeSingle();
   return { supabase, userId, campaignId: (m?.campaign_id as string) ?? null, isDm: m?.role === "dm" || m?.role === "co_dm" };
 }
 
@@ -61,6 +64,8 @@ export async function endSession(sessionId: string): Promise<Fail | void> {
   const admin = createAdminClient();
   await admin.from("roll_events").update({ hidden: false }).eq("session_id", sessionId);
   await admin.from("effects").update({ hidden: false }).eq("session_id", sessionId);
+  // Shops opened for the party close when the session ends.
+  await supabase.from("shops").update({ is_open: false, opened_session: null }).eq("campaign_id", campaignId).eq("is_open", true);
   redirect("/");
 }
 
@@ -139,14 +144,28 @@ export async function rollNpcInitiative(combatId: string, hidden: boolean): Prom
 export async function nextTurn(combatId: string): Promise<Fail | void> {
   const { supabase, isDm } = await me();
   if (!isDm) return { error: "Only the DM can move the turn on." };
-  const [{ data: combat }, { count }] = await Promise.all([
+  const admin = createAdminClient();
+  const [{ data: combat }, { data: rows }] = await Promise.all([
     supabase.from("combats").select("round, turn_index").eq("id", combatId).single(),
-    supabase.from("combatants").select("id", { count: "exact", head: true }).eq("combat_id", combatId),
+    admin.from("combatants").select("id, name, initiative, dex_mod, character_id, monster_id, health").eq("combat_id", combatId),
   ]);
-  if (!combat || !count) return { error: "No one is in this fight." };
-  const next = combat.turn_index + 1;
-  const wrap = next >= count;
-  await supabase.from("combats").update({ turn_index: wrap ? 0 : next, round: wrap ? combat.round + 1 : combat.round }).eq("id", combatId);
+  if (!combat || !rows?.length) return { error: "No one is in this fight." };
+  // Skip monsters at 0 HP and dead characters (dying characters still get a turn: death saves).
+  const charIds = rows.filter((r) => r.character_id).map((r) => r.character_id!);
+  const { data: dead } = charIds.length
+    ? await admin.from("death_saves").select("character_id").in("character_id", charIds).eq("dead", true)
+    : { data: [] as { character_id: string }[] };
+  const deadSet = new Set((dead ?? []).map((d) => d.character_id));
+  const order = sortCombatants(rows);
+  const skip = (r: (typeof order)[number]) => (r.monster_id && r.health === "down") || (r.character_id && deadSet.has(r.character_id));
+  let index = combat.turn_index;
+  let round = combat.round;
+  for (let k = 0; k < order.length; k++) {
+    index += 1;
+    if (index >= order.length) { index = 0; round += 1; }
+    if (!skip(order[index])) break;
+  }
+  await supabase.from("combats").update({ turn_index: index, round }).eq("id", combatId);
 }
 
 export async function endCombat(combatId: string): Promise<Fail | void> {
@@ -159,7 +178,7 @@ export async function endCombat(combatId: string): Promise<Fail | void> {
 // ---------------------------------------------------------------- monster + free rolls
 export async function monsterRoll(
   monsterId: string,
-  form: { label: string; expression: string; kind: "attack" | "damage" | "save" | "check" | "other"; hidden: boolean; targetCharacterId: string | null }
+  form: { label: string; expression: string; kind: "attack" | "damage" | "save" | "check" | "other"; hidden: boolean; targetCharacterId: string | null; crit?: boolean }
 ): Promise<Fail | QuickRoll> {
   const { userId, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM rolls for monsters." };
@@ -168,22 +187,34 @@ export async function monsterRoll(
   if (!monster) return { error: "Monster not found." };
 
   let res;
-  try { res = roll(form.expression); } catch (e) { return { error: (e as Error).message }; }
+  // Damage right after a critical hit: every damage die is rolled twice.
+  try { res = roll(form.expression, { critical: form.kind === "damage" && !!form.crit }); } catch (e) { return { error: (e as Error).message }; }
   const { session, combat } = await liveState(admin, campaignId);
   const tgt = await lookupTarget(admin, campaignId, { characterId: form.targetCharacterId });
   const success = form.kind === "attack" ? hitOrMiss(res.total, tgt?.ac, res.isCrit, res.isFumble) : null;
-  const { error } = await admin.from("roll_events").insert({
+  const { data: saved, error } = await admin.from("roll_events").insert({
     campaign_id: campaignId, session_id: session?.id ?? null, combat_id: combat?.id ?? null, round: combat?.round ?? null,
     rolled_by: userId, monster_id: monster.id, roll_type: form.kind, source: form.label.trim() || "Roll",
     expression: res.expression, dice: res.dice, dice_all: res.diceAll, modifier: res.modifier, total: res.total,
     is_crit: form.kind === "attack" && res.isCrit, is_fumble: form.kind === "attack" && res.isFumble, success,
     target_character_id: tgt?.characterId ?? null, hidden: form.hidden,
-  });
-  if (error) return { error: "Couldn't save the roll. " + error.message };
+  }).select("id").single();
+  if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
+
+  // Fight moderator: monster damage on a character comes off their HP right away.
+  let applied: Applied | null = null;
+  if (form.kind === "damage" && tgt && session && await campaignAutoApply(admin, campaignId)) {
+    applied = await applyHp(admin, {
+      campaignId, sessionId: session.id, combatId: combat?.id ?? null, round: combat?.round ?? null,
+      kind: "damage", total: res.total, crit: !!form.crit, rollId: saved.id,
+      actor: { monsterId: monster.id }, target: { characterId: tgt.characterId }, createdBy: userId!, hidden: form.hidden,
+    });
+    if (applied) applied.canAdjust = true;
+  }
   return {
     label: `${monster.name}: ${form.label || "Roll"}`, expression: res.expression, total: res.total, dice: res.dice,
     diceAll: res.diceAll, modifier: res.modifier, isCrit: res.isCrit, isFumble: res.isFumble, success,
-    target: tgt?.name ?? null, hidden: form.hidden,
+    target: tgt?.name ?? null, hidden: form.hidden, applied,
   };
 }
 

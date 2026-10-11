@@ -33,6 +33,10 @@ async function Home() {
           <p className="mt-1 text-sm text-muted">Ask your DM for the invite code and enter it here.</p>
           <JoinForm />
         </div>
+        <Link href="/campaigns" className="mt-4 flex items-center justify-between rounded-2xl border border-[#5A4024] bg-accent-surface p-5">
+          <span><span className="block font-semibold">Or start your own campaign</span><span className="mt-1 block text-sm text-muted">Be the DM: invite your players with a code.</span></span>
+          <span className="text-accent">→</span>
+        </Link>
       </>
     );
   }
@@ -53,15 +57,20 @@ async function Home() {
         : `${data.myCharacters} character${data.myCharacters === 1 ? "" : "s"}`,
     },
     { href: "/stats", Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
-    { Icon: MapIcon, title: campaign.name, sub: "Map, NPCs, quests" },
+    { href: "/campaign", Icon: MapIcon, title: campaign.name, sub: data.isDm ? "Notes, NPCs, maps, shops" : "Maps, NPCs, handouts" },
     { href: "/dice", Icon: DieIcon, title: "Your dice", sub: "Design 3D dice & test-throw" },
-    { Icon: SwordsIcon, title: "Fight planner", sub: data.isDm ? "DM · plan & balance fights" : "DM only", href: data.isDm ? "/fights" : undefined },
+    data.isDm
+      ? { Icon: SwordsIcon, title: "Fight planner", sub: "DM · plan & balance fights", href: "/fights" }
+      : { Icon: SwordsIcon, title: "Practice fight", sub: "How would you do? Uses your real dice", href: "/practice" },
     { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
   ];
 
   return (
     <>
       <Header label="Your campaign" title={campaign.name} subtitle={subtitle} initial={data.displayName} />
+      <Link href="/campaigns" className="mt-2 inline-flex items-center gap-1 text-sm text-accent underline">
+        {data.campaignCount > 1 ? `Switch campaign (${data.campaignCount})` : "Your campaigns · start a new one"}
+      </Link>
 
       {/* Session card */}
       <section className="mt-7 rounded-[18px] border border-[#5A4024] bg-accent-surface p-5">

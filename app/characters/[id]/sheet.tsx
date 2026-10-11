@@ -9,22 +9,29 @@ import {
   saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, restoreAllSlots, rollForCharacter, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, restoreAllSlots, rollForCharacter, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
+import { ConcentrationChip } from "./parts/concentration";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { BestMoves } from "./parts/best-moves";
 import { FeaturesTab } from "./parts/features-tab";
+import { GearTab } from "./parts/gear-tab";
+import type { Gear } from "@/lib/items-data";
 import { HpCard } from "./parts/hp-card";
+import { RestPanel } from "./parts/rest-panel";
 import { RollTray } from "./parts/roll-tray";
 import { SpellsTab } from "./parts/spells-tab";
 import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./parts/ui";
 
 type Tab = "Attacks" | "Spells" | "Skills" | "Features" | "Gear";
 
-export function CharacterSheet({ character, canEdit, library: initialLibrary, featText }: {
-  character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>;
+export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear }: {
+  character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear;
 }) {
   const [hp, setHp] = useState({ cur: character.hp_current ?? character.hp_max ?? 0, temp: character.temp_hp ?? 0 });
+  const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>(character.hit_dice_used ?? {});
+  const [conc, setConc] = useState<{ spell: string } | null>(character.concentration ?? null);
+  const [concNote, setConcNote] = useState<string | null>(null);
   const [resources, setResources] = useState<Resource[]>(character.resources);
   const [spells, setSpells] = useState<SpellBook>(character.spells);
   const [library, setLibrary] = useState<SpellInfo[]>(initialLibrary);
@@ -49,6 +56,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       if ("error" in res) return setError(res.error);
       await dice.show(asShown(res.roll));
       setLast(res.roll);
+      if (res.concentration !== undefined) setConc(res.concentration);
+      setConcNote(res.endedConcentration ? `You stopped concentrating on ${res.endedConcentration}.` : null);
+      const cc = res.roll.applied?.concentration;
+      if (cc && res.roll.applied?.target.characterId === character.id) { if (!cc.kept) setConc(null); setConcNote(concText(cc)); }
       setSpells(res.spells);
       setResources(res.resources);
     });
@@ -104,7 +115,14 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       </header>
 
       <HpCard cur={hp.cur} temp={hp.temp} max={character.hp_max ?? 0} canEdit={canEdit} pending={pending}
-        onChange={(kind, n) => run(() => changeHp(character.id, kind, n), (r) => setHp({ cur: r.hp_current, temp: r.temp_hp }))} />
+        onChange={(kind, n) => run(() => changeHp(character.id, kind, n), (r) => {
+          setHp({ cur: r.hp_current, temp: r.temp_hp });
+          if (r.concentration) { if (!r.concentration.kept) setConc(null); setConcNote(concText(r.concentration)); }
+        })} />
+
+      <ConcentrationChip spell={conc?.spell ?? null} note={concNote} canEdit={canEdit} pending={pending}
+        choices={(spells.known ?? []).filter((n) => library.find((x) => x.name === n)?.concentration)}
+        onSet={(spell) => run(() => setConcentration(character.id, spell), (r) => { setConc(r.concentration); setConcNote(null); })} />
 
       <section className="mt-3 grid grid-cols-4 gap-2">
         <StatBox label="AC" value={character.ac ?? "–"} sheet={character.sheet_values.ac !== undefined && character.sheet_values.ac !== character.ac ? character.sheet_values.ac : undefined} />
@@ -181,12 +199,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 
         {tab === "Features" && <FeaturesTab features={character.features} featText={featText} />}
 
-        {tab === "Gear" && (
-          <ul className="flex flex-col gap-2">
-            {character.inventory.length === 0 && <Empty text="No gear yet." />}
-            {character.inventory.map((g) => <li key={g} className="rounded-xl bg-surface px-4 py-3 text-[15px] text-soft">{g}</li>)}
-          </ul>
-        )}
+        {tab === "Gear" && <GearTab characterId={character.id} rules={character.rule_set ?? "2024"} gear={gear} canEdit={canEdit} />}
       </section>
 
       {resources.length > 0 && (
@@ -204,6 +217,11 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
             </div>
           ))}
         </section>
+      )}
+
+      {canEdit && c.class_levels.length > 0 && (
+        <RestPanel characterId={character.id} classLevels={c.class_levels} conMod={m.CON} hitDiceUsed={hitDiceUsed} hp={{ cur: hp.cur, max: character.hp_max ?? 0 }}
+          onRested={(r) => { setHp({ cur: r.hp_current, temp: r.temp_hp }); setResources(r.resources); setSpells(r.spells); setHitDiceUsed(r.hit_dice_used); if (r.kind === "long") setConc(null); }} />
       )}
 
       {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp} />}
@@ -261,4 +279,9 @@ function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, e
       </div>
     </div>
   );
+}
+
+function concText(c: { spell: string; dc: number; total: number | null; kept: boolean; reason: string }) {
+  if (c.reason === "down") return `Dropped to 0 HP: ${c.spell} ends.`;
+  return `Concentration save for ${c.spell}: ${c.total} vs DC ${c.dc}. ${c.kept ? "Still concentrating." : `${c.spell} ends.`}`;
 }

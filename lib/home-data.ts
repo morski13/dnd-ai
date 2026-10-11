@@ -30,7 +30,7 @@ export async function getHomeData() {
     .from("campaign_members")
     .select("role, campaigns(id, name, settings, invite_code)")
     .eq("user_id", userId)
-    .order("joined_at", { ascending: true })
+    .order("last_active_at", { ascending: false, nullsFirst: false }).order("joined_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -46,7 +46,7 @@ export async function getHomeData() {
   const isDm = membership.role === "dm" || membership.role === "co_dm";
 
   // Run the remaining lookups at the same time.
-  const [characters, partySize, lastSession, activeSession, myRolls] = await Promise.all([
+  const [characters, partySize, lastSession, activeSession, myRolls, campaigns] = await Promise.all([
     supabase.from("characters").select("id", { count: "exact", head: true })
       .eq("campaign_id", campaign.id).eq("owner_user_id", userId),
     supabase.from("characters").select("id", { count: "exact", head: true })
@@ -58,6 +58,7 @@ export async function getHomeData() {
       .limit(1).maybeSingle(),
     supabase.from("roll_events").select("id", { count: "exact", head: true })
       .eq("campaign_id", campaign.id).eq("rolled_by", userId),
+    supabase.from("campaign_members").select("campaign_id", { count: "exact", head: true }).eq("user_id", userId),
   ]);
 
   return {
@@ -77,5 +78,6 @@ export async function getHomeData() {
     activeSessionNumber: activeSession.data?.number ?? null,
     nextSessionNumber: (lastSession.data?.number ?? 0) + 1,
     myRolls: myRolls.count ?? 0,
+    campaignCount: campaigns.count ?? 1,
   } as const;
 }

@@ -8,7 +8,7 @@ const items = [
   { key: "characters", label: "Characters", Icon: PersonIcon, href: "/characters" },
   { key: "session", label: "Session", Icon: DieIcon, href: "/session" },
   { key: "stats", label: "Stats", Icon: StatsIcon, href: "/stats" },
-  { key: "campaign", label: "Campaign", Icon: MapIcon, href: null },
+  { key: "campaign", label: "Campaign", Icon: MapIcon, href: "/campaign" },
 ] as const;
 
 export function BottomNav({ active }: { active: (typeof items)[number]["key"] }) {

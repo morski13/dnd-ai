@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { diceToThrow } from "@/lib/dice3d/shapes";
 import { DEFAULT_SKIN, sanitizeSkin, type DiceSkin } from "@/lib/dice3d/skin";
+import { DEFAULT_TUNING, sanitizeTuning, type DiceTuning } from "@/lib/dice3d/tuning";
 import type { DiceStage } from "@/lib/dice3d/stage";
 import { createClient } from "@/lib/supabase/client";
 
@@ -18,10 +19,10 @@ export type ShownRoll = {
   tone?: "heal" | "damage" | "plain";
 };
 
-export type DiceSettings = { enabled: boolean; sound: boolean };
+export type DiceSettings = { enabled: boolean; sound: boolean; tuning: DiceTuning; others: boolean }; // others: see the table's dice too
 
 type Ctx = {
-  show: (r: ShownRoll, opts?: { skin?: DiceSkin; force?: boolean }) => Promise<void>;
+  show: (r: ShownRoll, opts?: { skin?: DiceSkin; force?: boolean; quiet?: boolean }) => Promise<void>; // quiet: someone else's roll (never interrupts yours)
   settings: DiceSettings;
   setSettings: (s: DiceSettings) => void;
   skin: DiceSkin;
@@ -38,16 +39,22 @@ export function useDice() {
 }
 
 const KEY = "dice-settings";
-const SERVER_SETTINGS: DiceSettings = { enabled: true, sound: true };
+const SERVER_SETTINGS: DiceSettings = { enabled: true, sound: true, tuning: DEFAULT_TUNING, others: true };
 let cached: DiceSettings | null = null;
 const listeners = new Set<() => void>();
 function readSettings(): DiceSettings {
   if (cached) return cached;
   const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const fallback = { enabled: !reduce, sound: true };
+  const fallback: DiceSettings = { enabled: !reduce, sound: true, tuning: DEFAULT_TUNING, others: true };
   try {
     const raw = localStorage.getItem(KEY);
-    cached = raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+    const saved = raw ? JSON.parse(raw) : {};
+    cached = {
+      enabled: typeof saved.enabled === "boolean" ? saved.enabled : fallback.enabled,
+      sound: typeof saved.sound === "boolean" ? saved.sound : fallback.sound,
+      tuning: sanitizeTuning(saved.tuning),
+      others: typeof saved.others === "boolean" ? saved.others : fallback.others,
+    };
   } catch { cached = fallback; }
   return cached!;
 }
@@ -102,9 +109,10 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
     c?.();
   }, []);
 
-  const show = useCallback(async (r: ShownRoll, opts?: { skin?: DiceSkin; force?: boolean }) => {
+  const show = useCallback(async (r: ShownRoll, opts?: { skin?: DiceSkin; force?: boolean; quiet?: boolean }) => {
     const dice = diceToThrow(r.expression, r.diceAll, r.dice);
     if ((!settings.enabled && !opts?.force) || !dice.length || typeof window === "undefined") return;
+    if (opts?.quiet && (!settings.others || close.current)) return; // your own roll is on screen: don't cut it off
     if (close.current) finish(); // a roll is still on screen: end it first
     try {
       await ensureSkin();
@@ -127,7 +135,7 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
             if (settings.sound) (await import("@/lib/dice3d/sound")).playCue(r.isCrit ? "crit" : "fumble");
           } else navigator.vibrate?.(12);
           // (tests can set window.__diceHold to keep the result up until tapped)
-          if (!(window as unknown as { __diceHold?: boolean }).__diceHold) timer.current = setTimeout(finish, r.isCrit || r.isFumble ? 1900 : 1150);
+          if (!(window as unknown as { __diceHold?: boolean }).__diceHold) timer.current = setTimeout(finish, settings.tuning.resultMs + (r.isCrit || r.isFumble ? 750 : 0));
         };
         // let the overlay appear first so the canvas has its size
         let started = false;
@@ -135,7 +143,7 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
           if (started) return;
           started = true;
           try {
-            st.play(dice, { sound: settings.sound }).then(landed, (e) => { console.warn("dice", e); finish(); });
+            st.play(dice, { sound: settings.sound, tuning: settings.tuning }).then(landed, (e) => { console.warn("dice", e); finish(); });
           } catch (e) { console.warn("dice", e); finish(); }
         };
         requestAnimationFrame(start);

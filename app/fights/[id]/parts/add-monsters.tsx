@@ -48,7 +48,7 @@ export function AddMonsters({ campaignMonsters, partyLevel, onAdd }: {
   );
 }
 
-function SrdSearch({ partyLevel, onAdd }: { partyLevel: number; onAdd: (s: MonsterStats) => void }) {
+export function SrdSearch({ partyLevel, onAdd }: { partyLevel: number; onAdd: (s: MonsterStats) => void }) {
   const [query, setQuery] = useState("");
   const [capped, setCapped] = useState(true);
   const [hits, setHits] = useState<MonsterHit[] | null>(null);

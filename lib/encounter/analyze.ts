@@ -2,6 +2,7 @@
 import type { SpellInfo } from "../rules";
 import { characterUnit, monsterUnit, type CharacterForSim, type MonsterStats } from "./build";
 import { rate, TIERS, xpBudget, type Tier } from "./rate";
+import { luckFrom, withLuck, type RollHistory } from "./luck";
 import { simulate, type SimSummary, type Unit } from "./sim";
 
 export type FightEntry = {
@@ -16,6 +17,7 @@ export type FightInput = {
   library: SpellInfo[];          // spells those characters know
   entries: FightEntry[];
   fresh: boolean;                // true = full HP/slots (planning ahead), false = as they are now
+  history?: Record<string, RollHistory>; // real dice per character (personal simulation); missing = sheet only
 };
 
 export type Analysis = {
@@ -39,7 +41,10 @@ function units(input: FightInput, override?: { id: string; count: number }): Uni
       (e.side === "ally" ? allies : foes).push(u);
     }
   }
-  const pcs = input.characters.map((ch) => characterUnit(ch, input.library, foes, input.fresh));
+  const pcs = input.characters.map((ch) => {
+    const u = characterUnit(ch, input.library, foes, input.fresh);
+    return input.history ? withLuck(u, luckFrom(input.history[ch.id])) : u;
+  });
   return [...pcs, ...allies, ...foes];
 }
 
@@ -68,7 +73,8 @@ export function analyze(input: FightInput, runs = 2000): Analysis | null {
 
   // "How much is too much": try one more / one fewer of each enemy (smaller runs, so it stays fast).
   const suggestions: string[] = [];
-  const quick = (id: string, count: number) => rate(simulate(units(input, { id, count }), 600, 99)).tier;
+  const quickRuns = Math.max(300, Math.round(runs * 0.3));
+  const quick = (id: string, count: number) => rate(simulate(units(input, { id, count }), quickRuns, 99)).tier;
   for (const e of input.entries.filter((x) => x.side === "enemy")) {
     const up = quick(e.id, e.count + 1);
     if (up !== tier) suggestions.push(`+1 ${e.stats.name} → ${up}`);

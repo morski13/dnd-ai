@@ -5,13 +5,15 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { addMonster, endCombat, endSession, nextTurn, rollNpcInitiative, startCombat, startSavedFight } from "../actions";
 import { TierBadge } from "../../fights/tier";
+import { partyRest, setAutoApply } from "../moderator-actions";
 
 type Monster = { id: string; name: string; ac: number | null; hp_max: number | null; hp_current: number | null };
 
-export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDefault, waitingForInitiative, savedFights }: {
+export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply }: {
   sessionId: string; combatId: string | null; monsters: Monster[]; inFightIds: string[];
   hiddenByDefault: boolean; waitingForInitiative: number;
   savedFights: { id: string; name: string; tier: string | null }[];
+  autoApply: boolean;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<string[]>([]);
@@ -34,6 +36,25 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
   return (
     <section className="rounded-2xl border border-line bg-surface-2 p-4">
       <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">DM tools</p>
+      <button type="button" role="switch" aria-checked={autoApply} disabled={pending}
+        onClick={() => act(() => setAutoApply(!autoApply))}
+        className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left">
+        <span>
+          <span className="block text-sm font-semibold">Apply damage automatically</span>
+          <span className="block text-xs text-muted">Damage and healing rolls with a target change HP right away</span>
+        </span>
+        <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${autoApply ? "bg-accent" : "bg-line"}`}>
+          <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${autoApply ? "left-6" : "left-1"}`} />
+        </span>
+      </button>
+
+      {!combatId && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" disabled={pending} onClick={() => act(() => partyRest("short"))} className="h-10 rounded-xl border border-line text-xs font-semibold text-soft">Party: short rest</button>
+          <button type="button" disabled={pending} onClick={() => { if (confirm("Long rest for the whole party? Everyone gets full HP, slots and abilities back.")) act(() => partyRest("long")); }}
+            className="h-10 rounded-xl border border-line text-xs font-semibold text-soft">Party: long rest</button>
+        </div>
+      )}
 
       {!combatId ? (
         <>

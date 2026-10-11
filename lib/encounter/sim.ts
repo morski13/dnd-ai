@@ -93,6 +93,7 @@ export type Unit = {
   resources: Record<string, number>;  // Rage 3, Channel Divinity 2…
   legendary?: { uses: number; strike: Strike };
   regeneration?: number;
+  dmgMult?: number;          // real-dice luck: this character's damage rolls run high/low
 };
 
 // ---------------------------------------------------------------- one fight
@@ -151,6 +152,8 @@ function heal(t: Live, amount: number) {
 
 function strike(attacker: Live, s: Strike, targets: Live[], rng: Rng, onceUsed: { v: boolean }) {
   let dealt = 0;
+  const mult = attacker.u.dmgMult ?? 1;
+  const scale = (x: number) => (mult === 1 ? x : Math.round(x * mult));
   for (const t of targets) {
     if (s.kind === "attack") {
       const r1 = d(rng, 20), r2 = s.advantage ? d(rng, 20) : 0;
@@ -159,14 +162,15 @@ function strike(attacker: Live, s: Strike, targets: Live[], rng: Rng, onceUsed: 
       if (nat === 1 || (!crit && nat + (s.bonus ?? 0) < t.u.ac)) continue;
       let dmg = rollDice(s.damage, rng, crit);
       if (s.extraOnce && !onceUsed.v) { dmg += rollDice(s.extraOnce, rng, crit); onceUsed.v = true; }
+      dmg = scale(dmg);
       const before = t.hp; applyDamage(t, dmg); dealt += Math.min(before, dmg);
     } else if (s.kind === "save") {
       const saved = d(rng, 20) + (t.u.saves[s.ability ?? "DEX"] ?? 0) >= (s.dc ?? 10);
-      let dmg = rollDice(s.damage, rng);
+      let dmg = scale(rollDice(s.damage, rng));
       if (saved) dmg = s.half ? Math.floor(dmg / 2) : 0;
       const before = t.hp; applyDamage(t, dmg); dealt += Math.min(before, dmg);
     } else {
-      const dmg = rollDice(s.damage, rng);
+      const dmg = scale(rollDice(s.damage, rng));
       const before = t.hp; applyDamage(t, dmg); dealt += Math.min(before, dmg);
     }
   }

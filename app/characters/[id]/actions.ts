@@ -3,10 +3,13 @@
 // Dice are rolled HERE on the server, every bonus comes from the character's data, and only
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { roll, type Advantage } from "@/lib/dice";
-import { planRoll, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
+import { allOptions, planRoll, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
+import type { ConcentrationCheck } from "@/lib/moderator/concentration";
+import { maskSaves, rollTargetSaves, type TargetSave } from "@/lib/moderator/saves";
+import { applyHp, campaignAutoApply, isCampaignDm, maskFor, type Applied } from "@/lib/moderator/apply";
 
 export type SavedRoll = {
   id: string;
@@ -26,15 +29,22 @@ export type SavedRoll = {
   followUp?: { key: string; slot?: number }; // offer this damage roll next
   success?: boolean | null;                  // attack: hit (true) / miss (false)
   target?: string | null;                    // "Ogre"
+  applied?: Applied | null;                  // what the fight moderator did with it (HP change)
+  missed?: boolean;                          // damage after a missed attack: not applied
 };
-export type RollResponse = { roll: SavedRoll; spells: SpellBook; resources: Resource[] };
+export type RollResponse = {
+  roll: SavedRoll; spells: SpellBook; resources: Resource[]; concentration?: { spell: string } | null; endedConcentration?: string | null;
+  saves?: TargetSave[];          // a save spell: each target's save (monster results only for the DM)
+  appliedAll?: Applied[];        // damage from a save spell: one HP change per target
+};
 
 type Fail = { error: string };
 export async function rollForCharacter(
   characterId: string,
   request: RollRequest,
   advantage: Advantage,
-  target?: Target | null
+  target?: Target | null,
+  moreTargets?: Target[]
 ): Promise<RollResponse | Fail> {
   const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c) return { error: "Character not found." };
@@ -68,13 +78,17 @@ export async function rollForCharacter(
   let critical = false;
   let parentRollId: string | null = null;
   let parentTarget: Target | null = null;
+  let parentMissed = false;
+  let parentIsSave = false;
   if (request.kind === "damage" && request.parentRollId) {
     const { data: parent } = await supabase
-      .from("roll_events").select("id, is_crit, character_id, target_character_id, target_monster_id")
+      .from("roll_events").select("id, is_crit, success, character_id, target_character_id, target_monster_id, roll_type")
       .eq("id", request.parentRollId).maybeSingle();
     if (parent && parent.character_id === c.id) {
       parentRollId = parent.id;
       critical = !!parent.is_crit;
+      parentMissed = parent.success === false;
+      parentIsSave = parent.roll_type === "save_dc";
       parentTarget = { characterId: parent.target_character_id, monsterId: parent.target_monster_id };
     }
   }
@@ -85,6 +99,18 @@ export async function rollForCharacter(
     result = plan.expression ? roll(plan.expression, { advantage: adv, critical }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
+  }
+
+  // Casting a concentration spell: you now concentrate on it (and stop concentrating on the old one).
+  let endedConcentration: string | null = null;
+  let concentration = c.concentration ?? null;
+  if (request.kind === "use" && request.key.startsWith("spell:")) {
+    const sp = library.find((x) => `spell:${x.name}` === request.key);
+    if (sp?.concentration) {
+      if (concentration?.spell && concentration.spell !== sp.name) endedConcentration = concentration.spell;
+      concentration = { spell: sp.name, since: new Date().toISOString() };
+      changes.concentration = concentration;
+    }
   }
 
   if (Object.keys(changes).length) {
@@ -131,6 +157,50 @@ export async function rollForCharacter(
     .single();
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
 
+  const viewerIsDm = await isCampaignDm(admin, c.campaign_id, userId);
+  const base = { campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null, createdBy: userId };
+
+  // A save spell: the app rolls every target's save now (monster saves secretly).
+  let saves: TargetSave[] | undefined;
+  if (plan.rollType === "save_dc" && session && plan.dc && plan.ability) {
+    const all = [target, ...(moreTargets ?? [])].filter((t): t is Target => !!(t?.characterId || t?.monsterId));
+    const unique = all.filter((t, i) => all.findIndex((x) => x.characterId === t.characterId && x.monsterId === t.monsterId) === i);
+    if (unique.length) {
+      saves = maskSaves(await rollTargetSaves(admin, { ...base, parentRollId: saved.id, ability: plan.ability, dc: plan.dc, spell: plan.source, targets: unique }), viewerIsDm);
+    }
+  }
+
+  // Damage from a save spell: full damage on a failed save; half (or none) on a success, for each target.
+  let appliedAll: Applied[] | undefined;
+  if (plan.rollType === "damage" && parentIsSave && parentRollId && result && session && await campaignAutoApply(admin, c.campaign_id)) {
+    const { data: rows } = await admin.from("roll_events").select("monster_id, character_id, success").eq("parent_roll_id", parentRollId).eq("roll_type", "save");
+    const opt = request.kind === "damage" ? allOptions(c, library).find((x) => x.key === request.key) : undefined;
+    appliedAll = [];
+    for (const r of rows ?? []) {
+      if (r.success && !opt?.half_on_save) continue; // saved completely
+      const one = await applyHp(admin, {
+        ...base, sessionId: session.id, kind: "damage", total: result.total, crit: false, rollId: saved.id, factor: r.success ? "half" : "full",
+        actor: { characterId: c.id }, target: { characterId: r.character_id, monsterId: r.monster_id },
+      });
+      if (!one) continue;
+      const shown = maskFor({ ...one, canAdjust: true }, viewerIsDm);
+      // players don't learn how much a monster took (that would give its save away)
+      appliedAll.push(!viewerIsDm && one.target.monsterId ? { ...shown, amount: -1, rolled: -1, factor: "full", canAdjust: false } : shown);
+    }
+  }
+
+  // Fight moderator: damage / healing with a target changes their HP right away.
+  let applied: Applied | null = appliedAll?.[0] ?? null;
+  if (!parentIsSave && (plan.rollType === "damage" || plan.rollType === "heal") && result && tgt && session && !parentMissed
+      && await campaignAutoApply(admin, c.campaign_id)) {
+    applied = await applyHp(admin, {
+      campaignId: c.campaign_id, sessionId: session.id, combatId: combat?.id ?? null, round: combat?.round ?? null,
+      kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id,
+      actor: { characterId: c.id }, target: { characterId: tgt.characterId, monsterId: tgt.monsterId }, createdBy: userId,
+    });
+    if (applied) applied = maskFor({ ...applied, canAdjust: true }, viewerIsDm);
+  }
+
   if (plan.rollType === "initiative" && combat && result) {
     await recordInitiative(admin, combat.id, { characterId: c.id }, result.total);
   }
@@ -161,59 +231,61 @@ export async function rollForCharacter(
       followUp: plan.followUp && request.kind === "use" ? { key: request.key, slot: plan.spellSlot } : undefined,
       success,
       target: tgt?.name ?? null,
+      applied,
+      missed: parentMissed && plan.rollType === "damage",
     },
     spells,
     resources,
+    concentration,
+    endedConcentration,
+    saves,
+    appliedAll,
   };
 }
 
-export type HpState = { hp_current: number; temp_hp: number };
+/** Stop concentrating (by choice), or start concentrating on one of your known spells without casting it here. */
+export async function setConcentration(characterId: string, spell: string | null): Promise<{ concentration: { spell: string } | null } | Fail> {
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  if (spell && !character.spells.known?.includes(spell)) return { error: "That spell isn't on your list." };
+  const concentration = spell ? { spell, since: new Date().toISOString() } : null;
+  const { error } = await supabase.from("characters").update({ concentration }).eq("id", character.id);
+  if (error) return { error: error.message };
+  return { concentration };
+}
 
-/** Damage uses temporary HP first. Healing can't go above max. */
+export type HpState = { hp_current: number; temp_hp: number; concentration?: ConcentrationCheck | null };
+
+/** The HP card: damage uses temporary HP first, healing can't go above max, 0 HP starts death saves. */
 export async function changeHp(characterId: string, kind: "damage" | "heal" | "temp", amount: number): Promise<HpState | Fail> {
   const n = Math.floor(Number(amount));
   if (!Number.isFinite(n) || n <= 0 || n > 999) return { error: "Enter a number from 1 to 999." };
 
-  const { supabase, userId, character, canEdit } = await loadCharacter(characterId);
-  if (!character) return { error: "Character not found." };
+  const { userId, character, canEdit } = await loadCharacter(characterId);
+  if (!character || !userId) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
-
-  const max = character.hp_max ?? 0;
-  let hp = character.hp_current ?? max;
-  let temp = character.temp_hp ?? 0;
-  let applied = n;
-
-  if (kind === "damage") {
-    const fromTemp = Math.min(temp, n);
-    temp -= fromTemp;
-    applied = Math.min(hp, n - fromTemp);
-    hp -= applied;
-  } else if (kind === "heal") {
-    applied = Math.min(n, Math.max(max - hp, 0));
-    hp += applied;
-  } else {
-    temp = Math.max(temp, n); // temp HP doesn't stack: keep the higher
-  }
-
-  const { error } = await supabase.from("characters").update({ hp_current: hp, temp_hp: temp }).eq("id", character.id);
-  if (error) return { error: "Couldn't save HP. " + error.message };
 
   const admin = createAdminClient();
   const { session, combat } = await liveState(admin, character.campaign_id);
-  await admin.from("effects").insert({
-    campaign_id: character.campaign_id,
-    session_id: session?.id ?? null,
-    combat_id: combat?.id ?? null,
-    round: combat?.round ?? null,
-    created_by: userId,
-    target_character_id: character.id,
-    kind: kind === "temp" ? "temp_hp" : kind,
-    amount: kind === "temp" ? n : applied,
-    rolled_amount: n,
-    dropped_to_zero: kind === "damage" && hp === 0 && (character.hp_current ?? max) > 0,
-  });
 
-  return { hp_current: hp, temp_hp: temp };
+  if (kind === "temp") {
+    const temp = Math.max(character.temp_hp ?? 0, n); // temp HP doesn't stack: keep the higher
+    await admin.from("characters").update({ temp_hp: temp }).eq("id", character.id);
+    await admin.from("effects").insert({
+      campaign_id: character.campaign_id, session_id: session?.id ?? null, combat_id: combat?.id ?? null, round: combat?.round ?? null,
+      created_by: userId, target_character_id: character.id, kind: "temp_hp", amount: n, rolled_amount: n,
+    });
+    return { hp_current: character.hp_current ?? character.hp_max ?? 0, temp_hp: temp };
+  }
+
+  const applied = await applyHp(admin, {
+    campaignId: character.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null,
+    kind, total: n, target: { characterId: character.id }, createdBy: userId,
+  });
+  if (!applied) return { error: "Couldn't save HP." };
+  const { data } = await admin.from("characters").select("hp_current, temp_hp").eq("id", character.id).single();
+  return { hp_current: data?.hp_current ?? applied.hpAfter, temp_hp: data?.temp_hp ?? 0, concentration: applied.concentration ?? null };
 }
 
 /** Sets how many uses of a resource (Rage, Channel Divinity...) are spent. */

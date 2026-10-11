@@ -11,6 +11,7 @@ import { useDice } from "../components/dice/dice-provider";
 import { deleteSkin, saveSkin } from "./actions";
 import { Pictures } from "./parts/pictures";
 import { DicePreview, PREVIEW_TYPES } from "./parts/preview";
+import { RollFeel } from "./parts/roll-feel";
 
 export type SavedSkin = { id: string; skin: DiceSkin; active: boolean };
 
@@ -91,6 +92,8 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
         </div>
       </section>
 
+      {/* Designing a set: the save bar sticks to the bottom only while you're in this part */}
+      <div>
       {/* Sets */}
       <Section title="Your dice sets">
         <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
@@ -154,8 +157,6 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
         <Pictures skin={draft} set={set} onError={(e) => setMsg({ text: e, tone: "err" })} />
       </Section>
 
-      <Settings />
-
       {/* Save bar */}
       <div className="sticky bottom-20 z-10 mt-6 rounded-2xl border border-line bg-surface-2/95 p-3 backdrop-blur">
         {msg && <p className={`mb-2 text-sm ${msg.tone === "ok" ? "text-success" : "text-danger"}`} role="status">{msg.text}</p>}
@@ -180,6 +181,10 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
           }} className="mt-2 w-full text-center text-xs text-muted underline">Delete this set</button>
         )}
       </div>
+      </div>
+
+      <RollFeel onThrow={testThrow} />
+      <Settings />
     </>
   );
 }
@@ -251,6 +256,7 @@ function Settings() {
       <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
         <Toggle label="3D dice" sub="Dice roll across the screen when you roll" on={settings.enabled} onChange={(v) => setSettings({ ...settings, enabled: v })} />
         <Toggle label="Dice sounds" sub="Clatter, plus a chime on a natural 20" on={settings.sound} onChange={(v) => setSettings({ ...settings, sound: v })} />
+        <Toggle label="See the table's dice" sub="Watch the other players' rolls in their own dice during a session" on={settings.others} onChange={(v) => setSettings({ ...settings, others: v })} />
       </div>
     </Section>
   );

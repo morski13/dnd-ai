@@ -3,6 +3,7 @@
 // The animation later simply replays the recorded frames: the dice look free but always land right.
 import * as CANNON from "cannon-es";
 import { forceValue, makeShape, upIndex, type DieType, type Quat, type Shape, type V3 } from "./shapes";
+import { DEFAULT_TUNING, type DiceTuning } from "./tuning";
 
 export type Tray = { halfW: number; halfD: number };
 export type Frame = { p: V3; q: Quat }[];
@@ -10,7 +11,7 @@ export type Hit = { step: number; strength: number };
 export type SimResult = { shapes: Shape[]; frames: Frame[]; hits: Hit[]; settledAt: number };
 
 export const STEP = 1 / 60;
-const MAX_STEPS = 60 * 4;
+const MAX_STEPS = 60 * 7; // floaty settings need longer to settle (playback speeds them up)
 
 /** Small seeded random numbers, so a throw can be repeated exactly in tests. */
 export function seeded(seed: number) {
@@ -34,14 +35,14 @@ function body(shape: Shape, material: CANNON.Material) {
   return b;
 }
 
-function throwOnce(types: DieType[], tray: Tray, rand: () => number) {
-  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -40, 0), allowSleep: true });
+function throwOnce(types: DieType[], tray: Tray, rand: () => number, t: DiceTuning) {
+  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -t.gravity, 0), allowSleep: true });
   world.broadphase = new CANNON.NaiveBroadphase();
   (world.solver as CANNON.GSSolver).iterations = 12;
   const diceMat = new CANNON.Material("dice");
   const floorMat = new CANNON.Material("floor");
-  world.addContactMaterial(new CANNON.ContactMaterial(floorMat, diceMat, { friction: 0.25, restitution: 0.35 }));
-  world.addContactMaterial(new CANNON.ContactMaterial(diceMat, diceMat, { friction: 0.1, restitution: 0.4 }));
+  world.addContactMaterial(new CANNON.ContactMaterial(floorMat, diceMat, { friction: t.slide, restitution: t.bounce }));
+  world.addContactMaterial(new CANNON.ContactMaterial(diceMat, diceMat, { friction: Math.max(0.02, t.slide * 0.4), restitution: Math.min(0.9, t.bounce + 0.05) }));
 
   // Floor and four walls
   const plane = (pos: V3, axis: V3, angle: number) => {
@@ -65,8 +66,11 @@ function throwOnce(types: DieType[], tray: Tray, rand: () => number) {
     const n = shapes.length;
     const spread = Math.min(tray.halfW * 1.4, n * 1.3);
     b.position.set(-spread / 2 + (spread * (i + 0.5)) / n + (rand() - 0.5) * 0.6, 2.2 + rand() * 1.5, tray.halfD - 1.2 - rand() * 0.6);
-    b.velocity.set((rand() - 0.5) * 6, 2 + rand() * 3, -(18 + rand() * 9));
-    b.angularVelocity.set((rand() - 0.5) * 30, (rand() - 0.5) * 30, (rand() - 0.5) * 30);
+    // Faster fall needs a harder throw to cross the same table, so power scales with gravity too.
+    const p = t.power * Math.sqrt(t.gravity / 40);
+    b.velocity.set((rand() - 0.5) * 6 * p, (2 + rand() * 3) * p, -(12 + rand() * 7) * p);
+    const w = 30 * t.spin;
+    b.angularVelocity.set((rand() - 0.5) * w, (rand() - 0.5) * w, (rand() - 0.5) * w);
     b.quaternion.setFromEuler(rand() * Math.PI * 2, rand() * Math.PI * 2, rand() * Math.PI * 2);
     b.addEventListener("collide", (e: { contact: CANNON.ContactEquation }) => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
@@ -96,11 +100,13 @@ function throwOnce(types: DieType[], tray: Tray, rand: () => number) {
  * Throws `dice` and returns frames to replay. Each die is renumbered so it lands on its value.
  * Retries (with a new throw) if a die ends up balanced on an edge.
  */
-export function simulateThrow(dice: { type: DieType; value: number }[], tray: Tray, seed = Math.floor(Math.random() * 2 ** 31)): SimResult {
+export function simulateThrow(
+  dice: { type: DieType; value: number }[], tray: Tray, seed = Math.floor(Math.random() * 2 ** 31), tuning: DiceTuning = DEFAULT_TUNING,
+): SimResult {
   const rand = seeded(seed);
   let best: ReturnType<typeof throwOnce> | null = null;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const r = throwOnce(dice.map((d) => d.type), tray, rand);
+    const r = throwOnce(dice.map((d) => d.type), tray, rand, tuning);
     best = r;
     const last = r.frames[r.frames.length - 1];
     const flatEnough = r.shapes.every((s, i) => upIndex(s, last[i].q).flatness > 0.93);

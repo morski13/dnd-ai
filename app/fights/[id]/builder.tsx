@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { analyze, type Analysis } from "@/lib/encounter/analyze";
 import type { CharacterForSim, MonsterStats } from "@/lib/encounter/build";
+import { luckFrom, luckLabel, type RollHistory } from "@/lib/encounter/luck";
 import type { SpellInfo } from "@/lib/rules";
 import type { FightData, SavedEntry } from "@/lib/fights-data";
 import { deleteFight, saveFight } from "../actions";
 import { AddMonsters } from "./parts/add-monsters";
 import { ResultCard } from "./parts/result-card";
+import { SimOptions } from "./parts/sim-options";
 
-export function FightBuilder({ fight, characters, library, campaignMonsters }: {
+export function FightBuilder({ fight, characters, library, campaignMonsters, history }: {
   fight: { id: string; name: string; data: FightData };
+  history: Record<string, RollHistory>;
   characters: CharacterForSim[];
   library: SpellInfo[];
   campaignMonsters: { id: string; name: string; stats: MonsterStats }[];
@@ -23,6 +26,8 @@ export function FightBuilder({ fight, characters, library, campaignMonsters }: {
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [real, setReal] = useState(true);      // use each character's real dice (personal simulation)
+  const [runs, setRuns] = useState(2000);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const included = useMemo(
@@ -32,20 +37,20 @@ export function FightBuilder({ fight, characters, library, campaignMonsters }: {
 
   // Recalculate (debounced) whenever the fight changes.
   const inputKey = useMemo(
-    () => JSON.stringify({ c: included.map((c) => c.id), e: data.entries, f: data.fresh }),
-    [included, data.entries, data.fresh]
+    () => JSON.stringify({ c: included.map((c) => c.id), e: data.entries, f: data.fresh, real, runs }),
+    [included, data.entries, data.fresh, real, runs]
   );
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       const analysis = analyze({
-        characters: included, library, fresh: data.fresh,
+        characters: included, library, fresh: data.fresh, history: real ? history : undefined,
         entries: data.entries.filter((e) => e.count > 0).map((e) => ({ id: e.id, stats: e.stats, count: e.count, side: e.side })),
-      });
+      }, runs);
       setResult({ key: inputKey, analysis });
     }, 250);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [inputKey, included, library, data.entries, data.fresh]);
+  }, [inputKey, included, library, data.entries, data.fresh, real, runs, history]);
   const analysis = result?.analysis ?? null;
   const calculating = result?.key !== inputKey;
 
@@ -96,6 +101,8 @@ export function FightBuilder({ fight, characters, library, campaignMonsters }: {
 
       <div className="mt-4">
         <ResultCard analysis={analysis} calculating={calculating} hasEnemies={enemies.some((e) => e.count > 0)} hasParty={included.length > 0} />
+        <SimOptions real={real} onReal={setReal} runs={runs} onRuns={setRuns}
+          who={included.map((c) => ({ name: c.name.split(" ")[0], label: luckLabel(luckFrom(history[c.id])) }))} />
       </div>
 
       {/* Party */}

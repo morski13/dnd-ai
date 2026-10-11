@@ -1,0 +1,12 @@
+Add campaigns, rests, concentration, secret saves, shared dice, personal sims and AI reader
+
+- Start your own campaign, switch between campaigns, character creator
+- Short/long rests with hit dice; party rest for the DM
+- Concentration: auto CON save on damage, chip on the sheet, monster concentration DM-only
+- Multi-target save spells: monster saves rolled in secret, per-target half damage,
+  DM can reveal secret rolls, ending the fight reveals all
+- Players see each other's dice in their own dice skins (can be turned off)
+- Fight simulator uses each character's real roll history; player Practice fight page
+- Optional AI reader (any OpenAI-compatible API): links + summaries on the mind map,
+  "Ask the AI"; players only ever get results from shared pages
+- SQL: 17-own-campaigns, 18-rests-concentration-saves, 19-ai-reader

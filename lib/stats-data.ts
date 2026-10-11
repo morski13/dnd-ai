@@ -63,7 +63,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     .from("campaign_members")
     .select("role, campaigns(id, name)")
     .eq("user_id", userId)
-    .order("joined_at", { ascending: true })
+    .order("last_active_at", { ascending: false, nullsFirst: false }).order("joined_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   const campaign = membership?.campaigns as unknown as { id: string; name: string } | null;
