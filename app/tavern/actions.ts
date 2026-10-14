@@ -58,10 +58,12 @@ export async function askTavern(input: { chatId?: string | null; mode: Mode; cha
     await supabase.from("assistant_chats").update({ updated_at: new Date().toISOString(), mode, character_id: input.characterId || null }).eq("id", chatId);
   }
   const src = (s: typeof reply.sourcesUsed) => s.map((x) => ({ id: x.id, kind: x.kind, title: x.title, text: x.text, secret: x.secret }));
+  const t = Date.now(); // the question first, then the answer (same insert = same time otherwise)
   const { data: rows, error } = await supabase.from("assistant_messages").insert([
-    { chat_id: chatId, role: "user", content: question, has_secrets: reply.hasSecrets },
-    { chat_id: chatId, role: "assistant", content: reply.answer, verdict: reply.verdict, style: reply.style, model: reply.by, sources: src(reply.sourcesUsed), checks: reply.checks, has_secrets: reply.hasSecrets,
-      prompt: reply.hasSecrets ? null : reply.prompt },
+    // every column on both rows: in a multi-row insert, a column one row leaves out becomes NULL, not its default
+    { chat_id: chatId, role: "user", content: question, verdict: null, style: null, model: null, sources: [], checks: [], rating: 0, has_secrets: reply.hasSecrets, prompt: null, created_at: new Date(t).toISOString() },
+    { chat_id: chatId, role: "assistant", content: reply.answer, verdict: reply.verdict, style: reply.style, model: reply.by, sources: src(reply.sourcesUsed), checks: reply.checks, rating: 0, has_secrets: reply.hasSecrets,
+      prompt: reply.hasSecrets ? null : reply.prompt, created_at: new Date(t + 1).toISOString() },
   ]).select("id, role, content, verdict, style, model, sources, checks, rating, correction, has_secrets, created_at");
   if (error || !rows) return { error: error?.message ?? "Couldn't save the answer." };
   const view = (r: Record<string, unknown>): ChatMessageView => ({
