@@ -1,7 +1,8 @@
 // Runs the AI reader and keeps its result (server only; uses the secret key, never sent to browsers).
 // Not a "use server" file on purpose: nothing here can be called from a browser directly.
 import { createHash } from "node:crypto";
-import { chat, parseJson, aiConfig } from "@/lib/ai/client";
+import { chatWith, parseJson } from "@/lib/ai/client";
+import { label } from "@/lib/ai/providers";
 import { cleanReading, readingPrompt, type AiReading } from "@/lib/reader/ai";
 import type { Analysis, ReaderDoc } from "@/lib/reader/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,13 +26,14 @@ export async function loadAiReading(campaignId: string, view: "dm" | "player") {
 
 /** Ask the AI to read these notes, check its answer, save it. */
 export async function runAiReading(campaignId: string, view: "dm" | "player", analysis: Analysis, docs: ReaderDoc[]) {
-  const text = await chat(readingPrompt(analysis, docs), { json: true, maxTokens: 6000, timeoutMs: 90_000 });
+  // the DM's copy holds DM-only notes; the players' copy is made from shared pages only, so any AI may read it
+  const { text, by } = await chatWith(readingPrompt(analysis, docs), { json: true, maxTokens: 6000, timeoutMs: 90_000, secrets: view === "dm" });
   const raw = parseJson<unknown>(text);
   if (!raw) throw new Error("The AI's answer wasn't readable. Try again (or a different AI_MODEL).");
   const reading = cleanReading(raw, analysis);
   const { error } = await createAdminClient().from("ai_readings").upsert({
-    campaign_id: campaignId, view, notes_hash: notesHash(docs), result: reading, model: aiConfig()?.model ?? null, created_at: new Date().toISOString(),
+    campaign_id: campaignId, view, notes_hash: notesHash(docs), result: reading, model: label(by), created_at: new Date().toISOString(),
   });
   if (error) throw new Error(/ai_readings/.test(error.message) ? "Run supabase/19-ai-reader.sql first." : error.message);
-  return reading;
+  return { ...reading, by: label(by) };
 }

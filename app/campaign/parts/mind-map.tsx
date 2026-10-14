@@ -37,8 +37,9 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
   const [selected, setSelected] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [aiAnswer, setAiAnswer] = useState<{ answer: string; about: string[] } | { error: string } | null>(null);
+  const [aiAnswer, setAiAnswer] = useState<{ answer: string; about: string[]; by?: string } | { error: string } | null>(null);
   const [asking, startAsk] = useTransition();
+  const mapRouter = useRouter();
 
   const withSecrets = showSecrets && secrets;
   const nodes = useMemo(() => analysis.nodes.filter((n) => on.has(n.type) && (withSecrets || !n.secret)), [analysis, on, withSecrets]);
@@ -83,7 +84,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
         })}
         {showSecrets && (
           <button type="button" aria-pressed={secrets} onClick={() => setSecrets(!secrets)}
-            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-accent-line bg-accent-surface text-accent" : "border-line text-muted"}`}>
+            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-[#5A4024] bg-accent-surface text-accent" : "border-line text-muted"}`}>
             <LockIcon className="h-3.5 w-3.5" />{secrets ? "Secrets shown" : "Secrets hidden"}
           </button>
         )}
@@ -121,7 +122,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
           <button className="h-9 shrink-0 rounded-lg bg-accent px-3 text-sm font-bold text-accent-text">Ask</button>
           {ai?.configured && (
             <button type="button" disabled={asking || question.trim().length < 3}
-              onClick={() => { setAnswer(null); startAsk(async () => setAiAnswer(await askAi(question, q.includes("view=player"), withSecrets))); }}
+              onClick={() => { setAnswer(null); startAsk(async () => { setAiAnswer(await askAi(question, q.includes("view=player"), withSecrets)); mapRouter.refresh(); }); }}
               className="h-9 shrink-0 rounded-lg border border-[#6a5a8a] px-3 text-sm font-bold text-[#b9a6e0] disabled:opacity-50">{asking ? "…" : "✦ AI"}</button>
           )}
         </div>
@@ -139,7 +140,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
                     </button>) : null; })}
                 </div>
               )}
-              <p className="mt-3 text-[11px] text-muted">✦ Written by the AI from the notes{withSecrets ? "" : " the players can see"}. It can get things wrong: tap a name to check the notes.</p>
+              <p className="mt-3 text-[11px] text-muted">✦ Written by the AI{aiAnswer.by ? ` (${aiAnswer.by})` : ""} from the notes{withSecrets ? "" : " the players can see"}. It can get things wrong: tap a name to check the notes.</p>
             </>
           )}
         </section>

@@ -3,10 +3,15 @@
 // Pure functions only (prompts, checking the AI's answer, merging). Talking to the AI is in lib/ai-reading.ts.
 import { docLines } from "./smart";
 import type { Analysis, MapEdge, ReaderDoc } from "./types";
+import type { AiProviderStatus } from "../ai/client";
 
 export type AiLink = { a: string; b: string; label: string; why: string };
 export type AiReading = { links: AiLink[]; summaries: Record<string, string> };
-export type AiState = { configured: boolean; host: string | null; at: string | null; stale: boolean; model: string | null };
+export type AiState = {
+  configured: boolean; host: string | null; at: string | null; stale: boolean; model: string | null;
+  /** DM only: every AI in the chain and how it's doing (empty for players) */
+  chain: AiProviderStatus[];
+};
 
 const MAX_NOTES = 24_000; // characters of notes sent (free tiers have small limits)
 

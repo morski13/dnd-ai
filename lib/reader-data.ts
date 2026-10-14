@@ -1,7 +1,7 @@
 // Feeds the campaign reader. The DM's reading uses the full documents (secrets included);
 // players — and the DM's "Player view" — only ever get the shared, secret-free copies.
 // If the DM ran the AI reader, its saved reading is laid on top (players: only the copy made from shared pages).
-import { aiConfig } from "@/lib/ai/client";
+import { aiConfig, aiStatus } from "@/lib/ai/client";
 import { loadAiReading, notesHash } from "@/lib/ai-reading";
 import { getReader } from "@/lib/reader/engine";
 import { mergeAi, type AiState } from "@/lib/reader/ai";
@@ -39,20 +39,21 @@ export async function getReading(asPlayer: boolean) {
   const { campaign, isDm } = ctx;
   const playerView = !isDm || asPlayer;
   const cfg = aiConfig();
-  const noAi: AiState = { configured: !!cfg, host: cfg?.host ?? null, at: null, stale: false, model: null };
+  const noAi: AiState = { configured: !!cfg, host: cfg?.host ?? null, at: null, stale: false, model: null, chain: [] };
   if (!campaign) return { ...ctx, playerView, analysis: null as Analysis | null, ai: noAi };
 
   const input = await readerInput(ctx, playerView);
   const smart = await getReader().analyze(input);
   const view = playerView ? "player" : "dm";
-  const [mine, pub] = await Promise.all([
+  const [mine, pub, chain] = await Promise.all([
     loadAiReading(campaign.id, view),
     view === "dm" ? loadAiReading(campaign.id, "player") : Promise.resolve(null),
+    view === "dm" && cfg ? aiStatus().catch(() => []) : Promise.resolve([]),
   ]);
   // DM: their own reading, plus anything the players' reading found that theirs missed (AI answers vary run to run)
   const analysis = view === "dm"
     ? mergeAi(mergeAi(smart, mine?.reading ?? null, "dm", pub?.reading ?? null), pub?.reading ?? null, "player")
     : mergeAi(smart, mine?.reading ?? null, "player");
-  const ai: AiState = { ...noAi, at: mine?.at ?? null, model: mine?.model ?? null, stale: !!mine && mine.hash !== notesHash(input.docs) };
+  const ai: AiState = { ...noAi, at: mine?.at ?? null, model: mine?.model ?? null, stale: !!mine && mine.hash !== notesHash(input.docs), chain };
   return { ...ctx, playerView, analysis, ai };
 }
