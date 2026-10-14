@@ -50,7 +50,7 @@ export function FreeRoll({ characterId, isDm }: { characterId: string | null; is
         </form>
         {isDm && (
           <label className="mt-1 flex min-h-11 items-center gap-3 text-sm text-soft">
-            <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="h-5 w-5 accent-[#E0913A]" />
+            <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="h-5 w-5 accent-accent" />
             Secret roll
           </label>
         )}

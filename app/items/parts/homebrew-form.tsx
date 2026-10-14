@@ -33,7 +33,7 @@ export function HomebrewForm({ initial, submitLabel, note, onSubmit, onCancel }:
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      {note && <p className="rounded-xl border border-[#5A4024] bg-accent-surface px-3 py-2 text-sm text-soft">{note}</p>}
+      {note && <p className="rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm text-soft">{note}</p>}
       <label className="text-sm text-soft">Name
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required className={`${field} mt-1`} placeholder="Smoke Dagger" />
       </label>
@@ -55,7 +55,7 @@ export function HomebrewForm({ initial, submitLabel, note, onSubmit, onCancel }:
           <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 250 gp" className={`${field} mt-1`} />
         </label>
         <label className="flex h-11 items-center gap-2 rounded-xl border border-line px-3 text-sm text-soft">
-          <input type="checkbox" checked={attunement} onChange={(e) => setAttunement(e.target.checked)} className="h-5 w-5 accent-[#e0913a]" />
+          <input type="checkbox" checked={attunement} onChange={(e) => setAttunement(e.target.checked)} className="h-5 w-5 accent-accent" />
           Needs attunement
         </label>
       </div>

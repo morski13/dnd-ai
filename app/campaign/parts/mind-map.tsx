@@ -83,7 +83,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
         })}
         {showSecrets && (
           <button type="button" aria-pressed={secrets} onClick={() => setSecrets(!secrets)}
-            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-[#5A4024] bg-accent-surface text-accent" : "border-line text-muted"}`}>
+            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-accent-line bg-accent-surface text-accent" : "border-line text-muted"}`}>
             <LockIcon className="h-3.5 w-3.5" />{secrets ? "Secrets shown" : "Secrets hidden"}
           </button>
         )}

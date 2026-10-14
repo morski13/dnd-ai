@@ -33,7 +33,7 @@ async function Home() {
           <p className="mt-1 text-sm text-muted">Ask your DM for the invite code and enter it here.</p>
           <JoinForm />
         </div>
-        <Link href="/campaigns" className="mt-4 flex items-center justify-between rounded-2xl border border-[#5A4024] bg-accent-surface p-5">
+        <Link href="/campaigns" className="mt-4 flex items-center justify-between rounded-2xl border border-accent-line bg-accent-surface p-5">
           <span><span className="block font-semibold">Or start your own campaign</span><span className="mt-1 block text-sm text-muted">Be the DM: invite your players with a code.</span></span>
           <span className="text-accent">→</span>
         </Link>
@@ -62,6 +62,7 @@ async function Home() {
     data.isDm
       ? { Icon: SwordsIcon, title: "Fight planner", sub: "DM · plan & balance fights", href: "/fights" }
       : { Icon: SwordsIcon, title: "Practice fight", sub: "How would you do? Uses your real dice", href: "/practice" },
+    ...(data.isDm ? [{ Icon: MapIcon, title: "Battle maps", sub: "DM · upload maps, fit the squares", href: "/maps" }] : []),
     { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
   ];
 
@@ -73,7 +74,7 @@ async function Home() {
       </Link>
 
       {/* Session card */}
-      <section className="mt-7 rounded-[18px] border border-[#5A4024] bg-accent-surface p-5">
+      <section className="mt-7 rounded-[18px] border border-accent-line bg-accent-surface p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">
             {live ? "Live now" : "Session mode"}

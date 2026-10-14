@@ -9,6 +9,7 @@ import { longRestFor } from "@/lib/rest-service";
 import { shortRest, type RestState } from "@/lib/rests";
 import { createClient } from "@/lib/supabase/server";
 import { liveState, touchCombat } from "@/lib/roll-service";
+import { isThemeId } from "@/lib/themes";
 
 type Fail = { error: string };
 
@@ -164,4 +165,15 @@ export async function revealRoll(rollId: string): Promise<{ error: string } | vo
   if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
   const { error } = await createAdminClient().from("roll_events").update({ hidden: false }).eq("id", rollId).eq("campaign_id", campaignId);
   if (error) return { error: "Couldn't reveal it." };
+}
+
+/** DM: the table's look in Session mode (see lib/themes.ts). */
+export async function setSessionTheme(theme: string): Promise<{ error: string } | void> {
+  const { campaignId, isDm } = await me();
+  if (!campaignId || !isDm) return { error: "Only the DM can change the table's look." };
+  if (!isThemeId(theme)) return { error: "Unknown theme." };
+  const admin = createAdminClient();
+  const { data } = await admin.from("campaigns").select("settings").eq("id", campaignId).single();
+  await admin.from("campaigns").update({ settings: { ...((data?.settings ?? {}) as object), session_theme: theme } }).eq("id", campaignId);
+  // players pick it up on their next refresh (every few seconds)
 }

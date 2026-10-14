@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
-/* Colors and fonts from 08-design-guide.md */
-@theme inline {
+/* Colors and fonts from 08-design-guide.md.
+   Colors are real CSS variables (not inlined), so a table theme or a player's sheet style can swap them (lib/themes.ts). */
+@theme {
   --color-bg: #15130f;
   --color-surface: #211d18;
   --color-surface-2: #1a1713;
@@ -12,13 +13,16 @@
   --color-accent: #e0913a;
   --color-accent-text: #1a140c;
   --color-accent-surface: #2a2017;
+  --color-accent-line: #5a4024;
+  --color-accent-strong: #8a5a24;
   --color-success: #b5e0a8;
   --color-success-bg: #1a2a1a;
   --color-success-line: #335a30;
   --color-danger: #f0b0a8;
   --color-danger-bg: #2a1a1a;
   --color-danger-line: #5a3030;
-
+}
+@theme inline {
   --font-sans: var(--font-manrope);
   --font-heading: var(--font-spectral);
 }
@@ -26,7 +30,12 @@
 body {
   background: var(--color-bg);
   color: var(--color-text);
+  transition: background-color 300ms ease-out, color 300ms ease-out;
 }
+
+/* A theme's backdrop (drawn in CSS) sits behind the page */
+.theme-backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
 
 /* =====================================================================
    Motion. Short and snappy so it never slows down play.

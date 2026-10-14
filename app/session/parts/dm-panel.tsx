@@ -6,14 +6,20 @@ import Link from "next/link";
 import { addMonster, endCombat, endSession, nextTurn, rollNpcInitiative, startCombat, startSavedFight } from "../actions";
 import { TierBadge } from "../../fights/tier";
 import { partyRest, setAutoApply } from "../moderator-actions";
+import type { ThemeId } from "@/lib/themes";
+import { TableTheme } from "./table-theme";
+import { setFightMap } from "../map-actions";
 
 type Monster = { id: string; name: string; ac: number | null; hp_max: number | null; hp_current: number | null };
 
-export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply }: {
+export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply, theme = "tavern", maps = [], mapInFight = null }: {
   sessionId: string; combatId: string | null; monsters: Monster[]; inFightIds: string[];
   hiddenByDefault: boolean; waitingForInitiative: number;
   savedFights: { id: string; name: string; tier: string | null }[];
   autoApply: boolean;
+  theme?: ThemeId;
+  maps?: { id: string; name: string; cols: number; rows: number }[];
+  mapInFight?: string | null;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<string[]>([]);
@@ -48,6 +54,8 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
         </span>
       </button>
 
+      <TableTheme current={theme} />
+
       {!combatId && (
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button type="button" disabled={pending} onClick={() => act(() => partyRest("short"))} className="h-10 rounded-xl border border-line text-xs font-semibold text-soft">Party: short rest</button>
@@ -77,7 +85,7 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
             {available.length === 0 && <p className="text-sm text-muted">No monsters yet. Add one below.</p>}
             {available.map((m) => (
               <label key={m.id} className="flex min-h-11 items-center gap-3 text-[15px]">
-                <input type="checkbox" checked={picked.includes(m.id)} className="h-5 w-5 accent-[#E0913A]"
+                <input type="checkbox" checked={picked.includes(m.id)} className="h-5 w-5 accent-accent"
                   onChange={(e) => setPicked(e.target.checked ? [...picked, m.id] : picked.filter((x) => x !== m.id))} />
                 {m.name} <span className="text-xs text-muted">AC {m.ac ?? "?"} · HP {m.hp_current ?? "?"}</span>
               </label>
@@ -97,15 +105,33 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
             className="mt-3 h-14 w-full rounded-xl bg-accent font-heading text-xl font-bold text-accent-text disabled:opacity-50">
             Next turn →
           </button>
+          <div className="mt-3 rounded-xl border border-line p-3" aria-label="Battle map for this fight">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold">Battle map</p>
+              <Link href="/maps" className="text-xs text-accent underline">{maps.length ? "Manage maps" : "Add a map"}</Link>
+            </div>
+            {maps.length === 0 ? (
+              <p className="mt-1 text-xs text-muted">Upload a map picture (or make a plain grid) to play this fight on a map.</p>
+            ) : (
+              <div className="mt-2 flex gap-2">
+                <select aria-label="Map for this fight" value={mapInFight ?? ""} disabled={pending}
+                  onChange={(e) => { const v = e.target.value || null; if (!v && !confirm("Take the map away from this fight?")) return; act(() => setFightMap(v)); }}
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 text-sm">
+                  <option value="">No map</option>
+                  {maps.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.cols}×{m.rows})</option>)}
+                </select>
+              </div>
+            )}
+          </div>
           {waitingForInitiative > 0 && (
             <div className="mt-3 rounded-xl border border-line p-3">
               <p className="text-sm text-soft">{waitingForInitiative} still need initiative. Players roll their own; you roll for monsters and unclaimed characters.</p>
               <label className="mt-1 flex min-h-11 items-center gap-3 text-sm text-soft">
-                <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} className="h-5 w-5 accent-[#E0913A]" />
+                <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} className="h-5 w-5 accent-accent" />
                 Monster initiative is secret
               </label>
               <button type="button" disabled={pending} onClick={() => act(() => rollNpcInitiative(combatId, secret))}
-                className="h-11 w-full rounded-xl border border-[#8A5A24] font-bold text-accent disabled:opacity-50">
+                className="h-11 w-full rounded-xl border border-accent-strong font-bold text-accent disabled:opacity-50">
                 Roll for monsters &amp; unclaimed
               </button>
             </div>

@@ -77,7 +77,7 @@ export function AppliedNote({ applied: initial }: { applied: Applied }) {
         <div className="mt-2 flex flex-wrap gap-1">
           {a.kind === "damage" && FACTORS.map((f) => (
             <button key={f.id} type="button" disabled={pending || a.factor === f.id} onClick={() => fix(f.id)}
-              className={`h-8 rounded-lg border px-2 text-xs ${a.factor === f.id ? "border-[#8A5A24] font-bold text-text" : "border-line text-soft"}`}>{f.label}</button>
+              className={`h-8 rounded-lg border px-2 text-xs ${a.factor === f.id ? "border-accent-strong font-bold text-text" : "border-line text-soft"}`}>{f.label}</button>
           ))}
           <button type="button" disabled={pending} onClick={() => fix("undo")} className="h-8 rounded-lg border border-line px-2 text-xs text-muted">Undo</button>
         </div>
@@ -170,7 +170,7 @@ export function Conditions({ combatant, canEdit }: { combatant: Combatant; canEd
       <div className="flex flex-wrap items-center gap-1.5">
         {list.map((c) => (
           <button key={c} type="button" disabled={!canEdit || pending} onClick={() => toggle(c)}
-            className="animate-pop h-7 rounded-full border border-[#8A5A24] bg-bg px-2.5 text-xs font-semibold text-accent" aria-label={`Remove ${c}`}>
+            className="animate-pop h-7 rounded-full border border-accent-strong bg-bg px-2.5 text-xs font-semibold text-accent" aria-label={`Remove ${c}`}>
             {c}{canEdit && " ×"}
           </button>
         ))}

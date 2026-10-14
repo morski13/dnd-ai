@@ -43,7 +43,7 @@ export function GearTab({ characterId, rules, gear, canEdit }: { characterId: st
   return (
     <div className="flex flex-col gap-5">
       {gear.openShops.length > 0 && (
-        <div className="animate-rise rounded-2xl border border-[#5A4024] bg-accent-surface p-3">
+        <div className="animate-rise rounded-2xl border border-accent-line bg-accent-surface p-3">
           <p className="text-xs uppercase tracking-[0.12em] text-accent">Open now</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {gear.openShops.map((s) => (

@@ -5,18 +5,20 @@ import { itemsSummary } from "@/lib/items-data";
 import { getSessionData } from "@/lib/session-data";
 import { createClient } from "@/lib/supabase/server";
 import { BottomNav } from "../components/bottom-nav";
+import { ThemeScope } from "../components/theme/theme-scope";
 import { SessionView } from "./session-view";
 
 export default function SessionPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // The whole screen (and the menu) takes the table theme the DM picked, so it waits for the session data.
   return (
-    <>
+    <Suspense fallback={<>
       <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
-        <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-20 rounded-2xl bg-surface" /><div className="h-72 rounded-[18px] bg-surface" /></div>}>
-          <Session searchParams={searchParams} />
-        </Suspense>
+        <div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-20 rounded-2xl bg-surface" /><div className="h-72 rounded-[18px] bg-surface" /></div>
       </main>
       <BottomNav active="session" />
-    </>
+    </>}>
+      <Session searchParams={searchParams} />
+    </Suspense>
   );
 }
 
@@ -24,8 +26,14 @@ async function Session({ searchParams }: { searchParams: Promise<Record<string, 
   const sp = await searchParams;
   const focus = typeof sp.focus === "string" ? sp.focus : null;
   const data = await getSessionData(focus);
+  const shell = (children: React.ReactNode) => (
+    <>
+      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">{children}</main>
+      <BottomNav active="session" />
+    </>
+  );
   if (!data.campaign) {
-    return (
+    return shell(
       <div className="rounded-2xl border border-line bg-surface p-5">
         <p className="font-semibold">Join a campaign first</p>
         <p className="mt-1 text-sm text-muted">Enter your DM&apos;s invite code on the <Link href="/" className="text-accent underline">Home</Link> screen.</p>
@@ -33,5 +41,5 @@ async function Session({ searchParams }: { searchParams: Promise<Record<string, 
     );
   }
   const items = await itemsSummary(await createClient(), data.campaign.id, data.isDm);
-  return <SessionView data={data} shops={items.openShops} />;
+  return <ThemeScope theme={data.theme}>{shell(<SessionView data={data} shops={items.openShops} />)}</ThemeScope>;
 }

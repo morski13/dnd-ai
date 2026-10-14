@@ -236,7 +236,7 @@ function EditShopSheet({ shop, pending, error, onClose, onSave, onDelete }: {
         <label className="text-sm text-soft">What players see<textarea value={blurb} onChange={(e) => setBlurb(e.target.value)} maxLength={500} rows={3} className="mt-1 w-full rounded-xl border border-line bg-bg px-3 py-2 outline-none focus:border-accent" placeholder="A cramped pawn shop that smells of oil and old rope." /></label>
         <div>
           <p className="text-sm text-soft">Prices: <b>{pct}%</b> {pct > 100 ? "(expensive)" : pct < 100 ? "(a bargain)" : "(normal)"}</p>
-          <input type="range" min={50} max={300} step={10} value={pct} onChange={(e) => setPct(Number(e.target.value))} aria-label="Price level" className="mt-2 w-full accent-[#e0913a]" />
+          <input type="range" min={50} max={300} step={10} value={pct} onChange={(e) => setPct(Number(e.target.value))} aria-label="Price level" className="mt-2 w-full accent-accent" />
         </div>
         <button type="button" disabled={pending} onClick={() => onSave({ name, keeper, blurb, pricePct: pct })} className="h-12 rounded-xl bg-accent font-bold text-accent-text">Save</button>
         <button type="button" disabled={pending} onClick={() => (sure ? onDelete() : setSure(true))} className={`h-11 rounded-xl text-sm ${sure ? "bg-danger-bg font-semibold text-danger" : "text-muted underline"}`}>{sure ? "Yes, delete this shop" : "Delete shop"}</button>

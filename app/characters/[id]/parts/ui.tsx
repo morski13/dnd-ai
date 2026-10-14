@@ -5,7 +5,7 @@ import { signed } from "@/lib/dice";
 export function StatBox({ label, value, sub, sheet, onClick }: {
   label: string; value: string | number; sub?: string; sheet?: number; onClick?: () => void;
 }) {
-  const cls = `flex min-h-24 flex-col items-center justify-center rounded-2xl border bg-surface px-1 py-2 ${sheet !== undefined ? "border-[#8A5A24]" : "border-line"}`;
+  const cls = `flex min-h-24 flex-col items-center justify-center rounded-2xl border bg-surface px-1 py-2 ${sheet !== undefined ? "border-accent-strong" : "border-line"}`;
   const inner = (
     <>
       <span className="text-sm text-muted">{label}</span>
@@ -97,7 +97,7 @@ export function Pips({ max, used, label, disabled, onChange }: {
 
 export function Tag({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "accent" }) {
   return (
-    <span className={`rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${tone === "accent" ? "border-[#8A5A24] text-accent" : "border-line text-muted"}`}>
+    <span className={`rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${tone === "accent" ? "border-accent-strong text-accent" : "border-line text-muted"}`}>
       {children}
     </span>
   );

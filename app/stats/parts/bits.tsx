@@ -34,7 +34,7 @@ export function Awards({ awards, colorOf }: { awards: Award[]; colorOf: (name: s
   return (
     <ul className="grid grid-cols-2 gap-2">
       {awards.map((a, i) => (
-        <li key={a.id} className="animate-flip rounded-2xl border border-[#5A4024] bg-accent-surface p-3" style={{ "--i": i } as React.CSSProperties}>
+        <li key={a.id} className="animate-flip rounded-2xl border border-accent-line bg-accent-surface p-3" style={{ "--i": i } as React.CSSProperties}>
           <p className="text-2xl leading-none" aria-hidden>{a.emoji}</p>
           <p className="mt-2 text-sm font-bold leading-snug text-accent">{a.title}</p>
           <p className="mt-0.5 text-[11px] leading-tight text-muted">{a.blurb}</p>

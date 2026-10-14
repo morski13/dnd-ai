@@ -2,6 +2,7 @@
 // Rolling, casting, HP, resources and the spell list for the character sheet.
 // Dice are rolled HERE on the server, every bonus comes from the character's data, and only
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
+import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
 import { roll, type Advantage } from "@/lib/dice";
 import { allOptions, planRoll, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
@@ -201,6 +202,29 @@ export async function rollForCharacter(
     if (applied) applied = maskFor({ ...applied, canAdjust: true }, viewerIsDm);
   }
 
+  // Healing several creatures at once (Mass Healing Word, Mass Cure Wounds…): everyone picked gets the same amount.
+  if (plan.rollType === "heal" && result && session && moreTargets?.length && await campaignAutoApply(admin, c.campaign_id)) {
+    appliedAll = applied ? [applied] : [];
+    for (const t of moreTargets) {
+      if (!t?.characterId && !t?.monsterId) continue;
+      if (tgt && t.characterId === tgt.characterId && t.monsterId === tgt.monsterId) continue;
+      const one = await applyHp(admin, { ...base, sessionId: session.id, kind: "heal", total: result.total, crit: false, rollId: saved.id,
+        actor: { characterId: c.id }, target: { characterId: t.characterId ?? null, monsterId: t.monsterId ?? null } });
+      if (one) appliedAll.push(maskFor({ ...one, canAdjust: true }, viewerIsDm));
+    }
+  }
+
+  // Creatures hidden on the battle map stay unknown to players (no names, no HP changes shown).
+  if (!viewerIsDm && combat && (saves?.length || appliedAll?.length)) {
+    const { data: hid } = await admin.from("map_tokens").select("combatant_id, combatants(monster_id)").eq("combat_id", combat.id).eq("hidden", true);
+    const hiddenM = new Set((hid ?? []).map((h) => (h.combatants as unknown as { monster_id: string | null } | null)?.monster_id).filter(Boolean));
+    if (hiddenM.size) {
+      saves = saves?.map((sv) => (sv.target.monsterId && hiddenM.has(sv.target.monsterId) ? { ...sv, name: "Something unseen" } : sv));
+      appliedAll = appliedAll?.filter((x) => !(x.target.monsterId && hiddenM.has(x.target.monsterId)));
+      if (applied?.target.monsterId && hiddenM.has(applied.target.monsterId)) applied = null;
+    }
+  }
+
   if (plan.rollType === "initiative" && combat && result) {
     await recordInitiative(admin, combat.id, { characterId: c.id }, result.total);
   }
@@ -367,4 +391,21 @@ export async function removeSpell(characterId: string, name: string): Promise<{ 
   const { error } = await supabase.from("characters").update({ spells }).eq("id", character.id);
   if (error) return { error: "Couldn't save. " + error.message };
   return { spells };
+}
+
+/** The sheet's own look (theme, accent color, font, text size). Owner or DM. */
+export async function saveSheetStyle(characterId: string, style: unknown): Promise<Fail | { style: SheetStyle }> {
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character || !canEdit) return { error: "You can only change the look of your own sheet." };
+  const clean = cleanSheetStyle(style);
+  const { error } = await supabase.from("characters").update({ sheet_style: Object.keys(clean).length ? clean : null }).eq("id", characterId);
+  if (error) return { error: /sheet_style/.test(error.message) ? "Run supabase/22-sheet-style.sql in Supabase first." : error.message };
+  // tidy up: background pictures that were tried but not kept
+  try {
+    const admin = createAdminClient();
+    const { data: files } = await admin.storage.from("vault").list(`sheets/${characterId}`);
+    const old = (Array.isArray(files) ? files : []).map((f) => f.name).filter((n) => n !== `bg-${clean.image}.webp`).map((n) => `sheets/${characterId}/${n}`);
+    if (old.length) await admin.storage.from("vault").remove(old);
+  } catch { /* tidying up is optional: the look is saved */ }
+  return { style: clean };
 }

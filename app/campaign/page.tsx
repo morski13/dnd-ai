@@ -58,7 +58,7 @@ async function Campaign({ searchParams }: { searchParams: SP }) {
       </header>
 
       {asPlayer && (
-        <p className="mt-4 rounded-xl border border-[#5A4024] bg-accent-surface px-3 py-2 text-sm text-soft">
+        <p className="mt-4 rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm text-soft">
           You&apos;re seeing exactly what your players see: only shared things, with every DM-only part removed.
         </p>
       )}
@@ -162,7 +162,7 @@ function ItemsStrip({ isDm, openShops, pending }: { isDm: boolean; openShops: { 
         {isDm && pending > 0 && <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-text">{pending} new</span>}
       </Link>
       {openShops.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#5A4024] bg-accent-surface px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent-line bg-accent-surface px-3 py-2">
           <span className="text-xs uppercase tracking-[0.12em] text-accent">Open now</span>
           {openShops.map((s) => <Link key={s.id} href={`/shop/${s.id}`} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-bold text-accent-text">{s.name}</Link>)}
         </div>

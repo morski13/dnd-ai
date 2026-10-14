@@ -67,7 +67,7 @@ export function PracticeView({ characters, library, history }: {
             const on = picked.includes(c.id);
             return (
               <button key={c.id} type="button" aria-pressed={on} onClick={() => setPicked(on ? picked.filter((x) => x !== c.id) : [...picked, c.id])}
-                className={`h-11 rounded-xl border px-3 text-sm ${on ? "border-[#8A5A24] bg-accent-surface font-bold" : "border-line text-muted line-through"}`}>
+                className={`h-11 rounded-xl border px-3 text-sm ${on ? "border-accent-strong bg-accent-surface font-bold" : "border-line text-muted line-through"}`}>
                 {c.name.split(" ")[0]} <span className="font-normal text-muted">L{c.class_levels.reduce((a, x) => a + x.level, 0)}</span>
               </button>
             );

@@ -10,7 +10,7 @@ export function ConcentrationChip({ spell, note, canEdit, pending, choices, onSe
   return (
     <div className="mt-3" aria-live="polite">
       {spell ? (
-        <div className="animate-pop flex items-center gap-2 rounded-xl border border-[#5A4024] bg-accent-surface px-3 py-2" role="status">
+        <div className="animate-pop flex items-center gap-2 rounded-xl border border-accent-line bg-accent-surface px-3 py-2" role="status">
           <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-accent text-[10px] font-bold text-accent" aria-hidden>◎</span>
           <span className="min-w-0 flex-1 text-sm">Concentrating on <b>{spell}</b></span>
           {canEdit && <button type="button" disabled={pending} onClick={() => onSet(null)} className="text-xs text-muted underline">End</button>}

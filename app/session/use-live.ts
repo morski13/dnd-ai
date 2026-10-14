@@ -20,6 +20,7 @@ export function useLive(campaignId: string, sessionId: string | null, everyMs = 
     const channel = supabase.channel(`table-${campaignId}`);
     channel.on("postgres_changes", { event: "*", schema: "public", table: "sessions", filter: `campaign_id=eq.${campaignId}` }, refresh);
     channel.on("postgres_changes", { event: "*", schema: "public", table: "shops", filter: `campaign_id=eq.${campaignId}` }, refresh);
+    channel.on("postgres_changes", { event: "*", schema: "public", table: "map_tokens", filter: `campaign_id=eq.${campaignId}` }, refresh);
     if (sessionId) {
       channel.on("postgres_changes", { event: "*", schema: "public", table: "roll_events", filter: `session_id=eq.${sessionId}` }, refresh);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "combats", filter: `session_id=eq.${sessionId}` }, refresh);

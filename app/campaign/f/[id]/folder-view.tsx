@@ -100,7 +100,7 @@ export function FolderView({ folder, def, entries, canEdit, asPlayer, fights, sh
       {/* Empty folder: ask what to add */}
       {entries.length === 0 && (
         canEdit ? (
-          <section className="animate-rise mt-6 rounded-[18px] border border-dashed border-[#5A4024] bg-accent-surface p-5 text-center">
+          <section className="animate-rise mt-6 rounded-[18px] border border-dashed border-accent-line bg-accent-surface p-5 text-center">
             <FolderGlyph kind={folder.kind} className="mx-auto h-10 w-10 text-accent" />
             <p className="mt-3 font-heading text-xl font-semibold">This folder is empty</p>
             <p className="mt-1 text-sm text-soft">{def.first === "image" ? "Start with a picture (maps, portraits, handouts), or write something." : "Start with a document, or add a picture."}</p>
@@ -253,7 +253,7 @@ function PartyPages({ folderId }: { folderId: string }) {
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
   return (
-    <div className="mt-4 rounded-2xl border border-[#5A4024] bg-accent-surface p-3">
+    <div className="mt-4 rounded-2xl border border-accent-line bg-accent-surface p-3">
       <p className="text-sm text-soft">Backstories, family and bonds written here join the mind map: each page becomes part of that character&apos;s box.</p>
       <button type="button" disabled={pending} onClick={() => start(async () => {
         const r = await createPartyPages(folderId);

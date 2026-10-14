@@ -15,7 +15,7 @@ export default function CampaignsPage() {
         <Suspense fallback={<div className="mt-5 animate-pulse space-y-3">{[0, 1].map((i) => <div key={i} className="h-20 rounded-2xl bg-surface" />)}</div>}>
           <List />
         </Suspense>
-        <section className="mt-8 rounded-2xl border border-[#5A4024] bg-accent-surface p-5" aria-label="Start a new campaign">
+        <section className="mt-8 rounded-2xl border border-accent-line bg-accent-surface p-5" aria-label="Start a new campaign">
           <p className="font-heading text-xl font-semibold">Start a new campaign</p>
           <p className="mt-1 text-sm text-soft">You&apos;ll be its DM. You get an invite code to give your players.</p>
           <NewCampaignForm />

@@ -18,7 +18,7 @@ export function BestMoves({ c, options }: { c: SheetCharacter; options: Option[]
   if (moves.bestHeal) rows.push({ key: "heal", label: "Most healing", combo: moves.bestHeal, heal: true });
 
   return (
-    <section className="rounded-[18px] border border-[#5A4024] bg-accent-surface p-4">
+    <section className="rounded-[18px] border border-accent-line bg-accent-surface p-4">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">Best moves this turn</p>
       </div>
@@ -39,7 +39,7 @@ export function BestMoves({ c, options }: { c: SheetCharacter; options: Option[]
       </div>
       {options.some((o) => o.needs_advantage_or_ally) && (
         <label className="mt-2 flex min-h-11 items-center gap-3 text-sm text-soft">
-          <input type="checkbox" checked={t.allyAdjacent} onChange={(e) => setT({ ...t, allyAdjacent: e.target.checked })} className="h-5 w-5 accent-[#E0913A]" />
+          <input type="checkbox" checked={t.allyAdjacent} onChange={(e) => setT({ ...t, allyAdjacent: e.target.checked })} className="h-5 w-5 accent-accent" />
           An ally is next to the target
         </label>
       )}

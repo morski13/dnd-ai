@@ -28,6 +28,10 @@ async function Fights() {
   return (
     <>
       <div className="mt-6"><NewFightButton /></div>
+      <Link href="/maps" className="mt-3 flex items-center justify-between rounded-2xl border border-accent-line bg-accent-surface px-4 py-3">
+        <span><span className="block font-bold">Battle maps</span><span className="block text-xs text-muted">Upload maps and fit the squares, then use one in a fight</span></span>
+        <span className="text-accent" aria-hidden>→</span>
+      </Link>
       <ul className="mt-5 flex flex-col gap-3">
         {fights.length === 0 && <li className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No fights yet. Make your first one.</li>}
         {fights.map((f) => (

@@ -166,6 +166,8 @@ export async function nextTurn(combatId: string): Promise<Fail | void> {
     if (!skip(order[index])) break;
   }
   await supabase.from("combats").update({ turn_index: index, round }).eq("id", combatId);
+  // a new turn: that creature's movement on the battle map starts fresh (fine if there's no map)
+  await admin.from("map_tokens").update({ moved_ft: 0, dashes: 0 }).eq("combatant_id", order[index].id).then(() => undefined, () => undefined);
 }
 
 export async function endCombat(combatId: string): Promise<Fail | void> {

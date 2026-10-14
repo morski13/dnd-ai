@@ -12,6 +12,8 @@ import {
   changeHp, restoreAllSlots, rollForCharacter, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
+import { CustomizeButton } from "./parts/customize";
+import { PortraitButton } from "../../components/map/portrait";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { BestMoves } from "./parts/best-moves";
 import { FeaturesTab } from "./parts/features-tab";
@@ -25,8 +27,8 @@ import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./par
 
 type Tab = "Attacks" | "Spells" | "Skills" | "Features" | "Gear";
 
-export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear }: {
-  character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear;
+export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null }: {
+  character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear; levelPlan?: string | null; portrait?: string | null;
 }) {
   const [hp, setHp] = useState({ cur: character.hp_current ?? character.hp_max ?? 0, temp: character.temp_hp ?? 0 });
   const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>(character.hit_dice_used ?? {});
@@ -107,11 +109,19 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         <Link href="/characters" aria-label="Back to characters" className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-soft">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
         </Link>
-        <div className="min-w-0">
+        <PortraitButton kind="character" id={character.id} name={character.name} src={portrait} canEdit={canEdit} size={52} />
+        <div className="min-w-0 flex-1">
           <h1 className="font-heading text-3xl font-bold leading-tight">{character.name}</h1>
           <p className="text-[15px] text-muted">{classLine}</p>
           {!canEdit && <p className="mt-1 text-xs text-muted">View only: this isn&apos;t your character.</p>}
         </div>
+        {canEdit && <div className="mt-1"><CustomizeButton characterId={character.id} /></div>}
+        {canEdit && totalLevel(c.class_levels) < 20 && (
+          <Link href={`/characters/${character.id}/level-up`}
+            className="mt-1 flex h-10 shrink-0 items-center gap-1 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">
+            <span aria-hidden>▲</span> Level up{levelPlan ? <span className="text-xs font-normal text-success"> · plan ready</span> : null}
+          </Link>
+        )}
       </header>
 
       <HpCard cur={hp.cur} temp={hp.temp} max={character.hp_max ?? 0} canEdit={canEdit} pending={pending}

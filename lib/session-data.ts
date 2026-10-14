@@ -4,7 +4,9 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { loadCharacter } from "@/lib/character-data";
 import { monsterSave } from "@/lib/moderator/concentration";
+import { isThemeId, type ThemeId } from "@/lib/themes";
 import { healthOf, type DeathSaves, type Health } from "@/lib/moderator/hp";
+import { loadBattle, type Battle } from "@/lib/maps-data";
 
 export type Combatant = {
   id: string;
@@ -57,12 +59,12 @@ export async function getSessionData(focusParam?: string | null) {
     .limit(1)
     .maybeSingle();
   const campaign = membership?.campaigns as unknown as
-    | { id: string; name: string; settings: { house_rules?: { monster_rolls?: string; auto_apply_damage?: boolean; death_saves?: string } } }
+    | { id: string; name: string; settings: { session_theme?: string; house_rules?: { monster_rolls?: string; auto_apply_damage?: boolean; death_saves?: string } } }
     | null;
   if (!membership || !campaign) return { userId, campaign: null } as const;
   const isDm = membership.role === "dm" || membership.role === "co_dm";
 
-  const [{ data: session }, { data: lastSession }, { data: characters }, { data: monsters }, { data: fights }] = await Promise.all([
+  const [{ data: session }, { data: lastSession }, { data: characters }, { data: monsters }, { data: fights }, { data: maps }] = await Promise.all([
     supabase.from("sessions").select("id, number, started_at")
       .eq("campaign_id", campaign.id).not("started_at", "is", null).is("ended_at", null)
       .order("number", { ascending: false }).limit(1).maybeSingle(),
@@ -75,11 +77,16 @@ export async function getSessionData(focusParam?: string | null) {
     isDm
       ? supabase.from("encounters").select("id, name, summary").eq("campaign_id", campaign.id).order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] as { id: string; name: string; summary: { tier?: string } | null }[] }),
+    // the DM's battle maps (none until 23-battle-maps.sql is run)
+    isDm
+      ? supabase.from("battle_maps").select("id, name, cols, rows").eq("campaign_id", campaign.id).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as { id: string; name: string; cols: number; rows: number }[] }),
   ]);
 
   const myCharacterIds = (characters ?? []).filter((c) => c.owner_user_id === userId).map((c) => c.id);
   const base = {
     userId, isDm, campaign: { id: campaign.id, name: campaign.name },
+    theme: (isThemeId(campaign.settings?.session_theme) ? campaign.settings.session_theme : "tavern") as ThemeId,
     monstersHiddenByDefault: (campaign.settings?.house_rules?.monster_rolls ?? "hidden") === "hidden",
     autoApply: campaign.settings?.house_rules?.auto_apply_damage !== false,
     deathSavesSecret: campaign.settings?.house_rules?.death_saves === "secret",
@@ -92,8 +99,9 @@ export async function getSessionData(focusParam?: string | null) {
     })),
     savedFights: (fights ?? []).map((f) => ({ id: f.id as string, name: f.name as string, tier: (f.summary as { tier?: string } | null)?.tier ?? null })),
     myCharacterIds,
+    maps: ((maps ?? []) as { id: string; name: string; cols: number; rows: number }[]),
   };
-  if (!session) return { ...base, session: null, combat: null, combatants: [] as Combatant[], current: null, log: [] as LogRow[], focus: null, focusMonster: null } as const;
+  if (!session) return { ...base, session: null, combat: null, combatants: [] as Combatant[], current: null, battle: null as Battle | null, log: [] as LogRow[], focus: null, focusMonster: null } as const;
 
   const [{ data: combat }, { data: log }] = await Promise.all([
     supabase.from("combats").select("id, name, round, turn_index")
@@ -136,6 +144,10 @@ export async function getSessionData(focusParam?: string | null) {
     });
   }
   const current = combat && combatants.length ? combatants[combat.turn_index % combatants.length] : null;
+  // the battle map of this fight (none if the DM hasn't picked one, or 23-battle-maps.sql isn't run yet)
+  const battle: Battle | null = combat
+    ? await loadBattle(supabase, { campaignId: campaign.id, combatId: combat.id, isDm, combatants, currentCombatantId: current?.id ?? null, myCharacterIds }).catch(() => null)
+    : null;
 
   // Whose card to show: what you tapped (if you control it), else the current turn (if yours), else your character.
   const wanted = focusParam ?? "";
@@ -164,6 +176,7 @@ export async function getSessionData(focusParam?: string | null) {
     combat,
     combatants,
     current,
+    battle,
     log: (log ?? []) as LogRow[],
     focus: focus?.character ? { character: focus.character, library: focus.library, canEdit: focus.canEdit } : null,
     focusMonster,

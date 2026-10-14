@@ -27,7 +27,7 @@ export function AddMonsters({ campaignMonsters, partyLevel, onAdd }: {
       <div className="mt-2 flex gap-1.5">
         {([["srd", "Monster library"], ["campaign", "Your monsters"], ["custom", "Custom"]] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setTab(k)}
-            className={`h-10 flex-1 rounded-lg border text-sm ${tab === k ? "border-[#8A5A24] font-bold" : "border-line text-soft"}`}>{l}</button>
+            className={`h-10 flex-1 rounded-lg border text-sm ${tab === k ? "border-accent-strong font-bold" : "border-line text-soft"}`}>{l}</button>
         ))}
       </div>
       {tab === "srd" && <SrdSearch partyLevel={partyLevel} onAdd={(stats) => onAdd({ source: "srd", ref: stats.name, stats, count: 1, side })} />}
@@ -70,7 +70,7 @@ export function SrdSearch({ partyLevel, onAdd }: { partyLevel: number; onAdd: (s
         <button type="submit" disabled={busy} className="h-11 rounded-xl bg-accent px-4 text-sm font-bold text-accent-text disabled:opacity-60">Search</button>
       </form>
       <label className="mt-1 flex min-h-11 items-center gap-3 text-sm text-soft">
-        <input type="checkbox" checked={capped} onChange={(e) => { setCapped(e.target.checked); search(query, e.target.checked); }} className="h-5 w-5 accent-[#E0913A]" />
+        <input type="checkbox" checked={capped} onChange={(e) => { setCapped(e.target.checked); search(query, e.target.checked); }} className="h-5 w-5 accent-accent" />
         Only CR {maxCr ?? partyLevel + 3} and lower (sensible for level {partyLevel})
       </label>
       {error && <p className="text-sm text-danger">{error}</p>}
@@ -134,7 +134,7 @@ function CustomForm({ onAdd }: { onAdd: (s: MonsterStats) => void }) {
         {num("attacks", "Per turn")}
       </div>
       <label className="flex min-h-11 items-center gap-3 text-sm text-soft">
-        <input type="checkbox" checked={f.area} onChange={(e) => set("area", e.target.checked)} className="h-5 w-5 accent-[#E0913A]" />
+        <input type="checkbox" checked={f.area} onChange={(e) => set("area", e.target.checked)} className="h-5 w-5 accent-accent" />
         Also has an area attack (breath, fireball…)
       </label>
       {f.area && (
@@ -149,7 +149,7 @@ function CustomForm({ onAdd }: { onAdd: (s: MonsterStats) => void }) {
           <label className="text-xs text-muted">Damage<input value={f.areaDamage} onChange={(e) => set("areaDamage", e.target.value)} className={`${input} mt-1`} /></label>
           {num("targets", "Hits how many")}
           <label className="flex items-end gap-2 pb-3 text-xs text-soft">
-            <input type="checkbox" checked={f.recharge} onChange={(e) => set("recharge", e.target.checked)} className="h-5 w-5 accent-[#E0913A]" /> Recharge 5–6
+            <input type="checkbox" checked={f.recharge} onChange={(e) => set("recharge", e.target.checked)} className="h-5 w-5 accent-accent" /> Recharge 5–6
           </label>
         </div>
       )}

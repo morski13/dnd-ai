@@ -133,7 +133,7 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
       )}
 
       <label className="mt-2 flex min-h-11 items-center gap-3 text-sm text-soft">
-        <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="h-5 w-5 accent-[#E0913A]" />
+        <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="h-5 w-5 accent-accent" />
         Secret roll (players see &quot;DM roll, hidden&quot; until the fight ends)
       </label>
 

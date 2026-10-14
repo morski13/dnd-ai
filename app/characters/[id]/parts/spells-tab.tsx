@@ -201,7 +201,7 @@ function AddSpells({ characterId, classes, known, onAdded, onClose }: {
       </form>
       {classes.length > 0 && (
         <label className="mt-2 flex min-h-11 items-center gap-3 text-sm text-soft">
-          <input type="checkbox" checked={onlyMine} onChange={(e) => { setOnlyMine(e.target.checked); search(query, e.target.checked); }} className="h-5 w-5 accent-[#E0913A]" />
+          <input type="checkbox" checked={onlyMine} onChange={(e) => { setOnlyMine(e.target.checked); search(query, e.target.checked); }} className="h-5 w-5 accent-accent" />
           Only {classes.join(" / ")} spells
         </label>
       )}

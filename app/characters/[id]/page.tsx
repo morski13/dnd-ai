@@ -2,25 +2,34 @@
 import { Suspense } from "react";
 import { getCharacterSheet } from "@/lib/character-data";
 import { BottomNav } from "../../components/bottom-nav";
+import { LookProvider, Zoomed } from "./look";
 import { CharacterSheet } from "./sheet";
 
 export default function CharacterPage({ params }: { params: Promise<{ id: string }> }) {
+  // The sheet (and the menu) wear the character's own look, so the whole screen waits for it.
   return (
-    <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-60">
-        <Suspense fallback={<SheetSkeleton />}>
-          <Sheet params={params} />
-        </Suspense>
-      </main>
+    <Suspense fallback={<>
+      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-60"><SheetSkeleton /></main>
       <BottomNav active="characters" />
-    </>
+    </>}>
+      <Sheet params={params} />
+    </Suspense>
   );
 }
 
 async function Sheet({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { character, canEdit, library, featText, gear } = await getCharacterSheet(id);
-  return <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} />;
+  const { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait } = await getCharacterSheet(id);
+  return (
+    <LookProvider characterId={character.id} initial={sheetStyle}>
+      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-60">
+        <Zoomed>
+          <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} levelPlan={levelPlan} portrait={portrait} />
+        </Zoomed>
+      </main>
+      <BottomNav active="characters" />
+    </LookProvider>
+  );
 }
 
 function SheetSkeleton() {

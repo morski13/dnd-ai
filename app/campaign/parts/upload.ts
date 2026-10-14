@@ -1,5 +1,5 @@
 // Shrinks a picture in the browser (big maps → max 2400 px, WEBP) and uploads it with a small thumbnail.
-async function load(file: File): Promise<HTMLImageElement> {
+export async function load(file: File): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(file);
   try {
     return await new Promise((resolve, reject) => {
@@ -13,7 +13,7 @@ async function load(file: File): Promise<HTMLImageElement> {
   }
 }
 
-function toBlob(img: HTMLImageElement, max: number, quality: number): Promise<{ blob: Blob; w: number; h: number }> {
+export function toBlob(img: HTMLImageElement, max: number, quality: number): Promise<{ blob: Blob; w: number; h: number }> {
   const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.max(1, Math.round(img.naturalWidth * k));
   const h = Math.max(1, Math.round(img.naturalHeight * k));

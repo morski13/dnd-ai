@@ -54,7 +54,7 @@ export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaign
         {isDm && (
           <>
             <label className="text-sm text-soft">Player (optional)<input value={playerName} onChange={(e) => setPlayerName(e.target.value)} maxLength={40} className={`${field} mt-1`} placeholder="Who will play them?" /></label>
-            <label className="flex items-center gap-2 text-sm text-soft"><input type="checkbox" checked={forMe} onChange={(e) => setForMe(e.target.checked)} className="h-5 w-5 accent-[#e0913a]" />This character is mine (otherwise a player claims it)</label>
+            <label className="flex items-center gap-2 text-sm text-soft"><input type="checkbox" checked={forMe} onChange={(e) => setForMe(e.target.checked)} className="h-5 w-5 accent-accent" />This character is mine (otherwise a player claims it)</label>
           </>
         )}
         <div className="grid grid-cols-2 gap-2">

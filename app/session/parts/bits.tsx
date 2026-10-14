@@ -6,7 +6,7 @@ import { signed } from "@/lib/dice";
 export function Segment({ active, onClick, children, tone = "normal" }: {
   active: boolean; onClick: () => void; children: React.ReactNode; tone?: "normal" | "danger";
 }) {
-  const on = tone === "danger" ? "border-danger-line bg-danger-bg text-danger font-bold" : "border-[#8A5A24] bg-bg text-text font-bold";
+  const on = tone === "danger" ? "border-danger-line bg-danger-bg text-danger font-bold" : "border-accent-strong bg-bg text-text font-bold";
   return (
     <button type="button" onClick={onClick}
       className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${active ? on : "border-line text-soft"}`}>

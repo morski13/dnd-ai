@@ -114,7 +114,7 @@ export function FightBuilder({ fight, characters, library, campaignMonsters, his
             const lvl = c.class_levels.reduce((a, x) => a + x.level, 0);
             return (
               <button key={c.id} type="button" onClick={() => toggleCharacter(c.id)}
-                className={`h-11 rounded-xl border px-3 text-sm ${on ? "border-[#8A5A24] bg-accent-surface font-bold" : "border-line text-muted line-through"}`}>
+                className={`h-11 rounded-xl border px-3 text-sm ${on ? "border-accent-strong bg-accent-surface font-bold" : "border-line text-muted line-through"}`}>
                 {c.name.split(" ")[0]} <span className="font-normal text-muted">L{lvl}</span>
               </button>
             );

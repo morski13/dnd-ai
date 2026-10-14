@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { SheetCharacter, SpellInfo } from "@/lib/rules";
 import { getGear } from "@/lib/items-data";
+import { cleanSheetStyle } from "@/lib/themes";
 
 export type Resource = { name: string; max: number; used?: number; recharge?: string };
 export type Feature = { name: string; source?: string; description?: string; feat?: boolean };
@@ -106,6 +107,18 @@ export async function getCharacterSheet(id: string) {
     : { data: [] as { name: string; category: string; description: string }[] };
   const featText = Object.fromEntries((feats ?? []).map((f) => [f.name, f.description]));
   const gear = await getGear(supabase, character.id, userId, canEdit);
+  // a saved level-up plan (needs 21-level-plans.sql; without it there's simply no plan)
+  const { data: planRow } = canEdit ? await supabase.from("characters").select("level_plan").eq("id", id).maybeSingle() : { data: null };
+  const levelPlan = ((planRow as { level_plan?: { className: string } | null } | null)?.level_plan?.className) ?? null;
 
-  return { character, canEdit, library, featText, gear };
+  // the sheet's own look (needs 22-sheet-style.sql; without it the sheet keeps the usual look)
+  const { data: styleRow } = await supabase.from("characters").select("sheet_style").eq("id", id).maybeSingle();
+  const sheetStyle = cleanSheetStyle((styleRow as { sheet_style?: unknown } | null)?.sheet_style);
+
+  // the token picture (needs 23-battle-maps.sql; without it: initials)
+  const { data: pRow } = await supabase.from("characters").select("portrait").eq("id", id).maybeSingle();
+  const portraitStamp = Number((pRow as { portrait?: number | null } | null)?.portrait) || null;
+  const portrait = portraitStamp ? `/api/portrait/character/${id}?v=${portraitStamp}` : null;
+
+  return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait };
 }

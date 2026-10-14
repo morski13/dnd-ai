@@ -14,6 +14,8 @@ import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, DeathSavePanel, HpBar } from "./moderator";
 import { healthOf } from "@/lib/moderator/hp";
+import { parseArea } from "@/lib/maps/area";
+import { useMapAim } from "./map-aim";
 
 export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative, isDm = false, deathSavesSecret = false }: {
   character: FullCharacter; library: SpellInfo[]; canEdit: boolean; combatants: Combatant[];
@@ -44,6 +46,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dice = useDice();
+  const mapAim = useMapAim();
 
   const selected = options.find((o) => o.key === key) ?? null;
   const target = targets.find((t) => t.id === targetId) ?? null;
@@ -58,11 +61,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     return null;
   };
 
-  function go(fn: () => ReturnType<typeof rollForCharacter>, onDone: (r: SavedRoll) => void) {
-    setError(null);
-    start(async () => {
-      const res = await fn();
-      if ("error" in res) return setError(res.error);
+  async function landed(res: RollResponse, onDone: (r: SavedRoll) => void) {
       await dice.show(asShown(res.roll));
       setSpells(res.spells);
       setResources(res.resources);
@@ -71,6 +70,13 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       else { setSaves(undefined); setAppliedAll(undefined); }
       onDone(res.roll);
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
+  }
+  function go(fn: () => ReturnType<typeof rollForCharacter>, onDone: (r: SavedRoll) => void) {
+    setError(null);
+    start(async () => {
+      const res = await fn();
+      if ("error" in res) return setError(res.error);
+      await landed(res, onDone);
     });
   }
 
@@ -87,6 +93,19 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     }
   }
 
+  // an area spell (Fireball, Bless…) with a battle map in the fight: place it on the map instead
+  const area = selected?.fromSpell ? parseArea(selected.fromSpell.description ?? "", selected.fromSpell.range ?? null) : null;
+  const canAim = !!(area && mapAim?.onMap(character.id) && canEdit);
+  const aiming = mapAim?.aim?.characterId === character.id && mapAim.aim.optionKey === selected?.key;
+  function aimIt() {
+    if (!selected || !area || !mapAim) return;
+    setError(null);
+    mapAim.setAim({
+      characterId: character.id, optionKey: selected.key, name: selected.name, spec: area, heal: selected.kind === "heal", advantage: adv,
+      onDone: (res) => start(async () => { await landed(res, (r) => { setAttack(r); setDamage(null); }); }),
+    });
+  }
+
   const bigLabel = !selected ? "Roll"
     : selected.kind === "save" ? `Cast · ${optionButtonLabel(c, selected)}`
     : selected.kind === "heal" ? "Roll healing"
@@ -94,7 +113,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     : "Roll attack";
 
   return (
-    <section className={`rounded-[18px] border p-4 ${isTurn ? "animate-turn border-[#8A5A24] bg-accent-surface" : "border-line bg-surface"}`}>
+    <section className={`rounded-[18px] border p-4 ${isTurn ? "animate-turn border-accent-strong bg-accent-surface" : "border-line bg-surface"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-lg font-bold">{isTurn ? `Your turn, ${short}` : short}</p>
@@ -114,7 +133,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       {inCombat && myInitiative == null && canEdit && (
         <button type="button" disabled={pending}
           onClick={() => go(() => rollForCharacter(character.id, { kind: "initiative" }, adv), (r) => { setAttack(r); setDamage(null); })}
-          className="mt-3 h-12 w-full rounded-xl border border-[#8A5A24] text-[15px] font-bold text-accent disabled:opacity-50">
+          className="mt-3 h-12 w-full rounded-xl border border-accent-strong text-[15px] font-bold text-accent disabled:opacity-50">
           Roll initiative ({signed(Math.floor(((character.ability_scores.DEX ?? 10) - 10) / 2))})
         </button>
       )}
@@ -146,7 +165,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
             const blocked = left(o);
             return (
               <button key={o.key} type="button" onClick={() => pickOption(o)} disabled={!!blocked}
-                className={`min-h-12 rounded-xl border px-2 py-1.5 text-left text-sm leading-tight disabled:opacity-40 ${key === o.key ? "border-[#8A5A24] bg-bg font-bold" : "border-line text-soft"}`}>
+                className={`min-h-12 rounded-xl border px-2 py-1.5 text-left text-sm leading-tight disabled:opacity-40 ${key === o.key ? "border-accent-strong bg-bg font-bold" : "border-line text-soft"}`}>
                 {o.name} <span className="font-normal text-muted">{blocked ?? optionButtonLabel(c, o)}</span>
               </button>
             );
@@ -156,10 +175,16 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
 
       <div className="mt-3"><AdvToggle value={adv} onChange={setAdv} /></div>
 
+      {canAim && selected && (
+        <button type="button" disabled={pending || !!left(selected)} onClick={() => (aiming ? mapAim?.setAim(null) : aimIt())}
+          className="mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50">
+          {aiming ? "Aiming on the map… (cancel)" : `Aim ${selected.name} on the map`}
+        </button>
+      )}
       <button type="button" disabled={!canEdit || !selected || pending || !!(selected && left(selected))}
         onClick={() => selected && go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); })}
-        className="mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50">
-        {pending ? "Rolling…" : bigLabel}
+        className={canAim ? "mt-2 h-11 w-full rounded-xl border border-line text-sm text-soft disabled:opacity-50" : "mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50"}>
+        {pending ? "Rolling…" : canAim ? `${bigLabel} without the map` : bigLabel}
       </button>
 
       {error && <p className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
