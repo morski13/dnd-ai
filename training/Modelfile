@@ -1,0 +1,7 @@
+# Ollama recipe for our own model. Put the .gguf from Colab next to this file, then:
+#   ollama create tavern -f Modelfile
+#   ollama run tavern "Can I cast Misty Step and Fireball on the same turn?"
+FROM ./tavern-q4_k_m.gguf
+PARAMETER temperature 0.3
+PARAMETER num_ctx 8192
+PARAMETER num_predict 900

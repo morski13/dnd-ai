@@ -124,6 +124,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         )}
       </header>
 
+      <Link href={`/tavern?c=${character.id}&mode=character`}
+        className="mt-3 flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm text-soft">
+        <span aria-hidden className="text-accent">✦</span>
+        <span className="min-w-0 flex-1 truncate">Ask the Tavern about {character.name}: combos, rules, features</span>
+        <span aria-hidden className="text-accent">→</span>
+      </Link>
+
       <HpCard cur={hp.cur} temp={hp.temp} max={character.hp_max ?? 0} canEdit={canEdit} pending={pending}
         onChange={(kind, n) => run(() => changeHp(character.id, kind, n), (r) => {
           setHp({ cur: r.hp_current, temp: r.temp_hp });

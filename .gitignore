@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Tavern training data (your group's questions) and model files
+training/*.jsonl
+training/*.gguf

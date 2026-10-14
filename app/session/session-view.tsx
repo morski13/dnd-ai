@@ -17,6 +17,7 @@ import { MapAimProvider } from "./parts/map-aim";
 import { allOptions } from "@/lib/rules";
 import { TELEPORTS } from "@/lib/maps/move";
 import { HEALTH_LABEL, HpBar } from "./parts/moderator";
+import { TavernButton } from "../tavern/panel";
 
 export function SessionView({ data, shops = [] }: { data: SessionData; shops?: { id: string; name: string }[] }) {
   useLive(data.campaign.id, data.session?.id ?? null);
@@ -170,6 +171,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
         <TableLog rows={data.log} isDm={data.isDm} />
         <TableDice rows={data.log} me={data.userId} />
       </div>
+      <TavernButton characterId={focusChar?.id ?? mine?.characterId ?? data.myCharacterIds[0] ?? null} />
     </MapAimProvider>
   );
 }

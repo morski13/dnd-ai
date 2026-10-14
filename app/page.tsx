@@ -63,7 +63,7 @@ async function Home() {
       ? { Icon: SwordsIcon, title: "Fight planner", sub: "DM · plan & balance fights", href: "/fights" }
       : { Icon: SwordsIcon, title: "Practice fight", sub: "How would you do? Uses your real dice", href: "/practice" },
     ...(data.isDm ? [{ Icon: MapIcon, title: "Battle maps", sub: "DM · upload maps, fit the squares", href: "/maps" }] : []),
-    { Icon: SparkIcon, title: "Ask the AI", sub: "Rules, ideas, builds" },
+    { Icon: SparkIcon, title: "The Tavern", sub: "Ask the AI: rules, combos, lore", href: "/tavern" },
   ];
 
   return (

@@ -37,7 +37,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
   const [selected, setSelected] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [aiAnswer, setAiAnswer] = useState<{ answer: string; about: string[]; by?: string } | { error: string } | null>(null);
+  const [aiAnswer, setAiAnswer] = useState<{ answer: string; about: string[]; by?: string; chatId?: string } | { error: string } | null>(null);
   const [asking, startAsk] = useTransition();
   const mapRouter = useRouter();
 
@@ -84,7 +84,7 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
         })}
         {showSecrets && (
           <button type="button" aria-pressed={secrets} onClick={() => setSecrets(!secrets)}
-            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-[#5A4024] bg-accent-surface text-accent" : "border-line text-muted"}`}>
+            className={`ml-auto flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs ${secrets ? "border-accent-line bg-accent-surface text-accent" : "border-line text-muted"}`}>
             <LockIcon className="h-3.5 w-3.5" />{secrets ? "Secrets shown" : "Secrets hidden"}
           </button>
         )}
@@ -140,7 +140,8 @@ export function MindMap({ analysis, showSecrets, q, ai }: { analysis: Analysis; 
                     </button>) : null; })}
                 </div>
               )}
-              <p className="mt-3 text-[11px] text-muted">✦ Written by the AI{aiAnswer.by ? ` (${aiAnswer.by})` : ""} from the notes{withSecrets ? "" : " the players can see"}. It can get things wrong: tap a name to check the notes.</p>
+              <p className="mt-3 text-[11px] text-muted">✦ The Tavern{aiAnswer.by ? ` (${aiAnswer.by})` : ""}, from the notes{withSecrets ? "" : " the players can see"}. It can get things wrong: tap a name to check the notes.
+                {aiAnswer.chatId && <> <Link href={`/tavern?chat=${aiAnswer.chatId}`} className="text-accent underline">Continue in the Tavern →</Link></>}</p>
             </>
           )}
         </section>
