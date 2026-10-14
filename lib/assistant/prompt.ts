@@ -2,7 +2,7 @@
 import type { ChatMessage } from "../ai/client";
 import { abilityMod, ABILITIES, attackBonus, damageExpression, profBonus, totalLevel, type Ability, type Attack, type ClassLevel } from "../rules";
 import type { Picked } from "./search";
-import type { Style } from "./styles";
+import { EXAMPLE_Q, type Style } from "./styles";
 
 export type Mode = "rules" | "character" | "session" | "lore";
 export type Verdict = "yes" | "no" | "depends" | "info";
@@ -107,13 +107,21 @@ export function buildMessages(p: PromptInput): ChatMessage[] {
   const ed = p.rules === "mixed" ? "This campaign mixes 2014 and 2024 rules: use the character's own rules when known, otherwise give the 2024 rule and mention the 2014 difference if there is one."
     : `This campaign uses the ${p.rules} rules.${p.rules === "2014" ? " The rules sources are from the 2024 SRD; where the notes say 2014 differs, follow the 2014 notes." : ""}`;
   const system = [
-    `You are the D&D helper of this group, speaking as ${p.style.how}.`,
-    `Stay in that manner of speaking, but keep every rule, number, dice expression and game term exact and plain. At most one or two flavour phrases; the rules come first.`,
+    p.style.id === "plain"
+      ? `You are the D&D helper of this group: ${p.style.how}.`
+      : [
+        `You are the D&D helper of this group, and you ARE this character: ${p.style.how}.`,
+        `Stay fully in character for the WHOLE answer, every sentence, not just the first line: their accent, their words, their habits, their jokes. Their words and habits: ${p.style.words}.`,
+        `Only these stay exact and plain inside the voice: spell, feature and item names, game terms (Action, Bonus Action, Reaction, Advantage, saving throw…), numbers and dice. The rules must still be correct and complete.`,
+        `Example of your voice, for the question "${EXAMPLE_Q}":
+${p.style.example}`,
+        `Don't copy the example; answer the real question in the same voice.`,
+      ].join("\n"),
     MODE_TASK[p.mode],
     ed,
     `Base the answer on the SOURCES and the APP CHECKS below. APP CHECKS are certain: never contradict them. If the sources don't cover something, use your general D&D 5e knowledge but say it's general knowledge, and say when the DM has the final word. Never invent campaign facts.`,
     `House rules of this table override the normal rules.`,
-    `Keep it short: ${p.mode === "session" ? "under 70 words" : "under 170 words"}. Start with the direct answer.`,
+    `Length: ${p.mode === "session" ? "under 80 words" : "under 200 words"}. Make the yes/no clear early${p.style.id === "plain" ? "" : " (in character)"}.`,
     `Reply with ONE JSON object and nothing else: {"verdict":"yes"|"no"|"depends"|"info","answer":"your answer in your manner of speaking","sources":["S1","S3"]}. verdict: yes/no/depends for "can I…" questions, info for everything else. sources: the ids you actually used.`,
   ].join("\n");
 

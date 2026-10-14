@@ -116,7 +116,7 @@ export async function answer(a: Ask): Promise<Answer> {
     sources, checks, sheet: sheet ? sheetText(sheet, spellLevels) : null, house: houseText(camp?.settings?.house_rules), history: a.history,
   });
   const hasSecrets = sources.some((s) => s.secret);
-  const { text, by } = await chatWith(messages, { json: true, maxTokens: a.mode === "session" ? 450 : 900, timeoutMs: 45_000, secrets: hasSecrets });
+  const { text, by } = await chatWith(messages, { json: true, maxTokens: a.mode === "session" ? 500 : 1000, timeoutMs: 45_000, secrets: hasSecrets, temperature: style.id === "plain" ? 0.2 : 0.7 });
   const reply = parseReply(text, sources.map((s) => s.id));
   return {
     ...reply, by: label(by), style: style.id, checks, hasSecrets, sourcesAll: sources, prompt: messages,

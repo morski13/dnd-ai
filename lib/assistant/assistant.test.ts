@@ -111,7 +111,8 @@ describe("prompt and reply", () => {
     expect(houseText({ crit: "double_dice", potion_bonus_action: true, flanking: "advantage", other: ["No resurrection magic"], weird: 1 }))
       .toBe("Critical hits: double the damage dice.\nDrinking a potion is a Bonus Action.\nFlanking gives advantage.\nNo resurrection magic");
     const msgs = buildMessages({ style: styleOf("dwarf"), mode: "character", rules: "2024", question: "Can I hide as a bonus action?", sources: [{ id: "S1", kind: "feature", title: "Rogue 2: Cunning Action", text: "…", secret: false }], checks: ["x"], sheet, house: "Flanking gives advantage.", history: [{ role: "user", content: "hi" }, { role: "assistant", content: "Aye." }] });
-    expect(msgs[0].content).toMatch(/dwarf/);
+    expect(msgs[0].content).toMatch(/Durgan Ironbelly[\s\S]*WHOLE answer[\s\S]*cannae[\s\S]*Example of your voice/);
+    expect(buildMessages({ style: styleOf("plain"), mode: "rules", rules: "2024", question: "x", sources: [], checks: [] })[0].content).not.toMatch(/in character/);
     expect(msgs).toHaveLength(4);
     expect(msgs[3].content).toMatch(/CHARACTER SHEET[\s\S]*APP CHECKS[\s\S]*\[S1\] Rogue 2: Cunning Action[\s\S]*QUESTION: Can I hide/);
     expect(parseReply('```json\n{"verdict":"yes","answer":"Aye, lad.","sources":["S1","[S9]","s2"]}\n```', ["S1", "S2"])).toEqual({ verdict: "yes", answer: "Aye, lad.", sources: ["S1", "S2"] });
@@ -119,7 +120,7 @@ describe("prompt and reply", () => {
   });
   it("every style has what the prompt needs", () => {
     expect(new Set(STYLES.map((s) => s.id)).size).toBe(STYLES.length);
-    for (const s of STYLES) expect(s.how.length).toBeGreaterThan(20);
+    for (const s of STYLES) { expect(s.how.length).toBeGreaterThan(20); expect(s.example.length).toBeGreaterThan(80); expect(s.example).toMatch(/Cunning Action/); }
     expect(styleOf("nonsense").id).toBe("tavern");
   });
 });

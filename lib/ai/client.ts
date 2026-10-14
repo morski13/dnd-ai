@@ -25,6 +25,8 @@ export class AiError extends Error {}
 
 type ChatOpts = {
   json?: boolean; maxTokens?: number;
+  /** 0 = always the same wording, 1 = more lively; default 0.2 (facts). The Tavern's voices use more. */
+  temperature?: number;
   timeoutMs?: number;  // per AI tried
   /** Does this request hold DM-only notes? Then AIs set to SECRETS=no are skipped. Default true (the safe side). */
   secrets?: boolean;
@@ -107,7 +109,7 @@ function explain(p: Provider, r: Sent) {
 
 /** One AI, including the strict-JSON second chance. */
 async function attempt(p: Provider, messages: ChatMessage[], opts: ChatOpts, timeoutMs: number): Promise<Sent> {
-  const body: Record<string, unknown> = { model: p.model, messages, temperature: 0.2, max_tokens: opts.maxTokens ?? 1500 };
+  const body: Record<string, unknown> = { model: p.model, messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 1500 };
   const jsonMode = !!opts.json && p.json && process.env.AI_JSON_MODE !== "off";
   if (jsonMode) body.response_format = { type: "json_object" };
 

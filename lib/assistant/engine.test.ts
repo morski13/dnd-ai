@@ -66,7 +66,8 @@ describe("Tavern engine", () => {
     expect(r.sourcesUsed.map((s) => s.title)).toEqual(expect.arrayContaining(["Spell: Fireball", "Spell: Misty Step"]));
     expect(r.sourcesAll.some((s) => /Gaining and Casting Spells/.test(s.title))).toBe(true);
     const user = sent[0].messages.at(-1)!.content;
-    expect(sent[0].messages[0].content).toMatch(/dwarf/);
+    expect(sent[0].messages[0].content).toMatch(/Durgan/);
+    expect((sent[0] as unknown as { temperature: number }).temperature).toBe(0.7);
     expect(user).toMatch(/CHARACTER SHEET:\nOrrin: Human Wizard 5/);
     expect(user).toMatch(/level 2: Misty Step; level 3: Fireball/);
     expect(user).toMatch(/Spell slots left: L1 4\/4, L2 3\/3, L3 1\/2/);
