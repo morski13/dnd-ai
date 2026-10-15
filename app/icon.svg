@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs>
+  <linearGradient id="dd-rim" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#C9742A"/><stop offset="0.5" stop-color="#F2C48D"/><stop offset="1" stop-color="#E0913A"/>
+  </linearGradient>
+  <radialGradient id="dd-in" cx="0.5" cy="0.35" r="0.65">
+    <stop offset="0" stop-color="#E0913A" stop-opacity="0.16"/><stop offset="1" stop-color="#E0913A" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="dd-spark" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#F2C48D" stop-opacity="0.45"/><stop offset="1" stop-color="#F2C48D" stop-opacity="0"/>
+  </radialGradient>
+</defs><rect width="512" height="512" fill="#15130F"/><g transform="translate(10.2 19.8) scale(0.9600)">
+  <path d="M84 400 C84 230 160 136 256 136 C352 136 428 230 428 400 Z" fill="url(#dd-in)"/>
+  <path d="M84 400 C84 230 160 136 256 136 C352 136 428 230 428 400" fill="none" stroke="#E0913A" stroke-width="52" stroke-opacity="0.07" stroke-linecap="round"/><path d="M84 400 C84 230 160 136 256 136 C352 136 428 230 428 400" fill="none" stroke="#E0913A" stroke-width="40" stroke-opacity="0.12" stroke-linecap="round"/>
+  <path d="M84 400 C84 230 160 136 256 136 C352 136 428 230 428 400" fill="none" stroke="url(#dd-rim)" stroke-width="26" stroke-linecap="round"/>
+  <path d="M256 30 Q262 66 300 72 Q262 78 256 114 Q250 78 212 72 Q250 66 256 30 Z" fill="#F2C48D"/>
+  <rect x="60" y="390" width="392" height="26" rx="13" fill="url(#dd-rim)"/>
+  <polygon points="150,300 256,206 362,300 362,392 150,392" fill="#B98A5C"/>
+  <polyline points="124,318 256,196 388,318" fill="none" stroke="#C9996A" stroke-width="26" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="222" y="312" width="68" height="80" fill="#0E0C09"/></g></svg>

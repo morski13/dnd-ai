@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1290 2796"><defs>
+  <linearGradient id="dd-rim" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#C9742A"/><stop offset="0.5" stop-color="#F2C48D"/><stop offset="1" stop-color="#E0913A"/>
+  </linearGradient>
+  <radialGradient id="dd-in" cx="0.5" cy="0.35" r="0.65">
+    <stop offset="0" stop-color="#E0913A" stop-opacity="0.16"/><stop offset="1" stop-color="#E0913A" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="dd-spark" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#F2C48D" stop-opacity="0.45"/><stop offset="1" stop-color="#F2C48D" stop-opacity="0"/>
+  </radialGradient>
+</defs><rect width="1290" height="2796" fill="#15130F"/><g transform="translate(285.0 878.0) scale(1.40625)"><g transform="translate(0 34)">
+  <path d="M96 368 C96 228 168 150 256 150 C344 150 416 228 416 368 Z" fill="url(#dd-in)"/>
+  <path d="M96 368 C96 228 168 150 256 150 C344 150 416 228 416 368" fill="none" stroke="#E0913A" stroke-width="30" stroke-opacity="0.05" stroke-linecap="round"/><path d="M96 368 C96 228 168 150 256 150 C344 150 416 228 416 368" fill="none" stroke="#E0913A" stroke-width="22" stroke-opacity="0.08" stroke-linecap="round"/><path d="M96 368 C96 228 168 150 256 150 C344 150 416 228 416 368" fill="none" stroke="#E0913A" stroke-width="15" stroke-opacity="0.13" stroke-linecap="round"/>
+  <path d="M96 368 C96 228 168 150 256 150 C344 150 416 228 416 368" fill="none" stroke="url(#dd-rim)" stroke-width="7" stroke-linecap="round"/>
+  <path d="M248 152 Q256 142 256 128 Q256 142 264 152 Z" fill="#F2C48D"/>
+  <circle cx="256" cy="118" r="4" fill="#F2C48D"/>
+  <circle cx="256" cy="56" r="4" fill="#F2C48D"/>
+  <circle cx="256" cy="87" r="34" fill="url(#dd-spark)"/>
+  <path d="M256 66 Q259 84 278 87 Q259 90 256 108 Q253 90 234 87 Q253 84 256 66 Z" fill="#F2C48D"/>
+  <ellipse cx="256" cy="370" rx="176" ry="17" fill="#0E0C09" fill-opacity="0.7"/>
+  <ellipse cx="256" cy="370" rx="176" ry="17" fill="none" stroke="#E0913A" stroke-width="24" stroke-opacity="0.05" stroke-linecap="round"/><ellipse cx="256" cy="370" rx="176" ry="17" fill="none" stroke="#E0913A" stroke-width="16" stroke-opacity="0.09" stroke-linecap="round"/><ellipse cx="256" cy="370" rx="176" ry="17" fill="none" stroke="#E0913A" stroke-width="10" stroke-opacity="0.14" stroke-linecap="round"/>
+  <ellipse cx="256" cy="370" rx="176" ry="17" fill="none" stroke="url(#dd-rim)" stroke-width="5"/>
+  <rect x="288" y="206" width="13" height="34" fill="#8A5E3A"/>
+  <rect x="286" y="203" width="17" height="5" fill="#B98A5C"/>
+  <polygon points="178,304 246,296 246,362 178,362" fill="#6E4B2E"/>
+  <line x1="200" y1="302" x2="200" y2="362" stroke="#57391F" stroke-width="3"/>
+  <line x1="222" y1="299" x2="222" y2="362" stroke="#57391F" stroke-width="3"/>
+  <rect x="192" y="316" width="22" height="22" fill="#0E0C09"/>
+  <polygon points="302,230 232,250 152,308 234,296" fill="#A87A4E"/>
+  <line x1="286" y1="236" x2="214" y2="301" stroke="#8A5E3A" stroke-width="3"/>
+  <line x1="266" y1="242" x2="192" y2="303" stroke="#8A5E3A" stroke-width="3"/>
+  <line x1="246" y1="248" x2="172" y2="305" stroke="#8A5E3A" stroke-width="3"/>
+  <line x1="302" y1="230" x2="232" y2="250" stroke="#C9996A" stroke-width="4" stroke-linecap="round"/>
+  <polygon points="248,294 302,244 356,294 356,362 248,362" fill="#B98A5C"/>
+  <line x1="266" y1="280" x2="266" y2="362" stroke="#9C6E45" stroke-width="3"/>
+  <line x1="338" y1="280" x2="338" y2="362" stroke="#9C6E45" stroke-width="3"/>
+  <polyline points="230,298 302,230 374,298" fill="none" stroke="#C9996A" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="281" y="302" width="42" height="60" fill="#C9996A"/>
+  <rect x="287" y="308" width="30" height="54" fill="#0E0C09"/>
+  <path d="M164 364 L388 364" stroke="#9C6E45" stroke-width="4" stroke-linecap="round"/>
+  <path d="M158 364 L165 338 L171 364 L179 330 L185 364 L192 344 L197 364 Z" fill="#9C6E45"/>
+  <path d="M358 364 L365 342 L371 364 L379 328 L385 364 L393 346 L399 364 Z" fill="#9C6E45"/></g></g><text x="645.0" y="1728.0" text-anchor="middle" font-family="Spectral, Georgia, serif" font-weight="700" font-size="108" fill="#EFE7DA">Lemound’s Tiny Hut</text><text x="645.0" y="1818.0" text-anchor="middle" font-family="Manrope, Arial, sans-serif" font-weight="600" font-size="42" letter-spacing="6" fill="#A89C8A">YOUR CAMPAIGN COMPANION</text></svg>

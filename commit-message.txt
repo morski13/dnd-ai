@@ -1,12 +1,9 @@
-Add campaigns, rests, concentration, secret saves, shared dice, personal sims and AI reader
+Name the app Lemound's Tiny Hut and add its logo
 
-- Start your own campaign, switch between campaigns, character creator
-- Short/long rests with hit dice; party rest for the DM
-- Concentration: auto CON save on damage, chip on the sheet, monster concentration DM-only
-- Multi-target save spells: monster saves rolled in secret, per-target half damage,
-  DM can reveal secret rolls, ending the fight reveals all
-- Players see each other's dice in their own dice skins (can be turned off)
-- Fight simulator uses each character's real roll history; player Practice fight page
-- Optional AI reader (any OpenAI-compatible API): links + summaries on the mind map,
-  "Ask the AI"; players only ever get results from shared pages
-- SQL: 17-own-campaigns, 18-rests-concentration-saves, 19-ai-reader
+- App name in one place: lib/brand.ts (APP_NAME, APP_SHORT_NAME "Tiny Hut" for the home screen)
+- Browser tab title, sign-in screen, iOS/Android home-screen name and theme colour use it
+- Logo: hut under an amber dome (public/icons/logo-mark.svg) + <Logo> component,
+  on the sign-in screen and next to the label in the home header
+- Icons: app/icon.svg + app/favicon.ico (tab), app/apple-icon.png (iOS),
+  app/manifest.ts with 192/512/maskable icons, public/icons/splash.png
+- proxy.ts: the manifest is no longer redirected to /login for logged-out visitors

@@ -6,6 +6,7 @@ import { logOut } from "./auth-actions";
 import { BottomNav } from "./components/bottom-nav";
 import { DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
 import { JoinForm } from "./join-form";
+import { Logo } from "./components/logo";
 import { StartSessionButton } from "./session/start-button";
 
 export default function HomePage() {
@@ -146,7 +147,10 @@ function Header({ label, title, subtitle, initial }: {
   return (
     <header className="flex items-start justify-between gap-4">
       <div>
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">{label}</p>
+        <p className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted">
+          <Logo decorative className="h-6 w-6" />
+          {label}
+        </p>
         <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-[15px] text-muted">{subtitle}</p>}
       </div>
