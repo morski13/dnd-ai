@@ -38,7 +38,10 @@ async function Tavern({ searchParams }: { searchParams: SP }) {
           <p className="text-xs uppercase tracking-[0.12em] text-muted">{data.campaign?.name ?? "Your assistant"}</p>
           <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">The Tavern</h1>
         </div>
-        {data.chat && <Link href="/tavern" className="mt-1 shrink-0 rounded-xl border border-line px-3 py-2 text-sm text-soft">New chat</Link>}
+        <div className="mt-1 flex shrink-0 gap-2">
+          <Link href="/tavern/train" className="rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm font-bold text-accent">🎓 Train</Link>
+          {data.chat && <Link href="/tavern" className="rounded-xl border border-line px-3 py-2 text-sm text-soft">New chat</Link>}
+        </div>
       </header>
       <p className="mb-4 mt-1 text-sm text-muted">Rules, combos, builds and lore, answered from the real rules text, your sheet and your table&apos;s house rules.</p>
       <ChatHistory chats={data.chats} current={data.chat?.id ?? null} />
