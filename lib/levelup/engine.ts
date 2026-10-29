@@ -95,7 +95,8 @@ function resolveOptions(data: RulesData, c: DataChoice): Opt[] {
 }
 
 /** Everything about going up one level in `cls`. */
-export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: SpellLite[]): Plan {
+/** `first`: a brand-new character's first level (the character builder), not a multiclass: no multiclass rules or extra skill. */
+export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: SpellLite[], opts: { first?: boolean } = {}): Plan {
   const cd = data.classes[cls];
   if (!cd) throw new Error(`Unknown class: ${cls}`);
   const cur = c.class_levels.find((l) => l.class === cls);
@@ -107,7 +108,7 @@ export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: 
   const known = new Set((c.spells.known ?? []).map((s) => s.toLowerCase()));
   const have = featureNames(c);
   const warnings: string[] = [];
-  if (!cur) { const w = multiclassCheck(c, cls, data); if (w) warnings.push(w); }
+  if (!cur && !opts.first) { const w = multiclassCheck(c, cls, data); if (w) warnings.push(w); }
 
   const sub = findSubclass(cd.subclasses, cur?.subclass);
   if (cur?.subclass && !sub) warnings.push(`Your subclass "${cur.subclass}" isn't in the free rules, so its features aren't listed here. Add them on the Features tab.`);
@@ -117,7 +118,7 @@ export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: 
   if (sub) for (const f of sub.levels[String(toLevel)] ?? []) auto.push({ ...f, source: `${sub.name} ${toLevel}` });
 
   const gains: string[] = [];
-  if (!cur) {
+  if (!cur && !opts.first) {
     const p = cd.mcProf.length ? `You gain proficiency with: ${cd.mcProf.join(", ")}.` : "";
     gains.push(`You start a new class: ${cls} level 1. ${p}`.trim());
   }
@@ -163,7 +164,7 @@ export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: 
         const mine = new Set((c.proficiencies.mastery ?? []).map((m) => m.toLowerCase()));
         const opts = (data.weapons ?? []).filter((w) => !mine.has(w.name.toLowerCase())).map((w) => ({ name: w.name, text: `Mastery: ${w.mastery}`, tags: [w.mastery ?? ""] }));
         choices.push({ key: dc.key, kind: "weapons", title: dc.title, choose: dc.choose, options: opts, forSubclass,
-          help: `Pick ${dc.choose} more kind${dc.choose > 1 ? "s" : ""} of weapon whose mastery property you can use.` });
+          help: `Pick ${dc.choose}${mine.size ? " more" : ""} kind${dc.choose > 1 ? "s" : ""} of weapon whose mastery property you can use.` });
       } else if (dc.kind === "spells" && dc.level) {
         const opts = spells.filter((s) => s.level === dc.level && onList(data, s, cls) && !known.has(s.name.toLowerCase())).map(spellOpt);
         choices.push({ key: dc.key, kind: "spells", title: dc.title, choose: 1, options: opts, forSubclass,
@@ -222,7 +223,7 @@ export function planLevelUp(c: LevelChar, cls: string, data: RulesData, spells: 
   }
 
   // multiclass skill
-  if (!cur && cd.mcSkills) {
+  if (!cur && cd.mcSkills && !opts.first) {
     const mine = new Set(c.proficiencies.skills ?? []);
     const opts = cd.mcSkills.from.filter((s) => !mine.has(s)).map((s) => ({ name: s, text: `${SKILLS[s]} skill` }));
     if (opts.length) choices.push({ key: "mc-skills", kind: "skills", title: "New skill", choose: Math.min(cd.mcSkills.choose, opts.length), options: opts,

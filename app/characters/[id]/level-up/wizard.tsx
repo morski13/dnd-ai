@@ -14,8 +14,10 @@ const mod = (s: number) => Math.floor((s - 10) / 2);
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 const NO_DATA = { feats: [] } as unknown as RulesData; // feat text comes with the options
 
-export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
+export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goal }: {
   characterId: string; plan: Plan; scores: Record<string, number>; hp: { max: number; cur: number }; multi: boolean; saved: SavedPlan | null;
+  /** building a new character up to this level: after each level-up, offer the next one */
+  goal?: number;
 }) {
   const router = useRouter();
   const dice = useDice();
@@ -33,7 +35,8 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
   const [hpMode, setHpMode] = useState<"average" | "roll">(saved?.hp ?? "average");
   const [savedAt, setSavedAt] = useState<string | null>(saved?.savedAt ?? null);
   const [preview, setPreview] = useState<{ summary: string[]; rows: { label: string; before: string; after: string }[] } | null>(null);
-  const [done, setDone] = useState<string[] | null>(null);
+  // what was just done (the page refreshes behind it, so `plan` soon shows the next level)
+  const [done, setDone] = useState<{ summary: string[]; cls: string; level: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -87,7 +90,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
       const r = await confirmLevelUp(characterId, plan.className, answers);
       if ("error" in r) return setError(r.error);
       if (r.hpRoll) await dice.show({ expression: `1d${r.hpRoll.die}`, dice: [r.hpRoll.value], diceAll: [r.hpRoll.value], total: r.hpRoll.value, label: "Hit points", tone: "heal" }, { force: true });
-      setDone(r.summary);
+      setDone({ summary: r.summary, cls: plan.className, level: plan.toLevel, total: plan.totalLevel });
       router.refresh();
     });
   }
@@ -96,12 +99,21 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
     return (
       <section className="mt-4" aria-live="polite">
         <p className="text-sm uppercase tracking-[0.12em] text-accent">Level up!</p>
-        <h1 className="mt-1 font-heading text-3xl font-bold">{plan.className} {plan.toLevel}</h1>
+        <h1 className="mt-1 font-heading text-3xl font-bold">{done.cls} {done.level}</h1>
         <ul className="mt-4 space-y-2 rounded-2xl border border-success-line bg-success-bg p-4 text-[15px]">
-          {done.map((s) => <li key={s} className="text-soft">✓ {s}</li>)}
+          {done.summary.map((s) => <li key={s} className="text-soft">✓ {s}</li>)}
         </ul>
-        <Link href={`/characters/${characterId}`} className="mt-5 flex h-14 items-center justify-center rounded-2xl bg-accent font-heading text-xl font-bold text-accent-text">Back to the sheet</Link>
-        <div className="mt-3"><UndoLevelUp characterId={characterId} label={`${plan.className} ${plan.toLevel}`} /></div>
+        {goal && done.total < goal ? (
+          <>
+            <a href={`/characters/${characterId}/level-up?to=${goal}`} className="mt-5 flex h-14 items-center justify-center rounded-2xl bg-accent font-heading text-xl font-bold text-accent-text">
+              Next: level {done.total + 1} of {goal} →</a>
+            <Link href={`/characters/${characterId}`} className="mt-2 flex h-12 items-center justify-center rounded-2xl border border-line text-soft">Stop here, go to the sheet</Link>
+          </>
+        ) : (
+          <Link href={`/characters/${characterId}`} className="mt-5 flex h-14 items-center justify-center rounded-2xl bg-accent font-heading text-xl font-bold text-accent-text">
+            {goal ? `Done: level ${done.total}! Go to the sheet` : "Back to the sheet"}</Link>
+        )}
+        <div className="mt-3"><UndoLevelUp characterId={characterId} label={`${done.cls} ${done.level}`} /></div>
       </section>
     );
   }
@@ -111,6 +123,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
       <header className="mt-2">
         <h1 className="font-heading text-3xl font-bold">Level up: {plan.className} {plan.fromLevel ? `${plan.fromLevel} → ` : ""}{plan.toLevel}</h1>
         <p className="text-soft">Character level {plan.totalLevel}{plan.subclass ? ` · ${plan.subclass}` : ""}{plan.isNew ? " · new class" : ""}</p>
+        {goal && goal >= plan.totalLevel && <p className="mt-1 rounded-xl bg-accent-surface px-3 py-2 text-sm text-soft">Building up to level {goal}: level {plan.totalLevel} now, one level at a time.</p>}
         {multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-block text-sm text-accent underline">Level a different class</Link>}
         {!multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-flex min-h-10 items-center text-sm text-muted underline">Start a new class instead</Link>}
       </header>
@@ -187,7 +200,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
   );
 }
 
-function FeatureCard({ name, source, text }: { name: string; source?: string; text: string }) {
+export function FeatureCard({ name, source, text }: { name: string; source?: string; text: string }) {
   const [open, setOpen] = useState(false);
   const long = text.length > 160;
   return (
@@ -199,7 +212,7 @@ function FeatureCard({ name, source, text }: { name: string; source?: string; te
   );
 }
 
-function ChoiceSection({ c, picks, onToggle, onCustom, asi, onAsi, scores, newScores }: {
+export function ChoiceSection({ c, picks, onToggle, onCustom, asi, onAsi, scores, newScores }: {
   c: Choice; picks: string[]; onToggle: (n: string) => void; onCustom: (n: string) => void;
   asi: AsiAnswer | undefined; onAsi: (a: AsiAnswer | undefined) => void; scores: Record<string, number>; newScores: Record<string, number>;
 }) {
@@ -237,7 +250,7 @@ function CustomSubclass({ value, onChange }: { value: string; onChange: (n: stri
 
 const SPELLY = new Set(["cantrips", "spells", "swap-in", "swap-out"]);
 
-function OptionList({ c, picks, onToggle }: { c: Choice; picks: string[]; onToggle: (n: string) => void }) {
+export function OptionList({ c, picks, onToggle }: { c: Choice; picks: string[]; onToggle: (n: string) => void }) {
   const [q, setQ] = useState("");
   const [lvl, setLvl] = useState<number | null>(null);
   const spelly = SPELLY.has(c.kind) || (c.kind === "spells");
@@ -269,12 +282,12 @@ function OptionList({ c, picks, onToggle }: { c: Choice; picks: string[]; onTogg
   );
 }
 
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+export function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" aria-pressed={on} onClick={onClick}
     className={`h-8 shrink-0 rounded-full border px-3 text-xs ${on ? "border-accent-strong bg-accent-surface font-bold text-text" : "border-line text-muted"}`}>{children}</button>;
 }
 
-function OptionRow({ o, on, disabled, onClick }: { o: Opt; on: boolean; disabled: boolean; onClick: () => void }) {
+export function OptionRow({ o, on, disabled, onClick }: { o: Opt; on: boolean; disabled: boolean; onClick: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <li className={`rounded-xl border ${on ? "border-accent-strong bg-accent-surface" : "border-line bg-surface"} ${disabled ? "opacity-50" : ""}`}>

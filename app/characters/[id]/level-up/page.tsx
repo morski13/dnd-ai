@@ -112,7 +112,8 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
       {back}
       <LevelUpWizard characterId={id} plan={plan} scores={character.ability_scores as Record<string, number>}
         hp={{ max: character.hp_max ?? 0, cur: character.hp_current ?? 0 }} multi={character.class_levels.length > 1 || plan.isNew}
-        saved={saved && saved.className === className ? saved : null} />
+        saved={saved && saved.className === className ? saved : null}
+        goal={typeof sp.to === "string" && Number(sp.to) >= 2 ? Math.min(20, Math.floor(Number(sp.to))) : undefined} />
       {history}
     </>
   );
