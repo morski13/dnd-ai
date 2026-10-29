@@ -108,7 +108,7 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
           <div className="mt-3 rounded-xl border border-line p-3" aria-label="Battle map for this fight">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold">Battle map</p>
-              <Link href="/maps" className="text-xs text-accent underline">{maps.length ? "Manage maps" : "Add a map"}</Link>
+              <Link href="/maps" className="inline-flex min-h-10 items-center px-1 text-xs text-accent underline">{maps.length ? "Manage maps" : "Add a map"}</Link>
             </div>
             {maps.length === 0 ? (
               <p className="mt-1 text-xs text-muted">Upload a map picture (or make a plain grid) to play this fight on a map.</p>
@@ -131,7 +131,7 @@ export function DmPanel({ sessionId, combatId, monsters, inFightIds, hiddenByDef
                 Monster initiative is secret
               </label>
               <button type="button" disabled={pending} onClick={() => act(() => rollNpcInitiative(combatId, secret))}
-                className="h-11 w-full rounded-xl border border-accent-strong font-bold text-accent disabled:opacity-50">
+                className="min-h-11 w-full rounded-xl border border-accent-strong px-3 py-2 font-bold leading-snug text-accent disabled:opacity-50">
                 Roll for monsters &amp; unclaimed
               </button>
             </div>

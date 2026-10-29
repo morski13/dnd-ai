@@ -105,23 +105,28 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 
   return (
     <>
-      <header className="flex items-start gap-3">
-        <Link href="/characters" aria-label="Back to characters" className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-soft">
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
-        </Link>
-        <PortraitButton kind="character" id={character.id} name={character.name} src={portrait} canEdit={canEdit} size={52} />
-        <div className="min-w-0 flex-1">
-          <h1 className="font-heading text-3xl font-bold leading-tight">{character.name}</h1>
-          <p className="text-[15px] text-muted">{classLine}</p>
-          {!canEdit && <p className="mt-1 text-xs text-muted">View only: this isn&apos;t your character.</p>}
-        </div>
-        {canEdit && <div className="mt-1"><CustomizeButton characterId={character.id} /></div>}
-        {canEdit && totalLevel(c.class_levels) < 20 && (
-          <Link href={`/characters/${character.id}/level-up`}
-            className="mt-1 flex h-10 shrink-0 items-center gap-1 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">
-            <span aria-hidden>▲</span> Level up{levelPlan ? <span className="text-xs font-normal text-success"> · plan ready</span> : null}
+      <header>
+        <div className="flex items-center gap-2">
+          <Link href="/characters" aria-label="Back to characters" className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-soft">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
           </Link>
-        )}
+          <div className="flex-1" />
+          {canEdit && <CustomizeButton characterId={character.id} />}
+          {canEdit && totalLevel(c.class_levels) < 20 && (
+            <Link href={`/characters/${character.id}/level-up`}
+              className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">
+              <span aria-hidden>▲</span> Level up{levelPlan ? <span className="text-xs font-normal text-success"> · plan ready</span> : null}
+            </Link>
+          )}
+        </div>
+        <div className="mt-2 flex items-center gap-3">
+          <PortraitButton kind="character" id={character.id} name={character.name} src={portrait} canEdit={canEdit} size={56} />
+          <div className="min-w-0 flex-1">
+            <h1 className="font-heading text-3xl font-bold leading-tight [overflow-wrap:anywhere]">{character.name}</h1>
+            <p className="text-[15px] text-muted">{classLine}</p>
+            {!canEdit && <p className="mt-1 text-xs text-muted">View only: this isn&apos;t your character.</p>}
+          </div>
+        </div>
       </header>
 
       <Link href={`/tavern?c=${character.id}&mode=character`}
@@ -159,10 +164,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         ))}
       </section>
 
-      <nav className="mt-6 flex border-b border-line">
+      <nav className="mt-6 flex overflow-x-auto border-b border-line [scrollbar-width:none]">
         {(["Attacks", "Spells", "Skills", "Features", "Gear"] as Tab[]).map((t) => (
           <button key={t} type="button" onClick={() => setTab(t)}
-            className={`-mb-px h-12 flex-1 border-b-2 text-sm ${tab === t ? "border-accent font-bold text-accent" : "border-transparent text-soft"}`}>
+            className={`-mb-px h-12 flex-auto whitespace-nowrap border-b-2 px-1 text-[13px] min-[360px]:px-2 min-[360px]:text-sm ${tab === t ? "border-accent font-bold text-accent" : "border-transparent text-soft"}`}>
             {t}
           </button>
         ))}
@@ -196,7 +201,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         {tab === "Skills" && (
           <>
             <p className="text-xs uppercase tracking-[0.12em] text-muted">Saving throws</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(5.25rem,1fr))] gap-2">
               {ABILITIES.map((a) => (
                 <RowButton key={a} label={a} bonus={saveBonus(c, a)} proficient={!!c.proficiencies.saves?.includes(a)} disabled={!canEdit}
                   onClick={() => doRoll({ kind: "save", ability: a })} />

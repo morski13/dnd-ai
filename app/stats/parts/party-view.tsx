@@ -60,7 +60,7 @@ export function PartyView({ d }: { d: StatsView }) {
 
           <Section title="Side by side">
             <div className="-mx-5 overflow-x-auto px-5">
-              <table className="w-full min-w-[22rem] border-separate border-spacing-0 text-sm">
+              <table className="w-full border-separate border-spacing-0 text-[13px] min-[360px]:text-sm">
                 <caption className="sr-only">Party comparison</caption>
                 <thead>
                   <tr>
@@ -79,7 +79,7 @@ export function PartyView({ d }: { d: StatsView }) {
                     const best = nums.length > 1 ? Math.max(...nums) : null;
                     return (
                       <tr key={r.label}>
-                        <th scope="row" className="sticky left-0 border-t border-line bg-bg py-2 pr-2 text-left font-normal text-muted">{r.label}</th>
+                        <th scope="row" className="sticky left-0 border-t border-line bg-bg py-2 pr-2 text-left font-normal leading-snug text-muted">{r.label}</th>
                         {vals.map((v, i) => {
                           const n = typeof v === "number" ? v : parseFloat(String(v));
                           const top = best !== null && best > 0 && n === best && !["Nat 1s", "HP lost", "Dropped to 0"].includes(r.label);
@@ -134,11 +134,13 @@ function DmSection({ d }: { d: StatsView }) {
           <p className="mt-5 text-sm font-bold">Most dangerous</p>
           <ul className="mt-2 divide-y divide-line">
             {dm.monsters.slice(0, 6).map((m, i) => (
-              <li key={m.type} className="flex items-center gap-3 py-2 text-sm">
-                <span className="w-5 text-muted">{i + 1}</span>
-                <span className="flex-1 truncate">{m.type}{m.count > 1 && <span className="text-muted"> ×{m.count}</span>}</span>
-                <span className="text-right text-xs text-soft">
-                  <span className="font-semibold text-text">{m.damageDealt}</span> dmg · {m.downs} drop{m.downs === 1 ? "" : "s"} · hits {pct(m.hitRate)}
+              <li key={m.type} className="flex items-baseline gap-3 py-2 text-sm">
+                <span className="w-5 shrink-0 text-muted">{i + 1}</span>
+                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{m.type}{m.count > 1 && <span className="text-muted"> ×{m.count}</span>}</span>
+                  <span className="text-xs text-soft">
+                    <span className="font-semibold text-text">{m.damageDealt}</span> dmg · {m.downs} drop{m.downs === 1 ? "" : "s"} · hits {pct(m.hitRate)}
+                  </span>
                 </span>
               </li>
             ))}

@@ -25,7 +25,7 @@ export function AddMonsters({ campaignMonsters, partyLevel, onAdd }: {
         ))}
       </div>
       <div className="mt-2 flex gap-1.5">
-        {([["srd", "Monster library"], ["campaign", "Your monsters"], ["custom", "Custom"]] as const).map(([k, l]) => (
+        {([["srd", "SRD library"], ["campaign", "Your monsters"], ["custom", "Custom"]] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setTab(k)}
             className={`h-10 flex-1 rounded-lg border text-sm ${tab === k ? "border-accent-strong font-bold" : "border-line text-soft"}`}>{l}</button>
         ))}

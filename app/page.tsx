@@ -70,7 +70,7 @@ async function Home() {
   return (
     <>
       <Header label="Your campaign" title={campaign.name} subtitle={subtitle} initial={data.displayName} />
-      <Link href="/campaigns" className="mt-2 inline-flex items-center gap-1 text-sm text-accent underline">
+      <Link href="/campaigns" className="mt-1 inline-flex min-h-10 items-center gap-1 text-sm text-accent underline">
         {data.campaignCount > 1 ? `Switch campaign (${data.campaignCount})` : "Your campaigns · start a new one"}
       </Link>
 

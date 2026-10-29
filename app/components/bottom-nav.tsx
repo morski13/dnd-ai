@@ -13,16 +13,16 @@ const items = [
 
 export function BottomNav({ active }: { active: (typeof items)[number]["key"] }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-surface-2">
+    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface-2">
       <ul className="mx-auto grid max-w-md grid-cols-5 pb-[env(safe-area-inset-bottom)]">
         {items.map(({ key, label, Icon, href }) => {
-          const cls = `flex min-h-16 flex-col items-center justify-center gap-1 text-xs ${
+          const cls = `flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-[11px] leading-none min-[360px]:text-xs ${
             key === active ? "font-bold text-accent" : "text-muted"
           }`;
           const inner = (
             <>
               <Icon className={`h-6 w-6 ${key === active ? "animate-pop" : ""}`} />
-              {label}
+              <span className="block max-w-full truncate">{label}</span>
             </>
           );
           return (

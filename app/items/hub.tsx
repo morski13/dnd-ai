@@ -153,7 +153,7 @@ function Give({ characters }: { characters: Char[] }) {
                   <p className="font-semibold">{picked.name}</p>
                   {picked.item && <ItemMeta item={picked.item} />}
                 </div>
-                <button type="button" onClick={() => setPicked(null)} className="text-sm text-muted underline">Change</button>
+                <button type="button" onClick={() => setPicked(null)} className="inline-flex min-h-10 items-center px-1 text-sm text-muted underline">Change</button>
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <Stepper value={qty} onChange={setQty} max={9999} label="How many" />

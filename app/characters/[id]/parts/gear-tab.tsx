@@ -58,7 +58,7 @@ export function GearTab({ characterId, rules, gear, canEdit }: { characterId: st
       <section aria-label="Coins">
         <div className="flex items-baseline justify-between">
           <p className="text-xs uppercase tracking-[0.12em] text-muted">Coins</p>
-          {canEdit && <button type="button" onClick={() => setSheet({ kind: "coins" })} className="text-sm text-accent underline">Change</button>}
+          {canEdit && <button type="button" onClick={() => setSheet({ kind: "coins" })} className="inline-flex min-h-10 items-center px-1 text-sm text-accent underline">Change</button>}
         </div>
         <div className="mt-2"><CoinsRow coins={coins} bump={bump} /></div>
       </section>

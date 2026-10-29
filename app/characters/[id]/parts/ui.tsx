@@ -48,12 +48,12 @@ export function RowButton({ label, hint, bonus, proficient, expertise, disabled,
       onClick={onClick}
       className="flex min-h-11 items-center justify-between gap-2 rounded-xl bg-surface px-3 text-left active:bg-accent-surface"
     >
-      <span className="flex items-center gap-2 text-[15px]">
-        <span className="w-4 text-xs text-accent">{expertise ? "●●" : proficient ? "●" : ""}</span>
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-[15px]">
+        <span className="w-4 shrink-0 text-xs text-accent">{expertise ? "●●" : proficient ? "●" : ""}</span>
         {label}
         {hint && <span className="text-xs text-muted">{hint}</span>}
       </span>
-      <span className="font-bold">{signed(bonus)}</span>
+      <span className="shrink-0 font-bold tabular-nums">{signed(bonus)}</span>
     </button>
   );
 }

@@ -176,7 +176,7 @@ export function Conditions({ combatant, canEdit }: { combatant: Combatant; canEd
         ))}
         {canEdit && (
           <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-            className="h-7 rounded-full border border-dashed border-line px-2.5 text-xs text-muted">{open ? "Done" : "+ Condition"}</button>
+            className="h-9 rounded-full border border-dashed border-line px-3 text-xs text-muted">{open ? "Done" : "+ Condition"}</button>
         )}
         {!list.length && !canEdit && <span className="text-xs text-muted">No conditions</span>}
       </div>

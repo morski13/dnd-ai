@@ -112,7 +112,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
         <h1 className="font-heading text-3xl font-bold">Level up: {plan.className} {plan.fromLevel ? `${plan.fromLevel} → ` : ""}{plan.toLevel}</h1>
         <p className="text-soft">Character level {plan.totalLevel}{plan.subclass ? ` · ${plan.subclass}` : ""}{plan.isNew ? " · new class" : ""}</p>
         {multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-block text-sm text-accent underline">Level a different class</Link>}
-        {!multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-block text-sm text-muted underline">Start a new class instead</Link>}
+        {!multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-flex min-h-10 items-center text-sm text-muted underline">Start a new class instead</Link>}
       </header>
 
       {plan.warnings.map((w) => <p key={w} className="mt-3 rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm text-soft">⚠ {w}</p>)}
@@ -173,7 +173,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved }: {
         )}
       </section>
 
-      <div className="fixed inset-x-0 bottom-16 z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Level-up status">
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Level-up status">
         <div className="mx-auto max-w-md px-5 py-3">
           {error && <p className="mb-2 text-sm text-danger" role="alert">{error}</p>}
           <div className="flex items-center gap-3">

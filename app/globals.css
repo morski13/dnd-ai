@@ -27,9 +27,17 @@
   --font-heading: var(--font-spectral);
 }
 
+html {
+  /* Phones in landscape (iPhone Safari) must not blow the text up on their own */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
+  /* Long words (bludgeoning/piercing/slashing, links, homebrew names) break instead of sticking out */
+  overflow-wrap: break-word;
   transition: background-color 300ms ease-out, color 300ms ease-out;
 }
 
@@ -161,3 +169,19 @@ button:disabled { opacity: 0.6; }
   font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--color-accent);
 }
 .dm-secret > :first-child { margin-top: 0; }
+
+/* =====================================================================
+   Phones of every size: a button or link with a fixed height keeps it
+   as its minimum, but grows when its text wraps (narrow phones, large
+   system font, long names) instead of spilling over its border.
+   Unlayered on purpose, so it wins over the h-* utilities.
+   ===================================================================== */
+:is(button, a, summary, [role="button"]):is(.h-9, .h-10, .h-11, .h-12, .h-14) {
+  height: auto;
+  padding-block: 0.25rem;
+}
+:is(button, a, summary, [role="button"]).h-9 { min-height: 2.25rem; }
+:is(button, a, summary, [role="button"]).h-10 { min-height: 2.5rem; }
+:is(button, a, summary, [role="button"]).h-11 { min-height: 2.75rem; }
+:is(button, a, summary, [role="button"]).h-12 { min-height: 3rem; }
+:is(button, a, summary, [role="button"]).h-14 { min-height: 3.5rem; }

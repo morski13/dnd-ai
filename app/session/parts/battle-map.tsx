@@ -160,7 +160,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       image={map.image && map.imageW && map.imageH ? { src: map.image, w: map.imageW, h: map.imageH } : null}
       fit={map.crop ? { cols: map.cols, rows: map.rows, crop: map.crop, stretch: map.stretch } : null}
       focus={focusTok ? { x: focusTok.x, y: focusTok.y } : null}
-      height={big ? "calc(100dvh - 210px)" : "min(64vh, 520px)"}
+      height={big ? "max(220px, calc(100dvh - 210px))" : "min(64dvh, 520px)"}
       onTap={tap} onHover={aim ? setHover : undefined}>
       {/* the last area spell, for everyone */}
       {lastSquares.map((s) => <rect key={`l${s.x},${s.y}`} x={s.x} y={s.y} width={1} height={1} fill="#F0703C" opacity={0.28} />)}

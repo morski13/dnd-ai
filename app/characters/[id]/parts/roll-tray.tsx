@@ -12,7 +12,7 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
   damage: { label: string; onClick: () => void } | null;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-16 z-10 border-t border-line bg-surface-2/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur">
       <div className="mx-auto max-w-md px-5 py-3">
         {error && <p className="mb-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
 

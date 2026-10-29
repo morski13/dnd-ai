@@ -219,7 +219,7 @@ function Canvas({ fit, focus, children }: { fit: { x: number; y: number; w: numb
 
   return (
     <div className="relative mt-3 overflow-hidden rounded-[18px] border border-line bg-surface">
-      <svg ref={ref} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} className="block h-[460px] w-full touch-none select-none" role="group" aria-label="Mind map"
+      <svg ref={ref} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} className="block h-[clamp(260px,62dvh,460px)] w-full touch-none select-none" role="group" aria-label="Mind map"
         onPointerDown={(e) => { pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved.current = 0; last.current = null; }}
         onPointerMove={(e) => {
           const prev = pointers.current.get(e.pointerId);

@@ -19,12 +19,12 @@ export function SimOptions({ real, onReal, runs, onRuns, who }: {
           {who.map((w) => <li key={w.name}><b className="text-soft">{w.name}</b>: {w.label}</li>)}
         </ul>
       )}
-      <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
         <span>Fights simulated</span>
         <div className="ml-auto flex gap-1">
           {RUN_CHOICES.map((n) => (
             <button key={n} type="button" aria-pressed={runs === n} onClick={() => onRuns(n)}
-              className={`h-8 rounded-lg border px-2.5 ${runs === n ? "border-accent-strong font-bold text-text" : "border-line"}`}>{n.toLocaleString()}</button>
+              className={`h-10 rounded-lg border px-2.5 ${runs === n ? "border-accent-strong font-bold text-text" : "border-line"}`}>{n.toLocaleString()}</button>
           ))}
         </div>
       </div>

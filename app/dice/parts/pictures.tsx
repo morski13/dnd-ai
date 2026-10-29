@@ -86,13 +86,13 @@ export function Pictures({ skin, set, onError }: { skin: DiceSkin; set: (s: Part
         <div className="mt-2 flex flex-wrap gap-1.5">
           {PREVIEW_TYPES.map((t) => (
             <button key={t} type="button" onClick={() => { setDie(t); setFace(maxValue(t)); }}
-              className={`h-8 rounded-lg border px-2.5 text-xs font-semibold ${die === t ? "border-accent bg-accent-surface text-accent" : "border-line text-soft"}`}>{t}</button>
+              className={`h-10 rounded-lg border px-3 text-xs font-semibold ${die === t ? "border-accent bg-accent-surface text-accent" : "border-line text-soft"}`}>{t}</button>
           ))}
         </div>
-        <div className="mt-2 grid grid-cols-10 gap-1">
+        <div className="mt-2 grid grid-cols-5 gap-1.5 min-[400px]:grid-cols-10 min-[400px]:gap-1">
           {Array.from({ length: maxValue(die) }, (_, i) => i + 1).map((v) => (
             <button key={v} type="button" onClick={() => setFace(v)} aria-label={`Face ${labelText(die, v)}`}
-              className={`relative h-8 rounded-md border text-[11px] font-semibold ${face === v ? "border-accent text-accent" : "border-line text-soft"} ${faces[`${die}:${v}`] ? "bg-accent-surface" : ""}`}>
+              className={`relative h-10 rounded-md border text-xs min-[400px]:h-9 min-[400px]:text-[11px] font-semibold ${face === v ? "border-accent text-accent" : "border-line text-soft"} ${faces[`${die}:${v}`] ? "bg-accent-surface" : ""}`}>
               {labelText(die, v)}
             </button>
           ))}

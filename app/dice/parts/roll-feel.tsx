@@ -15,7 +15,7 @@ export function RollFeel({ onThrow }: { onThrow: (expr: string) => void }) {
       <div className="flex items-end justify-between gap-3">
         <h2 className="font-heading text-xl font-semibold">Roll feel</h2>
         <button type="button" onClick={() => setSettings({ ...settings, tuning: DEFAULT_TUNING })} disabled={same(t, DEFAULT_TUNING)}
-          className="h-8 rounded-lg px-2 text-xs font-semibold text-muted underline disabled:no-underline disabled:opacity-40">Reset</button>
+          className="h-10 rounded-lg px-2 text-xs font-semibold text-muted underline disabled:no-underline disabled:opacity-40">Reset</button>
       </div>
       <p className="mt-0.5 text-xs text-muted">How your dice are thrown, on this device. The result is always the real roll, whatever you set.</p>
 

@@ -86,7 +86,7 @@ export function GridEditor({ picture, initial, name: name0, feet: feet0, saving,
         <input value={name} onChange={(e) => setName(e.target.value)} className={`${num} mt-1`} placeholder="Forest clearing" />
       </label>
 
-      <Board cols={fit.cols} rows={fit.rows} image={picture} fit={fit} height="min(55vh, 460px)" label="Map preview with the grid" />
+      <Board cols={fit.cols} rows={fit.rows} image={picture} fit={fit} height="min(55dvh, 460px)" label="Map preview with the grid" />
 
       <p className="text-sm text-soft" aria-live="polite">
         <strong>{fit.cols} × {fit.rows} squares</strong> = {fit.cols * feet} × {fit.rows * feet} ft

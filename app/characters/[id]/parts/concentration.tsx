@@ -22,7 +22,7 @@ export function ConcentrationChip({ spell, note, canEdit, pending, choices, onSe
             <button type="button" onClick={() => setPicking(false)} className="h-9 px-2 text-sm text-muted">Cancel</button>
           </div>
         ) : (
-          <button type="button" onClick={() => setPicking(true)} className="text-xs text-muted underline">Concentrating on a spell? Set it</button>
+          <button type="button" onClick={() => setPicking(true)} className="inline-flex min-h-10 items-center text-xs text-muted underline">Concentrating on a spell? Set it</button>
         )
       )}
       {note && <p className={`mt-1.5 text-xs ${/ends/.test(note) ? "text-danger" : "text-soft"}`}>{note}</p>}

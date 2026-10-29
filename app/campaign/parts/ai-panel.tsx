@@ -14,7 +14,7 @@ export function AiReadButton({ ai }: { ai: AiState }) {
   // dates in the viewer's own language and time zone: only after the page is in the browser (the server can't know them)
   const local = useInBrowser();
   if (!ai.configured) {
-    return <p className="mt-3 text-[11px] text-muted">Want the AI to find links your notes only hint at? Set up a free AI (AI_BASE_URL, AI_MODEL, AI_API_KEY in .env.local).</p>;
+    return <p className="mt-3 text-[11px] text-muted">Want the AI to find links your notes only hint at? Set up a free AI (AI_BASE_URL, AI_MODEL, AI_API_KEY in .env.local, or in Vercel’s Environment Variables).</p>;
   }
   const when = ai.at ? (local ? new Date(ai.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "earlier") : null;
   return (

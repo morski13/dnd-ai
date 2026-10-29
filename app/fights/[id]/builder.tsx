@@ -178,7 +178,7 @@ export function FightBuilder({ fight, characters, library, campaignMonsters, his
         className="mt-8 h-11 w-full rounded-xl border border-danger-line text-sm text-danger">Delete fight</button>
 
       {/* Save bar */}
-      <div className="fixed inset-x-0 bottom-16 z-10 border-t border-line bg-surface-2/95 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur">
         <div className="mx-auto flex max-w-md items-center gap-3 px-5 py-3">
           <p className="min-w-0 flex-1 truncate text-sm text-muted">
             {error ? <span className="text-danger">{error}</span> : saved ? "✓ Saved. Start it from Session mode." : dirty ? "Unsaved changes" : "Saved"}

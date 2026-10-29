@@ -181,7 +181,7 @@ function ShopsStrip({ shops, isDm }: { shops: { id: string; name: string }[]; is
   if (!shops.length && !isDm) return null;
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-accent-line bg-accent-surface px-3 py-2" aria-label="Shops">
-      {shops.length > 0 && <span className="text-xs uppercase tracking-[0.12em] text-accent">Shops open</span>}
+      <span className="text-xs uppercase tracking-[0.12em] text-accent">{shops.length > 0 ? "Shops open" : "No shops open"}</span>
       {shops.map((s) => <Link key={s.id} href={`/shop/${s.id}`} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-bold text-accent-text">{s.name}</Link>)}
       {isDm && <Link href="/items?tab=give" className="ml-auto rounded-lg border border-line px-3 py-1.5 text-sm text-soft">Give loot</Link>}
       {isDm && <Link href="/items?tab=shops" className="rounded-lg border border-line px-3 py-1.5 text-sm text-soft">Shops</Link>}

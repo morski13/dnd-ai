@@ -7,7 +7,7 @@ import { imagePlacement, type GridFit } from "@/lib/maps/grid";
 export type Pt = { x: number; y: number };
 type View = { x: number; y: number; w: number };
 
-export function Board({ cols, rows, image, fit, children, onTap, onHover, focus, gridLines = true, height = "min(68vh, 560px)", label = "Battle map", toolbar }: {
+export function Board({ cols, rows, image, fit, children, onTap, onHover, focus, gridLines = true, height = "min(68dvh, 560px)", label = "Battle map", toolbar }: {
   cols: number; rows: number;
   image?: { src: string; w: number; h: number } | null;
   fit?: GridFit | null;                 // where the picture sits under the grid

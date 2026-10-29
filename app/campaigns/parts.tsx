@@ -32,12 +32,12 @@ function Item({ c, i }: { c: MyCampaign; i: number }) {
           <p className="text-xs text-muted">Invite code</p>
           <p className="font-heading text-lg font-bold tracking-[0.2em] text-accent">{code}</p>
           <button type="button" disabled={pending} onClick={() => start(async () => { const r = await newInviteCode(c.id); if ("error" in r) setError(r.error); else setCode(r.code); })}
-            className="ml-auto text-xs text-muted underline">New code</button>
+            className="ml-auto inline-flex min-h-10 items-center px-1 text-xs text-muted underline">New code</button>
         </div>
       )}
       {c.role === "player" && (
         <button type="button" disabled={pending} onClick={() => (sure ? start(async () => { const r = await leaveCampaign(c.id); if (r?.error) setError(r.error); }) : setSure(true))}
-          className={`mt-3 text-xs ${sure ? "font-bold text-danger" : "text-muted underline"}`}>{sure ? "Sure? Your characters stay in the campaign, unclaimed. Tap to leave." : "Leave campaign"}</button>
+          className={`mt-2 inline-flex min-h-10 items-center text-left text-xs ${sure ? "font-bold text-danger" : "text-muted underline"}`}>{sure ? "Sure? Your characters stay in the campaign, unclaimed. Tap to leave." : "Leave campaign"}</button>
       )}
       {error && <p className="mt-2 text-sm text-danger" role="alert">{error}</p>}
     </li>

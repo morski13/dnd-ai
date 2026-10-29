@@ -119,7 +119,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
           <p className="text-lg font-bold">{isTurn ? `Your turn, ${short}` : short}</p>
           {!isTurn && inCombat && <p className="text-xs text-muted">Not your turn, but you can still roll (reactions, saves…)</p>}
         </div>
-        <Link href={`/characters/${character.id}`} className="shrink-0 text-xs text-accent underline">Full sheet</Link>
+        <Link href={`/characters/${character.id}`} className="inline-flex min-h-10 shrink-0 items-center px-1 text-xs text-accent underline">Full sheet</Link>
       </div>
 
       <div className="mt-2">

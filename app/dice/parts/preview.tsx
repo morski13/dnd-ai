@@ -48,7 +48,7 @@ export function DicePreview({ skin, view }: { skin: DiceSkin; view: DieType | "a
 
   return (
     <div
-      className="relative h-72 touch-none overflow-hidden rounded-[18px] border border-line"
+      className="relative h-[clamp(200px,45dvh,288px)] touch-none overflow-hidden rounded-[18px] border border-line"
       style={{ background: "radial-gradient(ellipse at 50% 40%, #2c251d, #15130f 75%)" }}
       onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); }}
       onPointerMove={(e) => {

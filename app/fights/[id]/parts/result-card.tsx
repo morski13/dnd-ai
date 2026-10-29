@@ -21,7 +21,7 @@ export function ResultCard({ analysis: a, calculating, hasEnemies, hasParty }: {
     <section className="rounded-[18px] border p-4" style={{ borderColor: style.border, background: style.bg }} aria-live="polite">
       <div className="flex items-center justify-between">
         <span key={a.tier} className="animate-pop inline-block"><TierBadge tier={a.tier} size="lg" /></span>
-        <span className="text-xs text-muted">{calculating ? "Calculating…" : `${s.runs.toLocaleString()} fights · ${Math.max(1, Math.round(a.ms))} ms`}</span>
+        <span className="text-xs text-muted">{calculating ? "Calculating…" : `Played ${s.runs.toLocaleString()} times`}</span>
       </div>
       <ul className="mt-2 space-y-0.5 text-sm text-soft">
         {a.reasons.map((r) => <li key={r}>{r}</li>)}

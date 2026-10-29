@@ -84,7 +84,7 @@ export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaign
           </div>
         ))}
         <div className="mt-2 flex gap-3 text-sm">
-          {classes.length < 3 && <button type="button" onClick={() => setClasses([...classes, { class: "Rogue", subclass: "", level: 1 }])} className="text-accent underline">+ Multiclass</button>}
+          {classes.length < 3 && <button type="button" onClick={() => setClasses([...classes, { class: "Rogue", subclass: "", level: 1 }])} className="inline-flex min-h-10 items-center text-accent underline">+ Multiclass</button>}
           {classes.length > 1 && <button type="button" onClick={() => setClasses(classes.slice(0, -1))} className="text-muted underline">Remove last class</button>}
         </div>
       </section>
@@ -92,7 +92,7 @@ export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaign
       <section aria-label="Ability scores">
         <div className="flex items-baseline justify-between">
           <p className="text-xs uppercase tracking-[0.12em] text-muted">Ability scores</p>
-          <button type="button" onClick={standard} className="text-sm text-accent underline">Use the standard array</button>
+          <button type="button" onClick={standard} className="inline-flex min-h-10 items-center text-sm text-accent underline">Use the standard array</button>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {ABILITIES.map((a) => (

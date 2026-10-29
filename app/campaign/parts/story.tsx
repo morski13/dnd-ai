@@ -27,7 +27,7 @@ export function Story({ analysis, isDm, q }: { analysis: Analysis; isDm: boolean
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] leading-snug">{p.text}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
-                      <Link href={`/campaign/e/${p.docId}${q}`} className="underline">{p.why}</Link>
+                      <Link href={`/campaign/e/${p.docId}${q}`} className="inline-block py-2 underline">{p.why}</Link>
                       {p.secret && <span className="flex items-center gap-0.5 text-accent"><LockIcon className="h-3 w-3" />DM only</span>}
                       {p.nodes.slice(0, 3).map((id) => <span key={id}>· {label.get(id)}</span>)}
                     </span>
@@ -75,7 +75,7 @@ function Check({ m, isDm }: { m: Milestone; isDm: boolean }) {
   return (
     <button type="button" role="checkbox" aria-checked={done} aria-label={`${m.title}: ${done ? "done" : "not done yet"}`} disabled={!isDm}
       onClick={() => { const next = !done; setDone(next); start(async () => { await setStatus(m.docId, next ? "done" : "open"); router.refresh(); }); }}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 ${done ? "animate-pop border-success bg-success text-bg" : "border-line text-transparent"}`}>
+      className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 after:absolute after:-inset-2 after:content-[''] ${done ? "animate-pop border-success bg-success text-bg" : "border-line text-transparent"}`}>
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}><path d="m5 12 5 5 9-10" /></svg>
     </button>
   );
@@ -90,7 +90,7 @@ function MilestoneItem({ m, i, isDm, q }: { m: Milestone; i: number; isDm: boole
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             {m.when && <p className="text-xs font-semibold uppercase tracking-[0.1em] text-accent">{m.when}</p>}
-            <Link href={`/campaign/e/${m.docId}${q}`} className={`block font-semibold leading-snug ${done ? "text-muted line-through" : ""}`}>{m.title}</Link>
+            <Link href={`/campaign/e/${m.docId}${q}`} className={`block py-1.5 font-semibold leading-snug ${done ? "text-muted line-through" : ""}`}>{m.title}</Link>
           </div>
           <Check m={m} isDm={isDm} />
         </div>
@@ -110,7 +110,7 @@ function QuestItem({ m, i, isDm, q }: { m: Milestone; i: number; isDm: boolean; 
     <li className="animate-rise rounded-2xl border border-line bg-surface p-3" style={{ "--i": i } as React.CSSProperties}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <Link href={`/campaign/e/${m.docId}${q}`} className={`block font-semibold leading-snug ${done ? "text-muted line-through" : ""}`}>{m.title}</Link>
+          <Link href={`/campaign/e/${m.docId}${q}`} className={`block py-1.5 font-semibold leading-snug ${done ? "text-muted line-through" : ""}`}>{m.title}</Link>
           <p className="mt-0.5 text-xs text-muted">
             {m.givenBy && <>From {m.givenBy}</>}{m.givenBy && m.reward && " · "}{m.reward && <>Reward: {m.reward}</>}
             {isDm && m.secret && <span className="ml-1 inline-flex items-center gap-0.5 text-accent"><LockIcon className="h-3 w-3" />not shared</span>}

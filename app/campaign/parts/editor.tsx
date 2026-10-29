@@ -47,7 +47,7 @@ export function DocEditor({ entryId, folderId, initialTitle, initialDoc }: {
     extensions: extensions({ placeholder: "Write here… Use the toolbar for headings, lists and secret (DM only) parts." }),
     content: withEmptyLastLine(initialDoc),
     immediatelyRender: false,
-    editorProps: { attributes: { class: "vault-doc min-h-[50vh] outline-none", "aria-label": "Document" } },
+    editorProps: { attributes: { class: "vault-doc min-h-[50dvh] outline-none", "aria-label": "Document" } },
     onUpdate: () => schedule(),
   });
   useEffect(() => { editorRef.current = editor; }, [editor]);
