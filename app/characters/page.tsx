@@ -9,9 +9,12 @@ export default function CharactersPage() {
   return (
     <>
       <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
           <h1 className="font-heading text-3xl font-bold">Your characters</h1>
-          <Link href="/characters/new" className="mt-1 shrink-0 rounded-xl bg-accent px-3 py-2 text-sm font-bold text-accent-text">+ New</Link>
+          <div className="mt-1 flex shrink-0 gap-2">
+            <Link href="/characters/import" className="inline-flex min-h-10 items-center rounded-xl border border-accent-strong px-3 text-sm font-bold text-accent">Import PDF</Link>
+            <Link href="/characters/new" className="inline-flex min-h-10 items-center rounded-xl bg-accent px-3 text-sm font-bold text-accent-text">+ New</Link>
+          </div>
         </div>
         <Suspense fallback={<ListSkeleton />}>
           <Characters />

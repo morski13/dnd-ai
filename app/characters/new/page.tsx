@@ -13,6 +13,10 @@ export default function NewCharacterPage() {
       <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
         <Link href="/characters" className="text-xs uppercase tracking-[0.12em] text-muted">← Characters</Link>
         <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">New character</h1>
+        <Link href="/characters/import" className="mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm text-soft">
+          <span aria-hidden className="text-accent">⤓</span>
+          <span className="min-w-0 flex-1">Have a character sheet PDF? <span className="text-accent underline">Import it</span></span>
+        </Link>
         <Suspense fallback={<div className="mt-5 h-96 animate-pulse rounded-2xl bg-surface" />}><Form /></Suspense>
       </main>
       <BottomNav active="characters" />

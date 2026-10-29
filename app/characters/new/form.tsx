@@ -3,25 +3,42 @@
 import { useMemo, useState, useTransition } from "react";
 import { averageHp, CLASS_NAMES, CLASSES, classResources, SPECIES, spellSlots, STANDARD_ARRAY, type Rules } from "@/lib/classes";
 import { ABILITIES, SKILLS, type Ability } from "@/lib/rules";
+import type { ImportedSheet } from "@/lib/sheet-import/types";
+import { ImportedParts, type Extras } from "../import/parts";
 import { createCharacter } from "./actions";
 
 const field = "h-12 w-full rounded-xl border border-line bg-bg px-3 text-[15px] outline-none focus:border-accent";
 const mod = (n: number) => Math.floor((n - 10) / 2);
 const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
-export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaignRules: string }) {
-  const [name, setName] = useState("");
-  const [playerName, setPlayerName] = useState("");
+/** Filled in from an imported sheet: everything stays editable before it's saved. */
+function startFrom(sheet: ImportedSheet | undefined) {
+  return {
+    name: sheet?.name ?? "", playerName: sheet?.playerName ?? "", species: sheet?.species ?? "", background: sheet?.background ?? "",
+    classes: sheet?.classes.length ? sheet.classes.map((c) => ({ ...c })) : [{ class: "Fighter", subclass: "", level: 1 }],
+    scores: Object.fromEntries(ABILITIES.map((a) => [a, sheet?.scores[a] ?? 10])) as Record<Ability, number>,
+    skills: sheet?.skills ?? [], hp: sheet?.hp ? String(sheet.hp) : "", ac: sheet?.ac ? String(sheet.ac) : "", speed: String(sheet?.speed ?? 30),
+  };
+}
+
+export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean; campaignRules: string; imported?: ImportedSheet }) {
+  const [start0] = useState(() => startFrom(imported));
+  const [name, setName] = useState(start0.name);
+  const [playerName, setPlayerName] = useState(start0.playerName);
   const [forMe, setForMe] = useState(!isDm);
-  const [species, setSpecies] = useState("");
-  const [background, setBackground] = useState("");
+  const [species, setSpecies] = useState(start0.species);
+  const [background, setBackground] = useState(start0.background);
   const [rules, setRules] = useState<Rules>(campaignRules === "2014" ? "2014" : "2024");
-  const [classes, setClasses] = useState([{ class: "Fighter", subclass: "", level: 1 }]);
-  const [scores, setScores] = useState<Record<Ability, number>>({ STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 });
-  const [skills, setSkills] = useState<string[]>([]);
-  const [hp, setHp] = useState("");
-  const [ac, setAc] = useState("");
-  const [speed, setSpeed] = useState("30");
+  const [classes, setClasses] = useState(start0.classes);
+  const [scores, setScores] = useState<Record<Ability, number>>(start0.scores);
+  const [skills, setSkills] = useState<string[]>(start0.skills);
+  const [hp, setHp] = useState(start0.hp);
+  const [ac, setAc] = useState(start0.ac);
+  const [speed, setSpeed] = useState(start0.speed);
+  const [extras, setExtras] = useState<Extras | null>(() => (imported ? {
+    saves: imported.saves, expertise: imported.expertise, attacks: imported.attacks, spells: imported.spells, equipment: imported.equipment,
+    coins: imported.coins, features: imported.features, spellAbility: imported.spellAbility, unknownClasses: imported.unknownClasses,
+  } : null));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -42,7 +59,8 @@ export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaign
     e.preventDefault();
     setError(null);
     start(async () => {
-      const r = await createCharacter({ name, playerName, species, background, rules, classes, scores, skills, hp: hp ? Number(hp) : null, ac: ac ? Number(ac) : null, speed: speed ? Number(speed) : null, forMe });
+      const r = await createCharacter({ name, playerName, species, background, rules, classes, scores, skills, hp: hp ? Number(hp) : null, ac: ac ? Number(ac) : null, speed: speed ? Number(speed) : null, forMe,
+        ...(extras ? { imported: { ...extras, expertise: extras.expertise.filter((x) => skills.includes(x)) } } : {}) });
       if (r?.error) setError(r.error);
     });
   }
@@ -126,12 +144,14 @@ export function CharacterForm({ isDm, campaignRules }: { isDm: boolean; campaign
         <label className="text-sm text-soft">Speed<input value={speed} onChange={(e) => setSpeed(e.target.value.replace(/\D/g, ""))} inputMode="numeric" className={`${field} mt-1 text-center`} /></label>
       </section>
 
+      {extras && <ImportedParts value={extras} onChange={setExtras} skills={skills} rules={rules} />}
+
       <section className="rounded-2xl border border-line bg-surface p-4 text-sm text-soft" aria-label="Worked out for you">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Worked out for you</p>
-        <p className="mt-2">HP {hp || autoHp}{!hp && " (average)"} · saves {main.saves.join(" & ")} · hit dice {classes.map((c) => `${c.level}d${CLASSES[c.class].hitDie}`).join(" + ")}</p>
+        <p className="mt-2">HP {hp || autoHp}{!hp && " (average)"} · saves {(extras?.saves.length ? extras.saves : main.saves).join(" & ")} · hit dice {classes.map((c) => `${c.level}d${CLASSES[c.class].hitDie}`).join(" + ")}</p>
         {Object.keys(slots).length > 0 && <p className="mt-1">Spell slots: {Object.entries(slots).map(([l, n]) => `${n}× level ${l}`).join(", ")}</p>}
         {resources.length > 0 && <p className="mt-1">{resources.map((r) => `${r.name} ${r.max}`).join(" · ")}</p>}
-        <p className="mt-2 text-xs text-muted">Add weapons in the Gear tab and spells in the Spells tab after you save.</p>
+        <p className="mt-2 text-xs text-muted">{extras ? "Your sheet's attacks, spells, equipment, coins and features are added too." : "Add weapons in the Gear tab and spells in the Spells tab after you save."}</p>
       </section>
 
       {error && <p className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">{error}</p>}
