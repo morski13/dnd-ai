@@ -11,12 +11,18 @@ const OFF = new Set(["", "off", "false", "no", "0", "--"]);
 
 function text(o: PDFObject | undefined): string {
   if (!o) return "";
-  if (o instanceof PDFString || o instanceof PDFHexString) return o.decodeText();
+  // D&D Beyond breaks long hex strings over several lines; pdf-lib then reads the bytes shifted by one
+  // and long texts turn into garbage (and NUL characters the database refuses). Drop the line breaks first.
+  if (o instanceof PDFHexString) return clean(PDFHexString.of(o.asString().replace(/[^0-9a-fA-F]/g, "")).decodeText());
+  if (o instanceof PDFString) return clean(o.decodeText());
   if (o instanceof PDFName) return o.decodeText();
   if (o instanceof PDFNumber) return String(o.asNumber());
   if (o instanceof PDFArray) return o.asArray().map((x) => text(x)).filter(Boolean).join(", ");
   return "";
 }
+
+/** Removes control characters (NUL and friends) that can't be saved; keeps tabs and line breaks. */
+export const clean = (s: string) => s.replace(/^\uFEFF/, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g, "");
 
 export type ReadResult = { fields: PdfField[]; pages: number; filled: number };
 

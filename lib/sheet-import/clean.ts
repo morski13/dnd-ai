@@ -104,3 +104,11 @@ export function cleanAiSheet(raw: unknown): ImportedSheet {
   return s;
 }
 
+
+/** Deep copy with control characters (NUL…) removed from every string: the database refuses them. */
+export function stripControl<T>(v: T): T {
+  if (typeof v === "string") return v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F￾￿]/g, "") as T;
+  if (Array.isArray(v)) return v.map(stripControl) as T;
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripControl(x)])) as T;
+  return v;
+}

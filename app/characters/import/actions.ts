@@ -4,11 +4,12 @@
 import { aiProviders, AiError, chatWith, parseJson } from "@/lib/ai/client";
 import { who } from "@/lib/items/server";
 import { MAX_SHEET_TEXT, sheetPrompt } from "@/lib/sheet-import/ai-prompt";
-import { cleanAiSheet } from "@/lib/sheet-import/clean";
+import { cleanAiSheet, stripControl } from "@/lib/sheet-import/clean";
 import { libraryCheck } from "@/lib/sheet-import/server";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 
-export async function readSheetWithAi(text: string): Promise<{ sheet: ImportedSheet; by: string } | { error: string; code?: "no-ai" | "scan" }> {
+export async function readSheetWithAi(input: string): Promise<{ sheet: ImportedSheet; by: string } | { error: string; code?: "no-ai" | "scan" }> {
+  const text = stripControl(String(input ?? ""));
   const { userId } = await who();
   if (!userId) return { error: "Log in first." };
   if (!aiProviders().length) return { error: "No AI is set up for this app, so a sheet without fields can't be read automatically.", code: "no-ai" };

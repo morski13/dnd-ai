@@ -1,4 +1,5 @@
 "use server";
+import { stripControl } from "@/lib/sheet-import/clean";
 import { refresh } from "next/cache";
 // Make a new character in your active campaign. Players make their own; the DM can make one for a player to claim.
 import { redirect } from "next/navigation";
@@ -15,7 +16,8 @@ export type NewCharacter = {
   imported?: unknown;
 };
 
-export async function createCharacter(f: NewCharacter): Promise<{ error: string } | void> {
+export async function createCharacter(input: NewCharacter): Promise<{ error: string } | void> {
+  const f = stripControl(input); // a sheet PDF can carry NUL characters the database refuses
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId, isDm } = await who();
   if (!userId || !campaignId) return { error: "Join or start a campaign first." };
