@@ -1,10 +1,10 @@
 "use server";
+import { rulesDataFor } from "@/lib/books/server";
 // Level up / level down a character. The server works out the level again, checks the choices, rolls the hit die and saves.
 // Every change keeps a snapshot of the character before it (characters.level_log, last 10), so it can be undone.
 import { revalidatePath } from "next/cache";
 import { loadCharacter } from "@/lib/character-data";
 import { roll } from "@/lib/dice";
-import { rulesData } from "@/lib/levelup/data";
 import { applyLevelUp, checkAnswers, levelDown, planLevelUp, type LevelChar } from "@/lib/levelup/engine";
 import { loadSpellLite } from "@/lib/levelup/server";
 import type { Answers } from "@/lib/levelup/types";
@@ -33,7 +33,7 @@ async function planFor(characterId: string, className: string) {
   const r = await editable(characterId);
   if (!r) return { error: "You can only level up your own character." } as Fail;
   if (totalLevel(r.character.class_levels) >= 20) return { error: "Level 20 is the highest level." } as Fail;
-  const data = rulesData(r.character.rule_set);
+  const data = await rulesDataFor(r.character.rule_set);
   if (!data.classes[className]) return { error: "Pick a class." } as Fail;
   const c = r.character as unknown as LevelChar;
   return { ...r, c, data, plan: planLevelUp(c, className, data, await loadSpellLite(r.supabase)) };
@@ -85,7 +85,7 @@ export async function previewLevelUp(characterId: string, className: string, ans
 export async function saveLevelPlan(characterId: string, className: string, answers: Answers): Promise<Fail | { savedAt: string }> {
   const r = await editable(characterId);
   if (!r) return { error: "You can only plan for your own character." };
-  if (!rulesData(r.character.rule_set).classes[className]) return { error: "Pick a class." };
+  if (!(await rulesDataFor(r.character.rule_set)).classes[className]) return { error: "Pick a class." };
   const savedAt = new Date().toISOString();
   const plan: SavedPlan = { ...cleanAnswers(answers), className, savedAt };
   const { error } = await r.supabase.from("characters").update({ level_plan: plan }).eq("id", characterId);
@@ -130,7 +130,7 @@ export async function undoLevelUp(characterId: string): Promise<Fail | { undone:
 export async function levelDownClass(characterId: string, className: string): Promise<Fail | { notes: string[] }> {
   const r = await editable(characterId);
   if (!r) return { error: "You can only change your own character." };
-  const data = rulesData(r.character.rule_set);
+  const data = await rulesDataFor(r.character.rule_set);
   let res;
   try { res = levelDown(r.character as unknown as LevelChar, className, data); } catch (e) { return { error: (e as Error).message }; }
   const { log } = await readLog(r.supabase, characterId);

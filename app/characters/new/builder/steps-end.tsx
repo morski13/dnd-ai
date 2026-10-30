@@ -4,7 +4,7 @@ import { CLASSES } from "@/lib/classes";
 import { activeChoices } from "@/lib/levelup/engine";
 import type { Plan } from "@/lib/levelup/types";
 import { armorClass, backgroundOf, extraSpells, finalScores, givenSkills, speciesOf, startingGear, subOf, weaponLines } from "@/lib/builder/engine";
-import { ALIGNMENTS, speciesGives } from "@/lib/builder/special";
+import { ALIGNMENTS, givesFor } from "@/lib/builder/special";
 import { ABILITIES } from "@/lib/rules";
 import { Chip, Label, StepTitle, mod, sign } from "./ui";
 import type { StepProps } from "./steps-who";
@@ -69,7 +69,7 @@ export function DetailsStep({ d, set, data, isDm }: StepProps & { isDm: boolean 
 export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan: Plan | null; problems: { step: string; label: string; text: string }[]; goTo: (s: string) => void }) {
   const sp = speciesOf(d, data), sub = subOf(d, data), bg = backgroundOf(d, data);
   const scores = finalScores(d, data);
-  const gives = sp ? speciesGives(data.rules, sp.name, sub?.name ?? null) : { hpPerLevel: 0, speed: undefined };
+  const gives = sp ? givesFor(data.rules, sp, sub ?? null) : { hpPerLevel: 0, speed: undefined };
   const hitDie = CLASSES[d.cls]?.hitDie ?? 8;
   const hp = Math.max(1, hitDie + mod(scores.CON) + (gives.hpPerLevel ?? 0));
   const gear = startingGear(d, data);

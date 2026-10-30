@@ -2,7 +2,7 @@
 // Builder steps 1-3: class, species (race), background.
 import type { ClassCard } from "@/lib/builder/data";
 import { backgroundOf, featKeys, givenSkills, languageCount, MAGIC_LISTS, ORIGIN_FEATS, speciesOf, subOf } from "@/lib/builder/engine";
-import { ALL_SKILLS, CLASS_BLURB, MENTAL, speciesNeeds, speciesNeedsSub } from "@/lib/builder/special";
+import { ALL_SKILLS, CLASS_BLURB, MENTAL, needsFor } from "@/lib/builder/special";
 import type { BuilderData, Draft, FeatChoice } from "@/lib/builder/types";
 import { ABILITIES, type Ability } from "@/lib/rules";
 import { Chip, ChipPicker, Count, Label, MoreText, PickCard, SpellPicker, StepTitle, TraitList } from "./ui";
@@ -38,7 +38,7 @@ export function ClassStep({ d, set, cards }: StepProps) {
 export function SpeciesStep({ d, set, data, feats }: StepProps) {
   const sp = speciesOf(d, data);
   const sub = subOf(d, data);
-  const needs = sp ? { ...speciesNeeds(data.rules, sp.name, sp.subs.length, sp.asiChoice), ...speciesNeedsSub(data.rules, sp.name, sub?.name ?? null) } : {};
+  const needs = sp ? needsFor(data.rules, sp, sub ?? null) : {};
   const picks = d.speciesPicks;
   const setPicks = (p: Partial<Draft["speciesPicks"]>) => set({ speciesPicks: { ...picks, ...p } });
   const word = data.rules === "2014" ? "race" : "species";

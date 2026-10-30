@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "book": "tsx tools/books/check.ts",
+    "book:template": "tsx tools/books/template.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -36,7 +38,9 @@
     "@types/three": "^0.180.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "exceljs": "^4.4.0",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "vitest": "^3.2.7"
   }

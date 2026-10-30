@@ -6,7 +6,7 @@ import { CLASSES } from "../classes";
 import { applyLevelUp, type LevelChar } from "../levelup/engine";
 import type { Plan, RulesData } from "../levelup/types";
 import { ABILITIES, type Ability } from "../rules";
-import { ALL_SKILLS, MENTAL, speciesGives, speciesNeeds, speciesNeedsSub } from "./special";
+import { ALL_SKILLS, MENTAL, givesFor, needsFor } from "./special";
 import type { BackgroundData, BuilderData, CategoryItem, Draft, FeatChoice, Kit, KitChoice, KitGroup, KitItem, SpeciesData, SpeciesSub } from "./types";
 
 export const STANDARD = [15, 14, 13, 12, 10, 8];
@@ -108,7 +108,7 @@ export function givenSkills(d: Draft, data: BuilderData): Map<string, string> {
   for (const s of bg?.skills ?? []) m.set(s, bg!.name);
   const sp = speciesOf(d, data);
   if (sp) {
-    for (const s of speciesGives(data.rules, sp.name, subOf(d, data)?.name ?? null).skills) if (!m.has(s)) m.set(s, sp.name);
+    for (const s of givesFor(data.rules, sp, subOf(d, data)).skills) if (!m.has(s)) m.set(s, sp.name);
     for (const s of d.speciesPicks.skills) if (!m.has(s)) m.set(s, sp.name);
   }
   for (const s of d.feats.Skilled?.skills ?? []) if (!m.has(s)) m.set(s, "Skilled");
@@ -141,7 +141,7 @@ export function extraSpells(d: Draft, data: BuilderData): { known: string[]; abi
   const sp = speciesOf(d, data);
   let ability: Ability | null = null;
   if (sp) {
-    for (const c of speciesGives(data.rules, sp.name, subOf(d, data)?.name ?? null).cantrips) add(c);
+    for (const c of givesFor(data.rules, sp, subOf(d, data)).cantrips) add(c);
     add(d.speciesPicks.cantrip);
     if (data.rules === "2014" && d.speciesPicks.cantrip) ability = "INT";
     if (d.speciesPicks.ability) ability = d.speciesPicks.ability;
@@ -234,7 +234,7 @@ export function speciesProblems(d: Draft, data: BuilderData): string[] {
   const sp = speciesOf(d, data);
   if (!sp) return ["Pick a species."];
   const p: string[] = [];
-  const needs = { ...speciesNeeds(data.rules, sp.name, sp.subs.length, sp.asiChoice), ...speciesNeedsSub(data.rules, sp.name, subOf(d, data)?.name ?? null) };
+  const needs = needsFor(data.rules, sp, subOf(d, data));
   if (needs.sub && !subOf(d, data)) p.push(`Pick your ${needs.sub.toLowerCase()}.`);
   if (needs.skills && (d.speciesPicks.skills.length !== needs.skills.choose || d.speciesPicks.skills.some((s) => !needs.skills!.from.includes(s))))
     p.push(`${needs.skills.why}: pick ${needs.skills.choose} skill${needs.skills.choose > 1 ? "s" : ""}.`);
@@ -339,7 +339,7 @@ export function buildCharacter(d: Draft, data: BuilderData, levelData: RulesData
   const base = baseCharacter(d, data);
   const { patch } = applyLevelUp(base, plan, d.level, null, levelData);
   const sp = speciesOf(d, data)!, sub = subOf(d, data), bg = backgroundOf(d, data)!;
-  const gives = speciesGives(data.rules, sp.name, sub?.name ?? null);
+  const gives = givesFor(data.rules, sp, sub);
   const scores = patch.ability_scores as Record<Ability, number>;
 
   // features: the class's (from the engine), then species, background and feats

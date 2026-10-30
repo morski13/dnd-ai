@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { loadCharacter } from "@/lib/character-data";
-import { rulesData } from "@/lib/levelup/data";
 import { levelChoices, planLevelUp, type LevelChar } from "@/lib/levelup/engine";
 import { loadSpellLite } from "@/lib/levelup/server";
 import { totalLevel } from "@/lib/rules";
@@ -12,6 +11,7 @@ import { BottomNav } from "../../../components/bottom-nav";
 import type { SavedPlan } from "./actions";
 import { LevelHistory, type HistoryEntry } from "./history";
 import { LevelUpWizard } from "./wizard";
+import { rulesDataFor } from "@/lib/books/server";
 
 export default function LevelUpPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   return (
@@ -36,7 +36,7 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
   if (!canEdit) redirect(`/characters/${id}`);
 
   const c = character as unknown as LevelChar;
-  const data = rulesData(character.rule_set);
+  const data = await rulesDataFor(character.rule_set);
   const choice = levelChoices(c, data);
   // the history and a saved plan (each needs its SQL file; the page works without them)
   const { data: logRow } = await supabase.from("characters").select("level_log").eq("id", id).maybeSingle();

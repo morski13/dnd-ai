@@ -4,7 +4,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { builderData, classCards, originFeatTexts } from "@/lib/builder/data";
+import { classCards, originFeatTexts } from "@/lib/builder/data";
+import { builderDataFor, rulesDataFor } from "@/lib/books/server";
 import type { Rules, ScoreMethod } from "@/lib/builder/types";
 import { who } from "@/lib/items/server";
 import { BottomNav } from "../../components/bottom-nav";
@@ -53,13 +54,15 @@ async function Content({ searchParams }: { searchParams: SP }) {
 
   const rules: Rules[] = campaignRules === "mixed" ? ["2024", "2014"] : [campaignRules === "2014" ? "2014" : "2024"];
   const house = ((data?.settings as { house_rules?: { ability_scores?: string } } | null)?.house_rules?.ability_scores ?? "") as string;
+  // the SRD plus any books added to the database (lib/books)
+  const books = await Promise.all(rules.map(async (r) => ({ builder: await builderDataFor(r), level: await rulesDataFor(r) })));
   const defaultMethod: ScoreMethod = /4d6|roll/i.test(house) ? "roll" : /point/i.test(house) ? "pointbuy" : "standard";
   return (
     <ClientOnly fallback={<div className="mt-5 h-96 animate-pulse rounded-2xl bg-surface" />}>
       <Builder isDm={isDm} campaignRules={campaignRules} defaultMethod={defaultMethod}
-        datas={Object.fromEntries(rules.map((r) => [r, builderData(r)]))}
-        cards={Object.fromEntries(rules.map((r) => [r, classCards(r)]))}
-        feats={Object.fromEntries(rules.map((r) => [r, originFeatTexts(r)]))} />
+        datas={Object.fromEntries(rules.map((r, i) => [r, books[i].builder]))}
+        cards={Object.fromEntries(rules.map((r, i) => [r, classCards(r, books[i].level)]))}
+        feats={Object.fromEntries(rules.map((r, i) => [r, originFeatTexts(r, books[i].level)]))} />
     </ClientOnly>
   );
 }

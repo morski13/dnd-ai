@@ -25,7 +25,7 @@ async function readAll(q: (from: number, to: number) => PromiseLike<{ data: unkn
 /** Every spell with the columns the sheet and the fight planner use. */
 export async function allSpells(): Promise<Row[]> {
   "use cache";
-  cacheLife("hours");
+  cacheLife("minutes"); // books added with SQL show up within a minute or so
   cacheTag("srd");
   const db = createAdminClient();
   return readAll((a, b) => db.from("srd_spells").select(SPELL_COLUMNS).order("name").range(a, b));
@@ -46,7 +46,7 @@ export async function spellNames(): Promise<{ name: string }[]> {
 /** Every spell, trimmed for the pick lists (builder, level-up). */
 export async function spellLite(): Promise<SpellLite[]> {
   "use cache";
-  cacheLife("hours");
+  cacheLife("minutes"); // books added with SQL show up within a minute or so
   cacheTag("srd");
   const db = createAdminClient();
   const rows = await readAll((a, b) => db.from("srd_spells")
@@ -57,7 +57,7 @@ export async function spellLite(): Promise<SpellLite[]> {
 /** The item library of one rule set (2014 or 2024), with weapon data. */
 export async function itemsFor(rules: "2014" | "2024"): Promise<Row[]> {
   "use cache";
-  cacheLife("hours");
+  cacheLife("minutes"); // books added with SQL show up within a minute or so
   cacheTag("srd");
   const db = createAdminClient();
   return readAll((a, b) => db.from("srd_items").select("id, name, kind, data").eq("rules", rules).order("id").range(a, b));

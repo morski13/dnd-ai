@@ -1,11 +1,11 @@
 // Loads the assistant's library (rules text, spells, class features, feats, items, monsters) once per server
 // and keeps it in memory for an hour. Server only. All of it is public SRD data, the same for everyone.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rulesData } from "../levelup/data";
 import { itemDocs, monsterDocs, rulesDataDocs, spellDocs, type ItemRow, type MonsterRow, type SpellRow } from "./docs";
 import { NOTES_2014 } from "./notes-2014";
 import rules2024 from "./rules-2024.json";
 import { buildIndex, type Index, type KDoc } from "./search";
+import { loadBookContent, rulesWith } from "../books/server";
 
 export type Edition = "2014" | "2024" | "mixed";
 export type Library = { index: Index; spells: Map<string, SpellRow> };
@@ -31,11 +31,13 @@ async function load(supabase: SupabaseClient, ed: Edition): Promise<Library> {
     readAll<ItemRow>((a, b) => supabase.from("srd_items").select("id, rules, name, kind, category, rarity, attunement, summary, description").in("rules", eds).order("id").range(a, b)),
     readAll<MonsterRow>((a, b) => supabase.from("srd_monsters").select("name, cr, ac, hp, data").order("name").range(a, b)),
   ]);
+  const book = await loadBookContent(supabase).catch(() => ({ rows: [], spells: [] }));
+  const ruleSets = eds.map((e) => rulesWith(e, book)); // SRD + added books
   const docs: KDoc[] = [
     ...(rules2024 as { pieces: { id: string; title: string; text: string }[] }).pieces.map((p) => ({ id: p.id, kind: "rule" as const, title: p.title, text: p.text, boost: 0.15 })),
     ...(ed !== "2024" ? NOTES_2014.map((n) => ({ ...n, boost: 0.3 })) : []),
     ...spellDocs(spells),
-    ...eds.flatMap((e) => rulesDataDocs(rulesData(e as "2014" | "2024"))),
+    ...ruleSets.flatMap((d) => rulesDataDocs(d)),
     ...itemDocs(items),
     ...monsterDocs(monsters),
   ];

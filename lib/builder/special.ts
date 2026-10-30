@@ -1,7 +1,7 @@
 // What a species gives at level 1 beyond its trait text, and what the player must pick for it.
 // Written by hand from the SRD (5.1 for 2014, 5.2.1 for 2024): the data files only have the trait text.
 import type { Ability } from "../rules";
-import type { Rules } from "./types";
+import type { Rules, SpeciesData, SpeciesSub } from "./types";
 
 export const ALL_SKILLS = ["Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception", "History", "Insight", "Intimidation", "Investigation",
   "Medicine", "Nature", "Perception", "Performance", "Persuasion", "Religion", "Sleight of Hand", "Stealth", "Survival"];
@@ -98,3 +98,26 @@ export const CLASS_ORDER: Record<string, Ability[]> = {
   Warlock: ["CHA", "CON", "DEX", "WIS", "INT", "STR"], Wizard: ["INT", "CON", "DEX", "WIS", "CHA", "STR"],
 };
 export const ALIGNMENTS = ["Lawful Good", "Neutral Good", "Chaotic Good", "Lawful Neutral", "True Neutral", "Chaotic Neutral", "Lawful Evil", "Neutral Evil", "Chaotic Evil", "Unaligned"];
+
+/** speciesNeeds + speciesNeedsSub, plus what an added book's species (or subspecies) asks for. */
+export function needsFor(rules: Rules, sp: SpeciesData, sub: SpeciesSub | null): SpeciesNeeds {
+  return {
+    ...speciesNeeds(rules, sp.name, sp.subs.length, sp.asiChoice),
+    ...speciesNeedsSub(rules, sp.name, sub?.name ?? null),
+    ...(sp.needs ?? {}),
+    ...(sub?.needs ?? {}),
+  };
+}
+
+/** speciesGives, plus what an added book's species (or subspecies) gives. */
+export function givesFor(rules: Rules, sp: SpeciesData, sub: SpeciesSub | null): SpeciesGives {
+  const g = speciesGives(rules, sp.name, sub?.name ?? null);
+  for (const x of [sp.gives, sub?.gives]) {
+    if (!x) continue;
+    g.skills = [...new Set([...g.skills, ...(x.skills ?? [])])];
+    g.cantrips = [...new Set([...g.cantrips, ...(x.cantrips ?? [])])];
+    if (x.speed) g.speed = x.speed;
+    if (x.hpPerLevel) g.hpPerLevel = (g.hpPerLevel ?? 0) + x.hpPerLevel;
+  }
+  return g;
+}

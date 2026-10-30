@@ -43,3 +43,6 @@ next-env.d.ts
 # Tavern training data (your group's questions) and model files
 training/*.jsonl
 training/*.gguf
+
+# Filled book sheets and their SQL contain text from your books: keep them private
+/books/

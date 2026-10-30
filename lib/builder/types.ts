@@ -22,11 +22,17 @@ export type ClassBuild = {
   primary: string | null; proficiencies: string[]; skills: { choose: number; from: string[] } | null;
   equipmentFixed: KitItem[]; equipment: KitGroup[];
 };
-export type SpeciesSub = { name: string; traits: Text[]; asi?: { a: Ability; b: number }[] };
+/** What a species (from an added book) gives or asks for at level 1; the SRD ones are written in special.ts. */
+export type SpeciesExtras = {
+  gives?: { skills?: string[]; cantrips?: string[]; speed?: number; hpPerLevel?: number };
+  needs?: { skills?: { choose: number; from: string[]; why: string }; feat?: boolean; cantrip?: { list: string; why: string }; ability?: boolean };
+};
+export type SpeciesSub = { name: string; traits: Text[]; asi?: { a: Ability; b: number }[] } & SpeciesExtras;
 export type SpeciesData = {
   name: string; speed: number; size: string; traits: Text[]; asi: { a: Ability; b: number }[];
   asiChoice?: { choose: number; bonus: number; from: Ability[] }; languages?: string; subs: SpeciesSub[];
-};
+  book?: string; // set for species from an added book
+} & SpeciesExtras;
 export type BackgroundData = {
   name: string; skills: string[]; tools: string[];
   // 2024

@@ -17,7 +17,8 @@ revoke all on public.srd_monsters from anon;
 revoke insert, update, delete on public.srd_monsters from authenticated;
 grant select on public.srd_monsters to authenticated;
 
-delete from public.srd_monsters;
+alter table public.srd_monsters add column if not exists book text; -- 26: rows from added books stay
+delete from public.srd_monsters where book is null;
 insert into public.srd_monsters (name, size_type, cr, cr_num, xp, ac, hp, init, data)
 select x->>'name', x->>'size_type', x->>'cr', (x->>'cr_num')::numeric, (x->>'xp')::int,
        (x->>'ac')::int, (x->>'hp')::int, (x->>'init')::int, x

@@ -1,14 +1,14 @@
 "use server";
+import { builderDataFor, rulesDataFor } from "@/lib/books/server";
 import { refresh } from "next/cache";
 // The character builder's server side: the level-1 plan (class choices and spells, from the level-up engine),
 // spell lists for species and feat picks, and saving the finished character. Everything the browser sends
 // is checked again here.
 import { redirect } from "next/navigation";
-import { builderData, featTextFor } from "@/lib/builder/data";
+import { featTextFor } from "@/lib/builder/data";
 import { baseCharacter, buildCharacter } from "@/lib/builder/engine";
 import type { Draft } from "@/lib/builder/types";
 import { who, putInBag } from "@/lib/items/server";
-import { rulesData } from "@/lib/levelup/data";
 import { planLevelUp } from "@/lib/levelup/engine";
 import { loadSpellLite } from "@/lib/levelup/server";
 import type { Plan } from "@/lib/levelup/types";
@@ -27,7 +27,7 @@ export async function planFirstLevel(d: Draft): Promise<{ plan: Plan } | { error
   const c = await campaignRules();
   if (!c.ok) return { error: c.error };
   if (!allowed(c.rules, d.rules)) return { error: "This campaign uses other rules." };
-  const data = builderData(d.rules), levelData = rulesData(d.rules);
+  const [data, levelData] = await Promise.all([builderDataFor(d.rules), rulesDataFor(d.rules)]);
   if (!levelData.classes[d.cls]) return { error: "Pick a class first." };
   const spells = await loadSpellLite(c.ctx.supabase);
   return { plan: planLevelUp(baseCharacter(d, data), d.cls, levelData, spells, { first: true }) };
@@ -38,7 +38,7 @@ export async function spellList(rules: string, list: string, maxLevel: number) {
   const c = await campaignRules();
   if (!c.ok) return [];
   const r = rules === "2014" ? "2014" : "2024";
-  const levelData = rulesData(r);
+  const levelData = await rulesDataFor(r);
   const all = await loadSpellLite(c.ctx.supabase);
   return all
     .filter((s) => s.level <= maxLevel && (r === "2014" ? (levelData.spells?.[s.name] ?? []).includes(list) : s.classes.includes(list)))
@@ -52,14 +52,14 @@ export async function createFromBuilder(d: Draft): Promise<{ error: string } | v
   if (!c.ok) return { error: c.error };
   if (!allowed(c.rules, d.rules)) return { error: "This campaign uses other rules." };
   const { supabase, userId, campaignId, isDm } = c.ctx;
-  const data = builderData(d.rules), levelData = rulesData(d.rules);
+  const [data, levelData] = await Promise.all([builderDataFor(d.rules), rulesDataFor(d.rules)]);
   if (!levelData.classes[d.cls]) return { error: "Pick a class." };
   const spells = await loadSpellLite(supabase);
 
   let built;
   try {
     const plan = planLevelUp(baseCharacter(d, data), d.cls, levelData, spells, { first: true });
-    built = buildCharacter(d, data, levelData, plan, (n) => featTextFor(d.rules, n));
+    built = buildCharacter(d, data, levelData, plan, (n) => featTextFor(d.rules, n, levelData));
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Something is missing." };
   }
