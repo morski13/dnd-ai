@@ -15,9 +15,9 @@ export function BottomSheet({ title, onClose, children }: { title: string; onClo
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/60 animate-[fade-in_180ms_ease-out]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/60 md:items-center md:p-8 animate-[fade-in_180ms_ease-out]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label={title}
-        className="animate-sheet flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-[22px] border border-b-0 border-line bg-surface-2 pb-[env(safe-area-inset-bottom)]">
+        className="animate-sheet flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-[22px] border border-b-0 border-line bg-surface-2 pb-[env(safe-area-inset-bottom)] md:max-h-[80dvh] md:max-w-xl md:rounded-[22px] md:border-b md:pb-0">
         <div className="flex items-center gap-3 border-b border-line px-5 py-3">
           <p className="min-w-0 flex-1 truncate font-heading text-lg font-bold">{title}</p>
           <button type="button" onClick={onClose} className="h-9 rounded-lg bg-surface px-3 text-sm text-soft">Close</button>

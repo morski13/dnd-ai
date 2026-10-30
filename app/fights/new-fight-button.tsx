@@ -9,7 +9,7 @@ export function NewFightButton() {
     <>
       <button type="button" disabled={pending}
         onClick={() => start(async () => { const r = await createFight(); if (r?.error) setError(r.error); })}
-        className="h-12 w-full rounded-xl bg-accent text-[15px] font-bold text-accent-text disabled:opacity-60">
+        className="h-12 w-full rounded-xl bg-accent text-[15px] md:w-auto md:px-10 font-bold text-accent-text disabled:opacity-60">
         {pending ? "Creating…" : "+ New fight"}
       </button>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}

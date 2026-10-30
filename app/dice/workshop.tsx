@@ -67,6 +67,9 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
         {active && <p className="pb-1 text-right text-xs text-muted">Rolling with<br /><span className="font-semibold text-soft">{active.skin.name}</span></p>}
       </header>
 
+      {/* laptops: the dice preview and test throws stay on the left while you design on the right */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-10">
+      <div className="lg:sticky lg:top-6">
       <div className="mt-5">
         <DicePreview skin={draft} view={view} />
         <div className="-mx-5 mt-2 flex gap-1.5 overflow-x-auto px-5 pb-1">
@@ -92,8 +95,10 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
         </div>
       </section>
 
+      </div>
+
       {/* Designing a set: the save bar sticks to the bottom only while you're in this part */}
-      <div>
+      <div className="min-w-0 lg:-mt-1">
       {/* Sets */}
       <Section title="Your dice sets">
         <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
@@ -158,7 +163,7 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
       </Section>
 
       {/* Save bar */}
-      <div className="sticky bottom-20 z-10 mt-6 rounded-2xl border border-line bg-surface-2/95 p-3 backdrop-blur">
+      <div className="sticky bottom-[calc(var(--nav-h)+1rem)] z-10 mt-6 rounded-2xl border border-line bg-surface-2/95 p-3 backdrop-blur">
         {msg && <p className={`mb-2 text-sm ${msg.tone === "ok" ? "text-success" : "text-danger"}`} role="status">{msg.text}</p>}
         <div className="flex gap-2">
           <button type="button" disabled={pending || (!dirty && saved?.active)} onClick={() => save(false)}
@@ -180,6 +185,7 @@ export function Workshop({ sets }: { sets: SavedSkin[] }) {
             });
           }} className="mt-2 w-full text-center text-xs text-muted underline">Delete this set</button>
         )}
+      </div>
       </div>
       </div>
 

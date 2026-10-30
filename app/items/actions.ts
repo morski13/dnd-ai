@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Items, coins, homebrew, shops and loot. The database rules decide who may change what;
 // these actions add the friendly checks and keep a log of everything that moves.
 import { randomInt } from "node:crypto";
@@ -55,6 +56,7 @@ async function character(characterId: string) {
 }
 
 export async function addGear(characterId: string, ref: ItemRef | null, name: string, qty: number): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await character(characterId);
   if (!x?.canEdit) return { error: "You can only change your own gear." };
   let label = name.trim().slice(0, 160);
@@ -80,6 +82,7 @@ async function gearRow(rowId: string) {
 }
 
 export async function setQty(rowId: string, qty: number): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await gearRow(rowId);
   if (!x) return { error: "Not found." };
   const n = Math.floor(qty);
@@ -90,6 +93,7 @@ export async function setQty(rowId: string, qty: number): Promise<Fail | Ok> {
 }
 
 export async function dropGear(rowId: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await gearRow(rowId);
   if (!x) return { error: "Not found." };
   const { data, error } = await x.supabase.from("character_items").delete().eq("id", rowId).select("id");
@@ -99,6 +103,7 @@ export async function dropGear(rowId: string): Promise<Fail | Ok> {
 }
 
 export async function setEquipped(rowId: string, on: boolean): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await gearRow(rowId);
   if (!x) return { error: "Not found." };
   const { data } = await x.supabase.from("character_items").update({ equipped: on }).eq("id", rowId).select("id");
@@ -106,6 +111,7 @@ export async function setEquipped(rowId: string, on: boolean): Promise<Fail | Ok
 }
 
 export async function setAttuned(rowId: string, on: boolean): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await gearRow(rowId);
   if (!x) return { error: "Not found." };
   if (on) {
@@ -118,6 +124,7 @@ export async function setAttuned(rowId: string, on: boolean): Promise<Fail | Ok>
 
 /** Opens an equipment pack: its contents go in the bag, the pack goes away. */
 export async function unpack(rowId: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await gearRow(rowId);
   if (!x?.row.srd_id) return { error: "Only packs from the library can be unpacked." };
   const info = await lookup(x.supabase, `srd:${x.row.srd_id}`);
@@ -134,6 +141,7 @@ export async function unpack(rowId: string): Promise<Fail | Ok> {
 }
 
 export async function setCoins(characterId: string, coins: Coins): Promise<Fail | { coins: Coins }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await character(characterId);
   if (!x?.canEdit) return { error: "You can only change your own coins." };
   const before = toCoins(x.c.coins), after = toCoins(coins);
@@ -171,6 +179,7 @@ function cleanForm(f: HomebrewForm) {
 
 /** A player asks the DM for a homebrew item. */
 export async function requestHomebrew(characterId: string | null, form: HomebrewForm): Promise<Fail | { id: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId } = await who();
   if (!userId || !campaignId) return { error: "Join a campaign first." };
   const v = cleanForm(form);
@@ -185,6 +194,7 @@ export async function requestHomebrew(characterId: string | null, form: Homebrew
 
 /** The player changes a request (it goes back to the DM). */
 export async function updateHomebrew(id: string, form: HomebrewForm): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, isDm } = await who();
   if (!userId) return { error: "Log in first." };
   const v = cleanForm(form);
@@ -196,6 +206,7 @@ export async function updateHomebrew(id: string, form: HomebrewForm): Promise<Fa
 }
 
 export async function deleteHomebrew(id: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId } = await who();
   if (!userId) return { error: "Log in first." };
   const { data, error } = await supabase.from("campaign_items").delete().eq("id", id).select("id");
@@ -205,6 +216,7 @@ export async function deleteHomebrew(id: string): Promise<Fail | Ok> {
 
 /** DM: approve (and hand it to the character it was made for) or say no, with a note. */
 export async function reviewHomebrew(id: string, decision: "approved" | "rejected", note: string, give = true): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId, isDm } = await who();
   if (!isDm || !campaignId) return { error: "Only the DM decides on homebrew." };
   const { data: it } = await supabase.from("campaign_items").select("id, name, for_character").eq("id", id).eq("campaign_id", campaignId).maybeSingle();
@@ -221,6 +233,7 @@ export async function reviewHomebrew(id: string, decision: "approved" | "rejecte
 
 /** DM: a custom item for the campaign (secret until given or put in an open shop). */
 export async function createCustomItem(form: HomebrewForm): Promise<Fail | { id: string; ref: ItemRef }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId, isDm } = await who();
   if (!isDm || !campaignId) return { error: "Only the DM makes custom items." };
   const v = cleanForm(form);
@@ -239,6 +252,7 @@ async function dmCampaign() {
 }
 
 export async function giveItem(characterIds: string[], ref: ItemRef | null, name: string, qty: number): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM gives items." };
   if (!characterIds.length) return { error: "Pick who gets it." };
@@ -261,6 +275,7 @@ export async function giveItem(characterIds: string[], ref: ItemRef | null, name
 
 /** Coins to players: everyone gets the amount ("each"), or the amount is shared out ("split"). */
 export async function giveCoins(characterIds: string[], cp: number, mode: "each" | "split", why = ""): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM gives coins." };
   const ids = characterIds.slice(0, 12);
@@ -280,6 +295,7 @@ export async function giveCoins(characterIds: string[], cp: number, mode: "each"
 
 // ------------------------------------------------------------------ shops (DM)
 export async function createShop(name: string): Promise<Fail | { id: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM makes shops." };
   const n = name.trim().slice(0, 80);
@@ -290,6 +306,7 @@ export async function createShop(name: string): Promise<Fail | { id: string }> {
 }
 
 export async function updateShop(id: string, patch: { name?: string; keeper?: string; blurb?: string; pricePct?: number }): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes shops." };
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -303,6 +320,7 @@ export async function updateShop(id: string, patch: { name?: string; keeper?: st
 
 /** Open = the players can see the shop and buy. Closing hides it again. */
 export async function setShopOpen(id: string, open: boolean): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM opens shops." };
   const { data: s } = await d.supabase.from("sessions").select("id").eq("campaign_id", d.campaignId).not("started_at", "is", null).is("ended_at", null).limit(1).maybeSingle();
@@ -312,6 +330,7 @@ export async function setShopOpen(id: string, open: boolean): Promise<Fail | Ok>
 }
 
 export async function deleteShop(id: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM deletes shops." };
   await d.supabase.from("shops").delete().eq("id", id).eq("campaign_id", d.campaignId);
@@ -319,6 +338,7 @@ export async function deleteShop(id: string): Promise<Fail | Ok> {
 }
 
 export async function addStock(shopId: string, ref: ItemRef | null, name: string, priceCp: number | null, qty: number | null): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM stocks shops." };
   const { srdId, itemId } = ref ? parseRef(ref) : { srdId: null, itemId: null };
@@ -341,6 +361,7 @@ export async function addStock(shopId: string, ref: ItemRef | null, name: string
 }
 
 export async function updateStock(id: string, patch: { priceCp?: number; qty?: number | null }): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes stock." };
   const row: Record<string, unknown> = {};
@@ -351,6 +372,7 @@ export async function updateStock(id: string, patch: { priceCp?: number; qty?: n
 }
 
 export async function removeStock(id: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes stock." };
   await d.supabase.from("shop_stock").delete().eq("id", id).eq("campaign_id", d.campaignId);
@@ -359,6 +381,7 @@ export async function removeStock(id: string): Promise<Fail | Ok> {
 
 // ------------------------------------------------------------------ buying
 export async function buy(stockId: string, characterId: string, qty: number): Promise<Fail | { coins: Coins; paid: number }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await character(characterId);
   if (!x?.canEdit) return { error: "You can only buy for your own character." };
   const { data: st } = await x.supabase.from("shop_stock").select("id, price_cp, qty, name, shops(price_pct, is_open)").eq("id", stockId).maybeSingle();
@@ -378,6 +401,7 @@ export async function buy(stockId: string, characterId: string, qty: number): Pr
 
 // ------------------------------------------------------------------ loot (DM)
 export async function createLootTable(name: string): Promise<Fail | { id: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM makes loot tables." };
   const n = name.trim().slice(0, 80);
@@ -387,6 +411,7 @@ export async function createLootTable(name: string): Promise<Fail | { id: string
 }
 
 export async function updateLootTable(id: string, patch: { name?: string; note?: string; coinsCp?: number }): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes loot tables." };
   const row: Record<string, unknown> = {};
@@ -398,6 +423,7 @@ export async function updateLootTable(id: string, patch: { name?: string; note?:
 }
 
 export async function deleteLootTable(id: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM deletes loot tables." };
   await d.supabase.from("loot_tables").delete().eq("id", id).eq("campaign_id", d.campaignId);
@@ -405,6 +431,7 @@ export async function deleteLootTable(id: string): Promise<Fail | Ok> {
 }
 
 export async function addLootRow(tableId: string, ref: ItemRef | null, name: string, qty: number, weight = 1): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes loot tables." };
   const { srdId, itemId } = ref ? parseRef(ref) : { srdId: null, itemId: null };
@@ -420,6 +447,7 @@ export async function addLootRow(tableId: string, ref: ItemRef | null, name: str
 }
 
 export async function removeLootRow(id: string): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM changes loot tables." };
   await d.supabase.from("loot_rows").delete().eq("id", id).eq("campaign_id", d.campaignId);
@@ -430,6 +458,7 @@ type LootRow = { id: string; srd_id: string | null; item_id: string | null; name
 
 /** Rolls one row from a loot table (rows with a higher chance come up more often). */
 export async function rollLoot(tableId: string): Promise<Fail | { rowId: string; name: string; qty: number; roll: number; of: number }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM rolls loot." };
   const { data } = await d.supabase.from("loot_rows").select("id, srd_id, item_id, name, qty, weight").eq("table_id", tableId).order("sort");
@@ -444,6 +473,7 @@ export async function rollLoot(tableId: string): Promise<Fail | { rowId: string;
 
 /** Hands out loot. One row to one character, or the whole table (items to one, coins shared by everyone picked). */
 export async function giveLoot(a: { rowId?: string; tableId?: string; itemsTo: string; coinsTo?: string[] }): Promise<Fail | Ok> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const d = await dmCampaign();
   if (!d) return { error: "Only the DM gives loot." };
   let rows: LootRow[] = [];

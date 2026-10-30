@@ -10,12 +10,12 @@ import { Workshop, type SavedSkin } from "./workshop";
 export default function DicePage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-48 rounded bg-surface" /><div className="h-72 rounded-[18px] bg-surface" /><div className="h-40 rounded-2xl bg-surface" /></div>}>
           <Loader />
         </Suspense>
       </main>
-      <BottomNav active="home" />
+      <BottomNav active="dice" />
     </>
   );
 }

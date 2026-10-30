@@ -10,7 +10,7 @@ type P = { params: Promise<{ id: string }>; searchParams: Promise<Record<string,
 export default function FolderPage(props: P) {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-48 rounded bg-surface" /><div className="h-24 rounded-2xl bg-surface" /><div className="h-24 rounded-2xl bg-surface" /></div>}>
           <Folder {...props} />
         </Suspense>

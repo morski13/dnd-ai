@@ -185,3 +185,19 @@ button:disabled { opacity: 0.6; }
 :is(button, a, summary, [role="button"]).h-11 { min-height: 2.75rem; }
 :is(button, a, summary, [role="button"]).h-12 { min-height: 3rem; }
 :is(button, a, summary, [role="button"]).h-14 { min-height: 3.5rem; }
+
+/* =====================================================================
+   Tablets and laptops: the main navigation moves to the left side, so the
+   page makes room for it. Fixed bars along the bottom (roll tray, level-up,
+   save fight, Tavern input) start right of it and sit on the very bottom.
+   ===================================================================== */
+:root { --nav-w: 0px; --nav-h: calc(4rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) {
+  :root { --nav-w: 5.5rem; --nav-h: 0px; }
+  body:has([data-app-nav]) { padding-left: var(--nav-w); }
+}
+@media (min-width: 1024px) {
+  :root { --nav-w: 15rem; }
+}
+/* a bar fixed above the phone's bottom nav: same place on phones, flush with the bottom and right of the side bar on bigger screens */
+.dock { position: fixed; right: 0; left: var(--nav-w); bottom: var(--nav-h); }

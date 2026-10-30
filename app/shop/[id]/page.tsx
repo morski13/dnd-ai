@@ -7,7 +7,7 @@ import { ShopView } from "./shop-view";
 export default function ShopPage({ params }: { params: Promise<{ id: string }> }) {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-16 rounded-2xl bg-surface" />{[0, 1, 2, 3].map((i) => <div key={i} className="h-14 rounded-xl bg-surface" />)}</div>}>
           <Shop params={params} />
         </Suspense>

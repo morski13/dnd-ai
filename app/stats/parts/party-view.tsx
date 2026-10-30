@@ -44,6 +44,7 @@ export function PartyView({ d }: { d: StatsView }) {
         <p className="mt-6 text-sm text-muted">No character rolls in this {d.scope === "session" ? "session" : "campaign"} yet.</p>
       ) : (
         <>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-6">
           <Section title="Damage dealt" sub="What actually landed (half on a save, after resistance)">
             <div className="rounded-[18px] border border-line bg-surface p-3"><CharacterBars data={bars((s) => s.damageDealt)} /></div>
           </Section>
@@ -53,6 +54,7 @@ export function PartyView({ d }: { d: StatsView }) {
               <div className="rounded-[18px] border border-line bg-surface p-3"><CharacterBars data={bars((s) => s.healingDone)} /></div>
             </Section>
           )}
+          </div>
 
           <Section title="Awards" sub={d.scope === "session" ? `Session ${d.session?.number}` : "Whole campaign"}>
             <Awards awards={d.awards} colorOf={colorOf} />

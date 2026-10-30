@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Short and long rests for one character. Hit dice are rolled here on the server and saved like any roll.
 import { loadCharacter } from "@/lib/character-data";
 import { roll } from "@/lib/dice";
@@ -20,6 +21,7 @@ async function load(characterId: string) {
 
 /** Short rest: spend the chosen hit dice, e.g. { 12: 2 } = two d12s. */
 export async function takeShortRest(characterId: string, spend: Record<string, number>): Promise<Fail | RestResult> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await load(characterId);
   if ("error" in x) return x;
   const c = x.character;
@@ -56,6 +58,7 @@ export async function takeShortRest(characterId: string, spend: Record<string, n
 
 /** Long rest: everything back, death saves cleared, concentration ends. */
 export async function takeLongRest(characterId: string): Promise<Fail | RestResult> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const x = await load(characterId);
   if ("error" in x) return x;
   return (await longRestFor(x.character.id, x.userId)) ?? { error: "Character not found." };

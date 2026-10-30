@@ -9,7 +9,7 @@ import { TierBadge } from "./tier";
 export default function FightsPage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-10 pb-28">
         <Link href="/" className="text-sm text-muted">← Home</Link>
         <h1 className="mt-2 font-heading text-3xl font-bold">Fight planner</h1>
         <p className="mt-1 text-[15px] text-muted">Build fights before the session. Each one is tested 2,000 times against your party.</p>
@@ -32,7 +32,7 @@ async function Fights() {
         <span><span className="block font-bold">Battle maps</span><span className="block text-xs text-muted">Upload maps and fit the squares, then use one in a fight</span></span>
         <span className="text-accent" aria-hidden>→</span>
       </Link>
-      <ul className="mt-5 flex flex-col gap-3">
+      <ul className="mt-5 flex flex-col gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
         {fights.length === 0 && <li className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No fights yet. Make your first one.</li>}
         {fights.map((f) => (
           <li key={f.id}>

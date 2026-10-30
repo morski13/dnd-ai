@@ -83,3 +83,8 @@ export const SearchIcon = (p: IconProps) => (
 export const PlusIcon = (p: IconProps) => (
   <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
 );
+
+/** A six-sided die (the Dice tab). */
+export const CubeIcon = (p: IconProps) => (
+  <Svg {...p}><rect x="4" y="4" width="16" height="16" rx="3.5" /><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="8.5" cy="15.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none" /></Svg>
+);

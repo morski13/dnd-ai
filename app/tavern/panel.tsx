@@ -22,13 +22,13 @@ export function TavernButton({ characterId }: { characterId: string | null }) {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} aria-label="Ask the Tavern a rules question"
-        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-20 flex h-12 items-center gap-1.5 rounded-full border border-accent-line bg-accent-surface px-4 text-sm font-bold text-accent shadow-lg shadow-black/40">
+        className="fixed bottom-[calc(var(--nav-h)+1rem)] right-4 z-20 md:right-8 flex h-12 items-center gap-1.5 rounded-full border border-accent-line bg-accent-surface px-4 text-sm font-bold text-accent shadow-lg shadow-black/40">
         <span aria-hidden>✦</span> Ask
       </button>
       {open && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/50" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-40 flex items-end bg-black/50 md:items-stretch md:justify-end" onClick={() => setOpen(false)}>
           <div role="dialog" aria-modal="true" aria-label="The Tavern" onClick={(e) => e.stopPropagation()}
-            className="animate-rise mx-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-line bg-bg px-4 pb-6 pt-3">
+            className="animate-rise mx-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-line bg-bg px-4 pb-6 pt-3 md:mx-0 md:h-full md:max-h-none md:w-[28rem] md:max-w-[90vw] md:rounded-none md:rounded-l-3xl md:px-6 md:pt-6">
             <div className="mb-2 flex items-center justify-between">
               <p className="font-heading text-xl font-bold">The Tavern</p>
               <div className="flex items-center gap-2">

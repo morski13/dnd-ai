@@ -127,7 +127,7 @@ export function FolderView({ folder, def, entries, canEdit, asPlayer, fights, sh
       {images.length > 0 && (
         <section className="mt-6" aria-label="Pictures">
           <p className="text-xs uppercase tracking-[0.12em] text-muted">Pictures</p>
-          <ul className="mt-2 grid grid-cols-2 gap-2">
+          <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
             {images.map((e, i) => (
               <li key={e.id} className="animate-rise" style={{ "--i": i } as React.CSSProperties}>
                 <Link href={`/campaign/e/${e.id}${q}`} className="group relative block overflow-hidden rounded-xl border border-line bg-surface">
@@ -146,7 +146,7 @@ export function FolderView({ folder, def, entries, canEdit, asPlayer, fights, sh
       {docs.length > 0 && (
         <section className="mt-6" aria-label="Documents">
           <p className="text-xs uppercase tracking-[0.12em] text-muted">{goals ? "Goals & milestones" : "Documents"}</p>
-          <ul className="mt-2 space-y-2">
+          <ul className="mt-2 space-y-2 md:grid md:grid-cols-2 md:gap-2 md:space-y-0 lg:grid-cols-3">
             {docs.map((e, i) => (
               <li key={e.id} className="animate-rise flex items-stretch gap-2" style={{ "--i": i } as React.CSSProperties}>
                 {goals && <GoalCheck entry={e} canEdit={canEdit} />}
@@ -177,7 +177,7 @@ export function FolderView({ folder, def, entries, canEdit, asPlayer, fights, sh
             {canEdit && <Link href="/items?tab=shops" className="text-sm text-accent underline">New shop</Link>}
           </div>
           {shops.length === 0 ? <p className="mt-2 text-sm text-muted">No shops yet. Shops stay secret until you open them for the players.</p> : (
-            <ul className="mt-2 flex flex-col gap-2">
+            <ul className="mt-2 flex flex-col gap-2 md:grid md:grid-cols-2">
               {shops.map((s) => (
                 <li key={s.id}>
                   <Link href={`/shop/${s.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 active:border-accent">

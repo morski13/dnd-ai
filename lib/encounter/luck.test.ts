@@ -6,27 +6,33 @@ const att = (nat: number, expr = "1d20+5"): RollRow => ({ character_id: "a", rol
 const dmg = (total: number): RollRow => ({ character_id: "a", roll_type: "damage", expression: "1d8+3", dice: [total - 3], dice_all: [total - 3], total });
 
 describe("personal luck", () => {
-  it("a new character uses the sheet only", () => {
+  it("a new character uses average dice", () => {
     const l = luckFrom(undefined);
-    expect(l).toEqual({ attackShift: 0, saveShift: 0, dmgMult: 1, rolls: 0 });
-    expect(luckLabel(l)).toBe("sheet only");
+    expect(l).toMatchObject({ attackShift: 0, saveShift: 0, dmgMult: 1, rolls: 0 });
+    expect(luckLabel(l)).toBe("average dice (no rolls yet)");
   });
 
-  it("hot dice count more the more you roll (shrunk towards average)", () => {
-    const few = luckFrom(rollHistory([att(18), att(17)])["a"]);
-    const many = luckFrom(rollHistory(Array.from({ length: 60 }, () => att(17)))["a"]);
-    expect(few.attackShift).toBeGreaterThan(0);
-    expect(many.attackShift).toBeGreaterThan(few.attackShift);
+  it("average dice until 30 rolls of a kind, then real luck (still pulled towards average)", () => {
+    const few = luckFrom(rollHistory(Array.from({ length: 29 }, () => att(18)))["a"]);
+    expect(few.attackShift).toBe(0);
+    expect(luckLabel(few)).toBe("average dice (29 of 30 rolls)");
+    const thirty = luckFrom(rollHistory(Array.from({ length: 30 }, (_, i) => att(i % 2 ? 13 : 14)))["a"]);
+    const many = luckFrom(rollHistory(Array.from({ length: 80 }, (_, i) => att(i % 2 ? 13 : 14)))["a"]);
+    expect(thirty.attackShift).toBeGreaterThan(0);
+    expect(many.attackShift).toBeGreaterThan(thirty.attackShift);
     expect(many.attackShift).toBeLessThanOrEqual(3);
-    expect(luckLabel(many)).toMatch(/based on 60 rolls · hits more/);
+    expect(luckLabel(many)).toMatch(/based on 80 rolls · hits more/);
   });
 
-  it("leaves out advantage rolls and counts damage against the dice average", () => {
+  it("leaves out advantage rolls and counts damage against the dice average (each kind needs its own 30)", () => {
     const h = rollHistory([att(20, "2d20kh1+5"), dmg(11), dmg(11)])["a"];
     expect(h.attacks).toBe(0);
     expect(h.damage).toBe(2);
     expect(h.damageRatioSum / h.damage).toBeCloseTo(11 / 7.5);
-    expect(luckFrom(h).dmgMult).toBeGreaterThan(1);
+    expect(luckFrom(h).dmgMult).toBe(1); // only 2 damage rolls: average
+    const lots = rollHistory([...Array.from({ length: 30 }, () => dmg(11)), ...Array.from({ length: 5 }, () => att(19))])["a"];
+    expect(luckFrom(lots).dmgMult).toBeGreaterThan(1);
+    expect(luckFrom(lots).attackShift).toBe(0); // 5 attack rolls: still average
   });
 
   it("lucky dice win more simulated fights", () => {

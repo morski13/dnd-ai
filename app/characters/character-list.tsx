@@ -48,7 +48,7 @@ export function CharacterList({ characters, userId, isDm }: {
         ))}
       </div>
 
-      <div className="mt-5 flex flex-col gap-4">
+      <div className="mt-5 flex flex-col gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
         {shown.length === 0 && (
           <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
             {filter === "mine"

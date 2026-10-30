@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Session mode: start/end the session, run fights, roll for monsters, free rolls.
 import { redirect } from "next/navigation";
 import { roll } from "@/lib/dice";
@@ -31,6 +32,7 @@ async function me() {
 
 // ---------------------------------------------------------------- session
 export async function startSession(): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can start a session." };
   const admin = createAdminClient();
@@ -53,6 +55,7 @@ export async function startSession(): Promise<Fail | void> {
 }
 
 export async function endSession(sessionId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can end the session." };
   const { data: combats } = await supabase.from("combats").select("id").eq("session_id", sessionId).is("ended_at", null);
@@ -71,6 +74,7 @@ export async function endSession(sessionId: string): Promise<Fail | void> {
 
 // ---------------------------------------------------------------- combat
 export async function startCombat(sessionId: string, monsterIds: string[]): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can start a fight." };
   const { data: combat, error } = await supabase.from("combats")
@@ -95,6 +99,7 @@ export async function startCombat(sessionId: string, monsterIds: string[]): Prom
 }
 
 export async function addMonster(form: { name: string; ac: number; hp: number; initBonus: number }, combatId: string | null): Promise<Fail | { id: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can add monsters." };
   const name = form.name.trim();
@@ -113,6 +118,7 @@ export async function addMonster(form: { name: string; ac: number; hp: number; i
 
 /** DM: roll initiative for every monster (secretly, if the house rule says so) and unclaimed characters. */
 export async function rollNpcInitiative(combatId: string, hidden: boolean): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can do that." };
   const admin = createAdminClient();
@@ -142,6 +148,7 @@ export async function rollNpcInitiative(combatId: string, hidden: boolean): Prom
 }
 
 export async function nextTurn(combatId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, isDm } = await me();
   if (!isDm) return { error: "Only the DM can move the turn on." };
   const admin = createAdminClient();
@@ -171,6 +178,7 @@ export async function nextTurn(combatId: string): Promise<Fail | void> {
 }
 
 export async function endCombat(combatId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, isDm } = await me();
   if (!isDm) return { error: "Only the DM can end the fight." };
   const { error } = await supabase.rpc("end_combat", { p_combat_id: combatId });
@@ -182,6 +190,7 @@ export async function monsterRoll(
   monsterId: string,
   form: { label: string; expression: string; kind: "attack" | "damage" | "save" | "check" | "other"; hidden: boolean; targetCharacterId: string | null; crit?: boolean }
 ): Promise<Fail | QuickRoll> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM rolls for monsters." };
   const admin = createAdminClient();
@@ -222,6 +231,7 @@ export async function monsterRoll(
 
 /** Any dice, any time ("2d6+3", "4d6kh3", "1d20+5 adv"). Saved to the log. */
 export async function freeRoll(expression: string, label: string, characterId: string | null, hidden: boolean): Promise<Fail | QuickRoll> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!campaignId || !userId) return { error: "Join a campaign first." };
   if (characterId) {
@@ -254,6 +264,7 @@ type SavedFightEntry = {
 
 /** DM: start a fight planned in the Fight planner. Creates its monsters and places everyone. */
 export async function startSavedFight(sessionId: string, encounterId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can start a fight." };
   const { data: enc } = await supabase.from("encounters").select("id, name, data").eq("id", encounterId).eq("campaign_id", campaignId).maybeSingle();

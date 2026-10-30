@@ -16,7 +16,7 @@ import { LevelUpWizard } from "./wizard";
 export default function LevelUpPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-48">
+      <main className="mx-auto w-full max-w-md md:max-w-2xl md:px-8 flex-1 px-5 pt-8 pb-48">
         <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-40 rounded-[18px] bg-surface" /><div className="h-64 rounded-[18px] bg-surface" /></div>}>
           <LevelUp params={params} searchParams={searchParams} />
         </Suspense>

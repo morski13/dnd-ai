@@ -9,7 +9,7 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
   // The sheet (and the menu) wear the character's own look, so the whole screen waits for it.
   return (
     <Suspense fallback={<>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-60"><SheetSkeleton /></main>
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-60"><SheetSkeleton /></main>
       <BottomNav active="characters" />
     </>}>
       <Sheet params={params} />
@@ -22,7 +22,7 @@ async function Sheet({ params }: { params: Promise<{ id: string }> }) {
   const { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait } = await getCharacterSheet(id);
   return (
     <LookProvider characterId={character.id} initial={sheetStyle}>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-60">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-60">
         <Zoomed>
           <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} levelPlan={levelPlan} portrait={portrait} />
         </Zoomed>

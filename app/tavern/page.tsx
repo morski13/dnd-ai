@@ -14,7 +14,7 @@ const MODES: Mode[] = ["rules", "character", "lore"];
 export default function TavernPage({ searchParams }: { searchParams: SP }) {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 flex-1 px-5 pt-8">
         <Suspense fallback={<div className="animate-pulse space-y-3"><div className="h-9 w-48 rounded bg-surface" /><div className="h-16 rounded-2xl bg-surface" /><div className="h-40 rounded-2xl bg-surface" /></div>}>
           <Tavern searchParams={searchParams} />
         </Suspense>

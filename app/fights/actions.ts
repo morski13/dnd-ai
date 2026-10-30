@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Fight planner: create, save, delete fights; search the monster library.
 import { redirect } from "next/navigation";
 import { requireDm, type FightData, type FightSummary } from "@/lib/fights-data";
@@ -7,6 +8,7 @@ import type { MonsterStats } from "@/lib/encounter/build";
 type Fail = { error: string };
 
 export async function createFight(): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await requireDm();
   if (!campaignId || !isDm) return { error: "Only the DM can plan fights." };
   const { data, error } = await supabase.from("encounters")
@@ -17,6 +19,7 @@ export async function createFight(): Promise<Fail | void> {
 }
 
 export async function saveFight(id: string, name: string, data: FightData, summary: FightSummary | null): Promise<Fail | { ok: true }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await requireDm();
   if (!campaignId || !isDm) return { error: "Only the DM can save fights." };
   const { error } = await supabase.from("encounters")
@@ -27,6 +30,7 @@ export async function saveFight(id: string, name: string, data: FightData, summa
 }
 
 export async function deleteFight(id: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, campaignId, isDm } = await requireDm();
   if (!campaignId || !isDm) return { error: "Only the DM can delete fights." };
   await supabase.from("encounters").delete().eq("id", id).eq("campaign_id", campaignId);

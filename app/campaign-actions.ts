@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Joining a campaign and claiming characters.
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -6,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 export type ActionState = { error: string | null };
 
 export async function joinCampaign(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "Enter the invite code from your DM." };
 
@@ -22,6 +24,7 @@ export async function joinCampaign(_prev: ActionState, formData: FormData): Prom
 }
 
 export async function claimCharacter(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const id = String(formData.get("characterId") ?? "");
   const supabase = await createClient();
   const { error } = await supabase.rpc("claim_character", { p_character_id: id });
@@ -42,6 +45,7 @@ export async function switchCampaign(campaignId: string): Promise<Fail | void> {
 
 /** Start a new campaign. You become its DM, and it opens right away. */
 export async function createCampaign(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Give your campaign a name." };
   const supabase = await createClient();
@@ -53,6 +57,7 @@ export async function createCampaign(_prev: ActionState, formData: FormData): Pr
 }
 
 export async function leaveCampaign(campaignId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const supabase = await createClient();
   const { error } = await supabase.rpc("leave_campaign", { p_campaign: campaignId });
   if (error) return { error: error.message };
@@ -60,6 +65,7 @@ export async function leaveCampaign(campaignId: string): Promise<Fail | void> {
 }
 
 export async function newInviteCode(campaignId: string): Promise<Fail | { code: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("new_invite_code", { p_campaign: campaignId });
   if (error) return { error: error.message };

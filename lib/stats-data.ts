@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { spellNames as srdSpellNames } from "@/lib/srd-cache";
 import {
   awards, computeStats, fightSummaries, monsterType,
   type ActorStats, type Award, type FightSummary, type StatActor, type StatEffect, type StatRoll,
@@ -76,7 +77,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     supabase.from("characters").select("id, name, hp_max, owner_user_id, created_at").eq("campaign_id", cid).order("created_at").order("name"),
     supabase.from("monsters").select("id, name, kind, hp_max").eq("campaign_id", cid),
     supabase.from("combats").select("id, session_id, name, round").eq("campaign_id", cid).not("session_id", "is", null).order("started_at"),
-    supabase.from("srd_spells").select("name"),
+    srdSpellNames().then((data) => ({ data })),
     isDm ? supabase.from("encounters").select("name, summary").eq("campaign_id", cid) : Promise.resolve({ data: [] as { name: string; summary: { tier?: string } | null }[] }),
     readAll<StatRoll>((a, b) => supabase.from("roll_events").select(ROLL_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).order("created_at").order("id").range(a, b)),
     readAll<StatEffect>((a, b) => supabase.from("effects").select(EFFECT_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).order("created_at").order("id").range(a, b)),

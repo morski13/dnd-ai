@@ -50,6 +50,7 @@ export function CharacterView({ d }: { d: StatsView }) {
             </div>
           )}
 
+          <div className="md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-3">
           <Section title="Most used attacks">
             <CountList items={sorted(s.attacksUsed)} color={c.color} empty="No attacks rolled." />
           </Section>
@@ -70,6 +71,7 @@ export function CharacterView({ d }: { d: StatsView }) {
             </div>
             {s.failedChecks.length > 0 && <p className="mt-2 text-sm text-muted">Failed: {s.failedChecks.join(", ")}</p>}
           </Section>
+          </div>
 
           {won.length > 0 && (
             <Section title="Awards won">

@@ -186,7 +186,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goa
         )}
       </section>
 
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Level-up status">
+      <div className="dock z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Level-up status">
         <div className="mx-auto max-w-md px-5 py-3">
           {error && <p className="mb-2 text-sm text-danger" role="alert">{error}</p>}
           <div className="flex items-center gap-3">

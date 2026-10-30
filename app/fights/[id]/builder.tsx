@@ -99,14 +99,17 @@ export function FightBuilder({ fight, characters, library, campaignMonsters, his
         className="mt-2 w-full rounded-xl border border-transparent bg-transparent font-heading text-3xl font-bold outline-none focus:border-line"
       />
 
-      <div className="mt-4">
+      {/* phones and tablets: the result on top. Laptops: party and enemies on the left, the result stays in view on the right */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-8">
+      <div className="mt-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:max-h-[calc(100dvh-8.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
         <ResultCard analysis={analysis} calculating={calculating} hasEnemies={enemies.some((e) => e.count > 0)} hasParty={included.length > 0} />
         <SimOptions real={real} onReal={setReal} runs={runs} onRuns={setRuns}
           who={included.map((c) => ({ name: c.name.split(" ")[0], label: luckLabel(luckFrom(history[c.id])) }))} />
       </div>
 
+      <div className="lg:col-start-1 lg:row-start-1">
       {/* Party */}
-      <section className="mt-6">
+      <section className="mt-6 lg:mt-4">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Party</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {characters.map((c) => {
@@ -176,9 +179,11 @@ export function FightBuilder({ fight, characters, library, campaignMonsters, his
 
       <button type="button" onClick={() => { if (confirm("Delete this fight?")) start(async () => { await deleteFight(fight.id); }); }}
         className="mt-8 h-11 w-full rounded-xl border border-danger-line text-sm text-danger">Delete fight</button>
+      </div>
+      </div>
 
       {/* Save bar */}
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur">
+      <div className="dock z-10 border-t border-line bg-surface-2/95 backdrop-blur">
         <div className="mx-auto flex max-w-md items-center gap-3 px-5 py-3">
           <p className="min-w-0 flex-1 truncate text-sm text-muted">
             {error ? <span className="text-danger">{error}</span> : saved ? "✓ Saved. Start it from Session mode." : dirty ? "Unsaved changes" : "Saved"}

@@ -152,7 +152,7 @@ export function TavernChat(p: {
       {err && <p className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">{err}</p>}
 
       <form onSubmit={(e) => { e.preventDefault(); send(text); }}
-        className={p.compact ? "mt-3" : "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-bg/95 px-5 py-3 backdrop-blur"}>
+        className={p.compact ? "mt-3" : "dock z-10 border-t border-line bg-bg/95 px-5 py-3 backdrop-blur"}>
         <div className="mx-auto flex max-w-md items-end gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} maxLength={800}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(text); } }}

@@ -179,7 +179,7 @@ export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMetho
       </p>
       <p className="mt-1 text-center text-[11px] text-muted">Rules: SRD {d.rules === "2014" ? "5.1" : "5.2.1"} by Wizards of the Coast (CC-BY-4.0). Only the free rules are built in; use “Other” or your own subclass name for things from the books.</p>
 
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Builder steps">
+      <div className="dock z-10 border-t border-line bg-surface-2/95 backdrop-blur" role="region" aria-label="Builder steps">
         <div className="mx-auto max-w-md px-5 py-3">
           {(saveErr || (here.length > 0 && step !== "review")) && <p className="mb-2 text-sm text-muted" role="status">{saveErr ? <span className="text-danger">{saveErr}</span> : here[0]}</p>}
           <div className="flex gap-2">

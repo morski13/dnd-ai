@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { SheetCharacter, SpellInfo } from "@/lib/rules";
 import { getGear } from "@/lib/items-data";
+import { spellsNamed } from "@/lib/srd-cache";
 import { cleanSheetStyle } from "@/lib/themes";
 
 export type Resource = { name: string; max: number; used?: number; recharge?: string };
@@ -65,7 +66,7 @@ export async function loadCharacter(id: string) {
 
   const [{ data: spells }, { data: member }] = await Promise.all([
     character.spells.known.length
-      ? supabase.from("srd_spells").select(SPELL_COLUMNS).in("name", character.spells.known)
+      ? spellsNamed(character.spells.known).then((data) => ({ data }))
       : Promise.resolve({ data: [] }),
     supabase.from("campaign_members").select("role")
       .eq("campaign_id", character.campaign_id).eq("user_id", userId).maybeSingle(),

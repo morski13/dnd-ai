@@ -7,7 +7,7 @@ export const avg = (x: number | null) => (x === null ? "—" : x.toFixed(1));
 
 export function Section({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <section className="mt-6">
+    <section className="mt-6 min-w-0">
       <h2 className="font-heading text-xl font-semibold">{title}</h2>
       {sub && <p className="mt-0.5 text-sm text-muted">{sub}</p>}
       <div className="mt-3">{children}</div>
@@ -17,7 +17,7 @@ export function Section({ title, sub, children }: { title: string; sub?: string;
 
 export function Tiles({ items }: { items: { label: string; value: string | number; sub?: string }[] }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className={`grid grid-cols-3 gap-2 ${items.length === 6 ? "md:grid-cols-6" : "md:grid-cols-4 lg:grid-cols-6"}`}>
       {items.map((t, i) => (
         <div key={t.label} className="animate-rise rounded-xl border border-line bg-surface px-2 py-3 text-center" style={{ "--i": i } as React.CSSProperties}>
           <p className="font-heading text-2xl font-bold leading-none text-text"><CountUp value={t.value} /></p>
@@ -32,7 +32,7 @@ export function Tiles({ items }: { items: { label: string; value: string | numbe
 export function Awards({ awards, colorOf }: { awards: Award[]; colorOf: (name: string) => string | undefined }) {
   if (!awards.length) return <p className="text-sm text-muted">No awards yet. Roll some dice!</p>;
   return (
-    <ul className="grid grid-cols-2 gap-2">
+    <ul className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
       {awards.map((a, i) => (
         <li key={a.id} className="animate-flip rounded-2xl border border-accent-line bg-accent-surface p-3" style={{ "--i": i } as React.CSSProperties}>
           <p className="text-2xl leading-none" aria-hidden>{a.emoji}</p>

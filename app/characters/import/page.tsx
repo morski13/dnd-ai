@@ -11,7 +11,7 @@ import { ImportFlow } from "./flow";
 export default function ImportSheetPage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-2xl md:px-8 flex-1 px-5 pt-8 pb-28">
         <Link href="/characters" className="text-xs uppercase tracking-[0.12em] text-muted">← Characters</Link>
         <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">Import a sheet</h1>
         <p className="mt-1 text-[15px] text-muted">Send your character sheet PDF and the app fills in the new character for you.</p>

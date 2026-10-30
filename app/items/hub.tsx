@@ -76,7 +76,7 @@ function DmHub({ initial, characters, requests, custom, loot, log, shops }: Prop
 // ------------------------------------------------------------------ requests
 function Requests({ requests, characters }: { requests: Homebrew[]; characters: Char[] }) {
   if (!requests.length) return <Empty text="No homebrew requests waiting. When a player asks for a homebrew item, it shows up here." />;
-  return <ul className="flex flex-col gap-3">{requests.map((h, i) => <RequestCard key={h.id} h={h} i={i} who={characters.find((c) => c.id === h.forCharacter)?.name ?? h.by} />)}</ul>;
+  return <ul className="flex flex-col gap-3 md:grid md:grid-cols-2">{requests.map((h, i) => <RequestCard key={h.id} h={h} i={i} who={characters.find((c) => c.id === h.forCharacter)?.name ?? h.by} />)}</ul>;
 }
 
 function RequestCard({ h, i, who }: { h: Homebrew; i: number; who: string | null }) {

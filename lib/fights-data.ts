@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { CharacterForSim, MonsterStats } from "@/lib/encounter/build";
 import type { SpellInfo } from "@/lib/rules";
-import { SPELL_COLUMNS } from "@/lib/character-data";
+import { spellsNamed } from "@/lib/srd-cache";
 import { rollHistory, type RollRow } from "@/lib/encounter/luck";
 
 export type SavedEntry = {
@@ -70,7 +70,7 @@ export async function getFight(id: string) {
   })) as unknown as CharacterForSim[];
   const known = [...new Set(characters.flatMap((c) => c.spells?.known ?? []))];
   const { data: spells } = known.length
-    ? await supabase.from("srd_spells").select(SPELL_COLUMNS).in("name", known)
+    ? { data: await spellsNamed(known) }
     : { data: [] };
   const data = (fight.data ?? {}) as Partial<FightData>;
   const history = await loadHistory(supabase, campaignId, characters.map((c) => c.id));
@@ -97,7 +97,7 @@ export async function getPractice() {
   })) as unknown as CharacterForSim[];
   const known = [...new Set(characters.flatMap((c) => c.spells?.known ?? []))];
   const [{ data: spells }, history] = await Promise.all([
-    known.length ? supabase.from("srd_spells").select(SPELL_COLUMNS).in("name", known) : Promise.resolve({ data: [] }),
+    known.length ? spellsNamed(known).then((data) => ({ data })) : Promise.resolve({ data: [] }),
     loadHistory(supabase, campaignId, characters.map((c) => c.id)),
   ]);
   return { characters, library: (spells ?? []) as SpellInfo[], history };

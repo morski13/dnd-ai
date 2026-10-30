@@ -12,7 +12,7 @@ export default function SessionPage({ searchParams }: { searchParams: Promise<Re
   // The whole screen (and the menu) takes the table theme the DM picked, so it waits for the session data.
   return (
     <Suspense fallback={<>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-20 rounded-2xl bg-surface" /><div className="h-72 rounded-[18px] bg-surface" /></div>
       </main>
       <BottomNav active="session" />
@@ -28,7 +28,7 @@ async function Session({ searchParams }: { searchParams: Promise<Record<string, 
   const data = await getSessionData(focus);
   const shell = (children: React.ReactNode) => (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">{children}</main>
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">{children}</main>
       <BottomNav active="session" />
     </>
   );

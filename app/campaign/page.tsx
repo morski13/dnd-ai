@@ -18,7 +18,7 @@ type SP = Promise<Record<string, string | string[] | undefined>>;
 export default function CampaignPage({ searchParams }: { searchParams: SP }) {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-10 w-56 rounded bg-surface" /><div className="h-11 rounded-xl bg-surface" /><div className="grid grid-cols-2 gap-3">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-32 rounded-2xl bg-surface" />)}</div></div>}>
           <Campaign searchParams={searchParams} />
         </Suspense>
@@ -96,7 +96,7 @@ async function Campaign({ searchParams }: { searchParams: SP }) {
           <p className="mt-1 text-sm text-muted">When the DM shares maps, NPCs or handouts, they show up here.</p>
         </div>
       ) : (
-        <section className="mt-5 grid grid-cols-2 gap-3" aria-label="Folders">
+        <section className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4" aria-label="Folders">
           {folders.map((f, i) => {
             const count = playerView && data.isDm ? f.shared : f.count;
             const covers = playerView && data.isDm ? f.sharedCovers : f.covers;

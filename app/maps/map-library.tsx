@@ -108,7 +108,7 @@ export function MapLibrary({ maps, fightId, inFight }: { maps: Item[]; fightId: 
       {error && <p className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">{error}</p>}
       {!fightId && maps.length > 0 && <p className="mt-3 text-xs text-muted">Start a fight in Session mode to put a map in it (or pick it there under DM tools).</p>}
 
-      <ul className="mt-5 flex flex-col gap-3">
+      <ul className="mt-5 flex flex-col gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
         {maps.length === 0 && <li className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No maps yet. Upload a picture of your battle map: the app finds the squares painted on it, or you set them.</li>}
         {maps.map((m) => (
           <li key={m.id} className="overflow-hidden rounded-2xl border border-line bg-surface">

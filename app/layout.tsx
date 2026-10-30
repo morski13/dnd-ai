@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Spectral } from "next/font/google";
 import { APP_NAME, APP_SHORT_NAME, APP_TAGLINE } from "@/lib/brand";
 import { DiceProvider } from "./components/dice/dice-provider";
+import { ServiceWorker } from "./components/sw-register";
 import "./globals.css";
 
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${manrope.variable} ${spectral.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         <DiceProvider>{children}</DiceProvider>
+        <ServiceWorker />
       </body>
     </html>
   );

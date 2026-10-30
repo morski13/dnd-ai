@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { getHomeData } from "@/lib/home-data";
 import { logOut } from "./auth-actions";
 import { BottomNav } from "./components/bottom-nav";
-import { DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
+import { CubeIcon, DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
 import { JoinForm } from "./join-form";
 import { Logo } from "./components/logo";
 import { StartSessionButton } from "./session/start-button";
@@ -12,7 +12,7 @@ import { StartSessionButton } from "./session/start-button";
 export default function HomePage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-10 pb-28">
         <Suspense fallback={<HomeSkeleton />}>
           <Home />
         </Suspense>
@@ -59,7 +59,7 @@ async function Home() {
     },
     { href: "/stats", Icon: StatsIcon, title: "Your statistics", sub: data.myRolls ? `${data.myRolls} rolls logged` : "No rolls yet" },
     { href: "/campaign", Icon: MapIcon, title: campaign.name, sub: data.isDm ? "Notes, NPCs, maps, shops" : "Maps, NPCs, handouts" },
-    { href: "/dice", Icon: DieIcon, title: "Your dice", sub: "Design 3D dice & test-throw" },
+    { href: "/roll", Icon: CubeIcon, title: "Dice", sub: "Roll any dice · design your own" },
     data.isDm
       ? { Icon: SwordsIcon, title: "Fight planner", sub: "DM · plan & balance fights", href: "/fights" }
       : { Icon: SwordsIcon, title: "Practice fight", sub: "How would you do? Uses your real dice", href: "/practice" },
@@ -74,8 +74,9 @@ async function Home() {
         {data.campaignCount > 1 ? `Switch campaign (${data.campaignCount})` : "Your campaigns · start a new one"}
       </Link>
 
+      <div className="mt-7 grid gap-5 lg:grid-cols-3">
       {/* Session card */}
-      <section className="mt-7 rounded-[18px] border border-accent-line bg-accent-surface p-5">
+      <section className="rounded-[18px] border border-accent-line bg-accent-surface p-5 lg:col-span-2 lg:p-7">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">
             {live ? "Live now" : "Session mode"}
@@ -99,8 +100,27 @@ async function Home() {
         )}
       </section>
 
+      {data.isDm ? (
+        <section className="flex flex-col rounded-2xl border border-line bg-surface-2 p-4 lg:p-6">
+          <p className="text-xs uppercase tracking-[0.12em] text-muted">Invite your players</p>
+          <p className="mt-2 text-sm text-soft">
+            Players create an account, then enter this code:
+          </p>
+          <p className="mt-2 font-heading text-2xl font-bold tracking-[0.2em] text-accent lg:mt-auto lg:text-3xl">
+            {campaign.inviteCode}
+          </p>
+        </section>
+      ) : (
+        <section className="hidden flex-col justify-center rounded-2xl border border-line bg-surface-2 p-6 lg:flex">
+          <p className="text-xs uppercase tracking-[0.12em] text-muted">Last session</p>
+          <p className="mt-2 font-heading text-2xl font-bold">{data.lastSession ? `Session ${data.lastSession.number}` : "None yet"}</p>
+          {data.lastSession?.title && <p className="mt-1 text-soft">{data.lastSession.title}</p>}
+        </section>
+      )}
+      </div>
+
       {/* Menu grid */}
-      <section className="mt-5 grid grid-cols-2 gap-3">
+      <section className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
         {tiles.map(({ Icon, title, sub, href }, i) => {
           const inner = (
             <>
@@ -112,24 +132,12 @@ async function Home() {
           const cls = "animate-rise block min-h-36 rounded-2xl border border-line bg-surface p-4";
           const style = { "--i": i } as React.CSSProperties;
           return href ? (
-            <Link key={title} href={href} className={`${cls} active:border-accent`} style={style}>{inner}</Link>
+            <Link key={title} href={href} className={`${cls} transition-colors active:border-accent md:hover:border-accent-line md:hover:bg-surface-2`} style={style}>{inner}</Link>
           ) : (
             <div key={title} className={cls} style={style}>{inner}</div>
           );
         })}
       </section>
-
-      {data.isDm && (
-        <section className="mt-5 rounded-2xl border border-line bg-surface-2 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-muted">Invite your players</p>
-          <p className="mt-2 text-sm text-soft">
-            Players create an account, then enter this code:
-          </p>
-          <p className="mt-2 font-heading text-2xl font-bold tracking-[0.2em] text-accent">
-            {campaign.inviteCode}
-          </p>
-        </section>
-      )}
 
       {data.lastSession && (
         <p className="mt-6 text-center text-xs text-muted">

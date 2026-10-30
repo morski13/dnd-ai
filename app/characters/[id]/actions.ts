@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Rolling, casting, HP, resources and the spell list for the character sheet.
 // Dice are rolled HERE on the server, every bonus comes from the character's data, and only
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
@@ -47,6 +48,7 @@ export async function rollForCharacter(
   target?: Target | null,
   moreTargets?: Target[]
 ): Promise<RollResponse | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only roll for your own character." };
@@ -269,6 +271,7 @@ export async function rollForCharacter(
 
 /** Stop concentrating (by choice), or start concentrating on one of your known spells without casting it here. */
 export async function setConcentration(characterId: string, spell: string | null): Promise<{ concentration: { spell: string } | null } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -283,6 +286,7 @@ export type HpState = { hp_current: number; temp_hp: number; concentration?: Con
 
 /** The HP card: damage uses temporary HP first, healing can't go above max, 0 HP starts death saves. */
 export async function changeHp(characterId: string, kind: "damage" | "heal" | "temp", amount: number): Promise<HpState | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const n = Math.floor(Number(amount));
   if (!Number.isFinite(n) || n <= 0 || n > 999) return { error: "Enter a number from 1 to 999." };
 
@@ -314,6 +318,7 @@ export async function changeHp(characterId: string, kind: "damage" | "heal" | "t
 
 /** Sets how many uses of a resource (Rage, Channel Divinity...) are spent. */
 export async function setResourceUsed(characterId: string, index: number, used: number): Promise<{ resources: Resource[] } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -329,6 +334,7 @@ export async function setResourceUsed(characterId: string, index: number, used: 
 
 /** Sets how many spell slots of one level are spent. */
 export async function setSlotsUsed(characterId: string, level: number, used: number): Promise<{ spells: SpellBook } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -343,6 +349,7 @@ export async function setSlotsUsed(characterId: string, level: number, used: num
 
 /** Long rest: all spell slots back. (Resources are restored with their pips.) */
 export async function restoreAllSlots(characterId: string): Promise<{ spells: SpellBook } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -370,6 +377,7 @@ export async function searchSpells(characterId: string, query: string, classes: 
 
 /** Add a spell to the character's list; returns its full info for the sheet. */
 export async function addSpell(characterId: string, name: string): Promise<{ spells: SpellBook; spell: SpellInfo } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -384,6 +392,7 @@ export async function addSpell(characterId: string, name: string): Promise<{ spe
 }
 
 export async function removeSpell(characterId: string, name: string): Promise<{ spells: SpellBook } | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
@@ -395,6 +404,7 @@ export async function removeSpell(characterId: string, name: string): Promise<{ 
 
 /** The sheet's own look (theme, accent color, font, text size). Owner or DM. */
 export async function saveSheetStyle(characterId: string, style: unknown): Promise<Fail | { style: SheetStyle }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, character, canEdit } = await loadCharacter(characterId);
   if (!character || !canEdit) return { error: "You can only change the look of your own sheet." };
   const clean = cleanSheetStyle(style);

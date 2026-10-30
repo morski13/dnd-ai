@@ -7,7 +7,7 @@ const ROLE: Record<string, string> = { dm: "DM", co_dm: "Co-DM", player: "Player
 const RULES: Record<string, string> = { "2024": "2024 rules", "2014": "2014 rules", mixed: "2014 + 2024" };
 
 export function CampaignList({ list }: { list: MyCampaign[] }) {
-  return <ul className="mt-5 flex flex-col gap-3">{list.map((c, i) => <Item key={c.id} c={c} i={i} />)}</ul>;
+  return <ul className="mt-5 flex flex-col gap-3 md:grid md:grid-cols-2">{list.map((c, i) => <Item key={c.id} c={c} i={i} />)}</ul>;
 }
 
 function Item({ c, i }: { c: MyCampaign; i: number }) {

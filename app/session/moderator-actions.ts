@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Fight moderator actions: fix/undo an HP change, death saves, conditions, DM HP edits.
 import { roll } from "@/lib/dice";
 import { loadCharacter } from "@/lib/character-data";
@@ -31,6 +32,7 @@ async function ownsCharacter(userId: string, characterId: string | null) {
 
 /** Fix an HP change ("they saved: half", "resistant", …) or undo it. DM, the roller, or the target's player. */
 export async function adjustEffect(effectId: string, to: Factor | "undo"): Promise<Applied | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId) return { error: "Join a campaign first." };
   const admin = createAdminClient();
@@ -47,6 +49,7 @@ export type DeathSaveResult = { d20: number | null; outcome: string; saves: Deat
 
 /** Roll a death saving throw (on your turn at 0 HP). Secret if the house rule says so. */
 export async function rollDeathSave(characterId: string): Promise<DeathSaveResult | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, character, canEdit } = await loadCharacter(characterId);
   if (!character || !userId) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only roll for your own character." };
@@ -78,6 +81,7 @@ export async function rollDeathSave(characterId: string): Promise<DeathSaveResul
 
 /** DM: a dying character is stabilized (Medicine check, Spare the Dying…). */
 export async function stabilize(characterId: string): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can do that." };
   const admin = createAdminClient();
@@ -91,6 +95,7 @@ export async function stabilize(characterId: string): Promise<Fail | void> {
 
 /** Conditions on someone in the fight. DM: anyone. Players: their own character. */
 export async function setConditions(combatantId: string, conditions: string[]): Promise<Fail | { conditions: string[] }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId) return { error: "Join a campaign first." };
   const admin = createAdminClient();
@@ -106,6 +111,7 @@ export async function setConditions(combatantId: string, conditions: string[]): 
 
 /** DM: change anyone's HP by hand (monster card +/−). */
 export async function dmChangeHp(target: { characterId?: string | null; monsterId?: string | null }, kind: "damage" | "heal", amount: number): Promise<Applied | Fail> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
   const n = Math.floor(Number(amount));
@@ -123,6 +129,7 @@ export async function dmChangeHp(target: { characterId?: string | null; monsterI
 
 /** DM: turn automatic HP changes on or off for the campaign. */
 export async function setAutoApply(on: boolean): Promise<Fail | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can change that." };
   const admin = createAdminClient();
@@ -136,6 +143,7 @@ export async function setAutoApply(on: boolean): Promise<Fail | void> {
 /** DM: the whole party rests. Long = everything back. Short = short-rest abilities and pact slots back
  *  (each player spends their own hit dice on their sheet). */
 export async function partyRest(kind: "short" | "long"): Promise<{ error: string } | { count: number }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
   const admin = createAdminClient();
@@ -152,6 +160,7 @@ export async function partyRest(kind: "short" | "long"): Promise<{ error: string
 
 /** DM: a monster is concentrating on a spell (its CON saves on damage are rolled in secret). */
 export async function setMonsterConcentration(monsterId: string, spell: string | null): Promise<{ error: string } | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
   const name = spell?.trim().slice(0, 60) || null;
@@ -161,6 +170,7 @@ export async function setMonsterConcentration(monsterId: string, spell: string |
 
 /** DM: show a secret roll to the players now (instead of waiting for the fight to end). */
 export async function revealRoll(rollId: string): Promise<{ error: string } | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
   if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
   const { error } = await createAdminClient().from("roll_events").update({ hidden: false }).eq("id", rollId).eq("campaign_id", campaignId);
@@ -169,6 +179,7 @@ export async function revealRoll(rollId: string): Promise<{ error: string } | vo
 
 /** DM: the table's look in Session mode (see lib/themes.ts). */
 export async function setSessionTheme(theme: string): Promise<{ error: string } | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can change the table's look." };
   if (!isThemeId(theme)) return { error: "Unknown theme." };

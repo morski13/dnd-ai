@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // Make a new character in your active campaign. Players make their own; the DM can make one for a player to claim.
 import { redirect } from "next/navigation";
 import { averageHp, CLASSES, classResources, spellSlots, type Rules } from "@/lib/classes";
@@ -15,6 +16,7 @@ export type NewCharacter = {
 };
 
 export async function createCharacter(f: NewCharacter): Promise<{ error: string } | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, campaignId, isDm } = await who();
   if (!userId || !campaignId) return { error: "Join or start a campaign first." };
   const name = (f.name ?? "").trim().slice(0, 60);

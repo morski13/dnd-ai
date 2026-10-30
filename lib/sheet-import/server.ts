@@ -2,6 +2,7 @@
 // writes everything a new character needs beyond the basics (equipment, coins, attacks, features). Server only.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { putInBag } from "../items/server";
+import { itemsFor, spellNames } from "../srd-cache";
 import type { Attack } from "../rules";
 import { buildAttacks, buildFeatures, type LibWeapon } from "./build";
 import { cleanSheet } from "./clean";
@@ -13,8 +14,8 @@ type ItemRow = { id: string; name: string; kind: string; data: { damage?: string
 
 export async function libraries(db: DB, rules: "2014" | "2024") {
   const [{ data: spells }, { data: items }] = await Promise.all([
-    db.from("srd_spells").select("name"),
-    db.from("srd_items").select("id, name, kind, data").eq("rules", rules),
+    spellNames().then((data) => ({ data })),
+    itemsFor(rules).then((data) => ({ data })),
   ]);
   const spellIdx = makeIndex((spells ?? []) as { name: string }[]);
   const itemIdx = makeIndex((items ?? []) as ItemRow[]);

@@ -9,7 +9,7 @@ import { CampaignList, NewCampaignForm } from "./parts";
 export default function CampaignsPage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-8 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-28">
         <Link href="/" className="text-xs uppercase tracking-[0.12em] text-muted">← Home</Link>
         <h1 className="mt-1 font-heading text-3xl font-bold leading-tight">Your campaigns</h1>
         <Suspense fallback={<div className="mt-5 animate-pulse space-y-3">{[0, 1].map((i) => <div key={i} className="h-20 rounded-2xl bg-surface" />)}</div>}>

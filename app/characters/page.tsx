@@ -8,7 +8,7 @@ import { CharacterList } from "./character-list";
 export default function CharactersPage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-10 pb-28">
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
           <h1 className="font-heading text-3xl font-bold">Your characters</h1>
           <div className="mt-1 flex shrink-0 gap-2">

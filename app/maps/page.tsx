@@ -8,7 +8,7 @@ import { MapLibrary } from "./map-library";
 export default function MapsPage() {
   return (
     <>
-      <main className="mx-auto w-full max-w-md flex-1 px-5 pt-10 pb-28">
+      <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-10 pb-28">
         <Link href="/" className="text-sm text-muted">← Home</Link>
         <h1 className="mt-2 font-heading text-3xl font-bold">Battle maps</h1>
         <p className="mt-1 text-[15px] text-muted">Upload a map, fit the squares on it (1 square = 5 ft), then use it in a fight.</p>

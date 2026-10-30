@@ -117,7 +117,9 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
         <p className="mt-3 text-sm text-muted">Waiting for <strong className="text-text">{current.name}</strong>…</p>
       )}
 
-      <div className="mt-4 flex flex-col gap-4">
+      {/* phones and tablets: one column. Laptops: the fight on the left, tools, dice and the log on the right */}
+      <div className="mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="flex min-w-0 flex-col gap-4">
         {battle && (
           <BattleMap battle={battle} combatants={combatants} isDm={data.isDm} teleports={teleports}
             teleportCharacterId={data.focus?.canEdit ? data.focus.character.id : null} />
@@ -150,7 +152,9 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
             <p className="mt-1 text-sm text-muted">Claim one on the <Link href="/characters" className="text-accent underline">Characters</Link> screen.</p>
           </div>
         ) : null}
+        </div>
 
+        <div className="flex min-w-0 flex-col gap-4">
         {data.isDm && (
           <DmPanel
             sessionId={data.session.id}
@@ -170,6 +174,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
         <FreeRoll characterId={mine?.characterId ?? data.myCharacterIds[0] ?? null} isDm={data.isDm} />
         <TableLog rows={data.log} isDm={data.isDm} />
         <TableDice rows={data.log} me={data.userId} />
+        </div>
       </div>
       <TavernButton characterId={focusChar?.id ?? mine?.characterId ?? data.myCharacterIds[0] ?? null} />
     </MapAimProvider>

@@ -1,4 +1,5 @@
 "use server";
+import { refresh } from "next/cache";
 // The character builder's server side: the level-1 plan (class choices and spells, from the level-up engine),
 // spell lists for species and feat picks, and saving the finished character. Everything the browser sends
 // is checked again here.
@@ -46,6 +47,7 @@ export async function spellList(rules: string, list: string, maxLevel: number) {
 }
 
 export async function createFromBuilder(d: Draft): Promise<{ error: string } | void> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const c = await campaignRules();
   if (!c.ok) return { error: c.error };
   if (!allowed(c.rules, d.rules)) return { error: "This campaign uses other rules." };

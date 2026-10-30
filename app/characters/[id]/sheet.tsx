@@ -105,6 +105,9 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 
   return (
     <>
+    {/* phones and tablets: one column. Laptops: the character on the left, the tabs on the right */}
+    <div className="lg:grid lg:grid-cols-[22rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
+    <div className="lg:col-start-1 lg:row-start-1">
       <header>
         <div className="flex items-center gap-2">
           <Link href="/characters" aria-label="Back to characters" className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-soft">
@@ -164,7 +167,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         ))}
       </section>
 
-      <nav className="mt-6 flex overflow-x-auto border-b border-line [scrollbar-width:none]">
+    </div>
+
+    <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+      <nav className="mt-6 flex overflow-x-auto border-b border-line [scrollbar-width:none] lg:mt-0">
         {(["Attacks", "Spells", "Skills", "Features", "Gear"] as Tab[]).map((t) => (
           <button key={t} type="button" onClick={() => setTab(t)}
             className={`-mb-px h-12 flex-auto whitespace-nowrap border-b-2 px-1 text-[13px] min-[360px]:px-2 min-[360px]:text-sm ${tab === t ? "border-accent font-bold text-accent" : "border-transparent text-soft"}`}>
@@ -223,6 +229,9 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 
         {tab === "Gear" && <GearTab characterId={character.id} rules={character.rule_set ?? "2024"} gear={gear} canEdit={canEdit} />}
       </section>
+    </div>
+
+    <div className="lg:col-start-1 lg:row-start-2">
 
       {resources.length > 0 && (
         <section className="mt-5 grid grid-cols-2 gap-3">
@@ -245,6 +254,9 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         <RestPanel characterId={character.id} classLevels={c.class_levels} conMod={m.CON} hitDiceUsed={hitDiceUsed} hp={{ cur: hp.cur, max: character.hp_max ?? 0 }}
           onRested={(r) => { setHp({ cur: r.hp_current, temp: r.temp_hp }); setResources(r.resources); setSpells(r.spells); setHitDiceUsed(r.hit_dice_used); if (r.kind === "long") setConc(null); }} />
       )}
+
+    </div>
+    </div>
 
       {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp} />}
     </>
