@@ -5,7 +5,9 @@ import { refresh } from "next/cache";
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
 import { roll, type Advantage } from "@/lib/dice";
-import { allOptions, planRoll, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
+import { allOptions, planRoll, rowKey, tableRow, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
+import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
+import { cleanCustomAction, cleanHomebrew, type Homebrew } from "@/lib/homebrew";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
@@ -27,15 +29,22 @@ export type SavedRoll = {
   dc?: number;
   ability?: string;
   inSession: boolean;
+  practice?: boolean;      // practice roll: worked out but not saved, nothing spent
   request: RollRequest;
   followUp?: { key: string; slot?: number }; // offer this damage roll next
   success?: boolean | null;                  // attack: hit (true) / miss (false)
   target?: string | null;                    // "Ogre"
   applied?: Applied | null;                  // what the fight moderator did with it (HP change)
   missed?: boolean;                          // damage after a missed attack: not applied
+  table?: { row: string; text?: string };    // a roll table: the row it landed on
+  next?: { key: string; label: string; many?: boolean }; // a table row with something to roll: offer it next
+  self?: SelfResult | null;                  // what happened to the roller afterwards (temp HP, damage)
 };
+/** "Then" effects on the roller: Wild Surge temp HP, Magic Reserves damage. Practice rolls only describe them. */
+export type SelfResult = { note: string; hp_current?: number; temp_hp?: number };
 export type RollResponse = {
   roll: SavedRoll; spells: SpellBook; resources: Resource[]; concentration?: { spell: string } | null; endedConcentration?: string | null;
+  triggered?: SavedRoll[];       // rolled by themselves after this one (Wild Surge when Rage is spent)
   saves?: TargetSave[];          // a save spell: each target's save (monster results only for the DM)
   appliedAll?: Applied[];        // damage from a save spell: one HP change per target
 };
@@ -46,7 +55,8 @@ export async function rollForCharacter(
   request: RollRequest,
   advantage: Advantage,
   target?: Target | null,
-  moreTargets?: Target[]
+  moreTargets?: Target[],
+  depth = 0                    // 1 = rolled by a trigger (a trigger never sets off another one)
 ): Promise<RollResponse | Fail> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
@@ -59,6 +69,8 @@ export async function rollForCharacter(
   } catch (e) {
     return { error: (e as Error).message };
   }
+
+  const opt: Option | undefined = request.kind === "use" || request.kind === "damage" ? allOptions(c, library).find((x) => x.key === request.key) : undefined;
 
   // Spend the spell slot / resource (only on the first tap, never on the damage follow-up).
   let spells = c.spells;
@@ -73,8 +85,10 @@ export async function rollForCharacter(
     const r = c.resources.find((x) => x.name === plan.resource);
     if (!r) return { error: `${c.name} doesn't have ${plan.resource}.` };
     if ((r.used ?? 0) >= r.max) return { error: `No ${plan.resource} left. It comes back on a ${r.recharge ?? "rest"}.` };
-    resources = c.resources.map((x) => (x === r ? { ...x, used: (x.used ?? 0) + 1 } : x));
-    changes.resources = resources;
+    if (!opt?.spend_rolled) { // "spends what you roll" is settled after the dice
+      resources = c.resources.map((x) => (x === r ? { ...x, used: (x.used ?? 0) + 1 } : x));
+      changes.resources = resources;
+    }
   }
 
   // Damage after a critical hit rolls double dice. Check the attack really was a crit.
@@ -99,10 +113,18 @@ export async function rollForCharacter(
   let result: ReturnType<typeof roll> | null = null;
   try {
     const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
-    result = plan.expression ? roll(plan.expression, { advantage: adv, critical }) : null;
+    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
   }
+
+  // Magic Reserves: spends as many uses as the roll shows (no more than are left)
+  if (request.kind === "use" && opt?.spend_rolled && plan.resource && result) {
+    resources = c.resources.map((x) => (x.name === plan.resource ? { ...x, used: Math.min(x.max, (x.used ?? 0) + Math.max(1, result!.total)) } : x));
+    changes.resources = resources;
+  }
+  // A roll table: which row it landed on
+  const row = opt?.kind === "table" && result ? tableRow(opt, result.total) : null;
 
   // Casting a concentration spell: you now concentrate on it (and stop concentrating on the old one).
   let endedConcentration: string | null = null;
@@ -138,7 +160,7 @@ export async function rollForCharacter(
       rolled_by: userId,
       character_id: c.id,
       roll_type: plan.rollType,
-      source: plan.source,
+      source: row ? `${plan.source}: ${row.name}` : plan.source,
       expression: result?.expression ?? (plan.rollType === "save_dc" ? `DC ${plan.dc} ${plan.ability}` : `used${slotNote}`),
       dice: result?.dice ?? [],
       dice_all: result?.diceAll ?? null,
@@ -175,9 +197,9 @@ export async function rollForCharacter(
 
   // Damage from a save spell: full damage on a failed save; half (or none) on a success, for each target.
   let appliedAll: Applied[] | undefined;
+  const dealt: number[] = []; // damage really taken by each target (for "temp HP equal to the damage dealt")
   if (plan.rollType === "damage" && parentIsSave && parentRollId && result && session && await campaignAutoApply(admin, c.campaign_id)) {
     const { data: rows } = await admin.from("roll_events").select("monster_id, character_id, success").eq("parent_roll_id", parentRollId).eq("roll_type", "save");
-    const opt = request.kind === "damage" ? allOptions(c, library).find((x) => x.key === request.key) : undefined;
     appliedAll = [];
     for (const r of rows ?? []) {
       if (r.success && !opt?.half_on_save) continue; // saved completely
@@ -186,6 +208,7 @@ export async function rollForCharacter(
         actor: { characterId: c.id }, target: { characterId: r.character_id, monsterId: r.monster_id },
       });
       if (!one) continue;
+      dealt.push(one.amount);
       const shown = maskFor({ ...one, canAdjust: true }, viewerIsDm);
       // players don't learn how much a monster took (that would give its save away)
       appliedAll.push(!viewerIsDm && one.target.monsterId ? { ...shown, amount: -1, rolled: -1, factor: "full", canAdjust: false } : shown);
@@ -201,20 +224,30 @@ export async function rollForCharacter(
       kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id,
       actor: { characterId: c.id }, target: { characterId: tgt.characterId, monsterId: tgt.monsterId }, createdBy: userId,
     });
+    if (applied && plan.rollType === "damage") dealt.push(applied.amount);
     if (applied) applied = maskFor({ ...applied, canAdjust: true }, viewerIsDm);
   }
 
-  // Healing several creatures at once (Mass Healing Word, Mass Cure Wounds…): everyone picked gets the same amount.
-  if (plan.rollType === "heal" && result && session && moreTargets?.length && await campaignAutoApply(admin, c.campaign_id)) {
+  // Healing (Mass Healing Word…) or area damage with no save (Wild Surge's burst): everyone picked gets the same amount.
+  const area = plan.rollType === "heal" || (plan.rollType === "damage" && !parentIsSave && !parentMissed && !!opt?.many);
+  if (area && result && session && moreTargets?.length && await campaignAutoApply(admin, c.campaign_id)) {
     appliedAll = applied ? [applied] : [];
     for (const t of moreTargets) {
       if (!t?.characterId && !t?.monsterId) continue;
       if (tgt && t.characterId === tgt.characterId && t.monsterId === tgt.monsterId) continue;
-      const one = await applyHp(admin, { ...base, sessionId: session.id, kind: "heal", total: result.total, crit: false, rollId: saved.id,
+      const kind = plan.rollType === "heal" ? "heal" : "damage";
+      const one = await applyHp(admin, { ...base, sessionId: session.id, kind, total: result.total, crit: false, rollId: saved.id,
         actor: { characterId: c.id }, target: { characterId: t.characterId ?? null, monsterId: t.monsterId ?? null } });
-      if (one) appliedAll.push(maskFor({ ...one, canAdjust: true }, viewerIsDm));
+      if (!one) continue;
+      if (kind === "damage") dealt.push(one.amount);
+      appliedAll.push(maskFor({ ...one, canAdjust: true }, viewerIsDm));
     }
   }
+
+  // "Then": temp HP from the damage dealt, or damage to yourself (Magic Reserves)
+  const self = opt?.then && result && plan.rollType !== "save_dc" && !parentMissed
+    ? await applyThen(admin, c, opt.then, { rolled: result.total, dealt: dealt.length ? dealt.reduce((a, b) => a + b, 0) : null, userId: userId!, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null, rollId: saved.id })
+    : null;
 
   // Creatures hidden on the battle map stay unknown to players (no names, no HP changes shown).
   if (!viewerIsDm && combat && (saves?.length || appliedAll?.length)) {
@@ -235,10 +268,23 @@ export async function rollForCharacter(
     plan.rollType === "attack" ? `${plan.source} attack`
     : plan.rollType === "damage" ? `${plan.source} damage${critical ? " (crit!)" : ""}`
     : plan.rollType === "heal" ? `${plan.source} healing`
-    : plan.rollType === "other" ? `${plan.source}: used`
+    : plan.rollType === "other" ? (row ? `${plan.source}: ${result?.total} · ${row.name}` : result ? plan.source : `${plan.source}: used`)
     : plan.source;
 
+  // Things set off by spending this resource (Wild Surge when you start raging)
+  let triggered: SavedRoll[] | undefined;
+  if (depth === 0 && request.kind === "use" && plan.resource) {
+    for (const t of allOptions(c, library).filter((x) => x.trigger_on === plan.resource && !x.row_of)) {
+      const res = await rollForCharacter(characterId, { kind: "use", key: t.key }, "normal", null, [], 1);
+      if ("error" in res) continue;
+      (triggered ??= []).push(res.roll);
+      resources = res.resources;
+      spells = res.spells;
+    }
+  }
+
   return {
+    triggered,
     roll: {
       id: saved.id,
       label: label + slotNote,
@@ -259,6 +305,8 @@ export async function rollForCharacter(
       target: tgt?.name ?? null,
       applied,
       missed: parentMissed && plan.rollType === "damage",
+      ...(row ? { table: { row: row.name, text: row.text }, next: row.effect ? { key: rowKey(opt!.name, row.min), label: `${row.name}${row.effect.damage ? ` (${row.effect.damage}${row.effect.damage_type ? ` ${row.effect.damage_type}` : ""})` : ""}`, many: !!row.effect.many } : undefined } : {}),
+      self,
     },
     spells,
     resources,
@@ -266,6 +314,96 @@ export async function rollForCharacter(
     endedConcentration,
     saves,
     appliedAll,
+  };
+}
+
+/**
+ * Practice roll: the same rules and bonuses as a real roll, but NOTHING is saved.
+ * No roll in the log or the stats, no spell slot or resource spent, no HP changed, no concentration,
+ * and the table doesn't see it (even while a session is running). Slots never block a practice cast.
+ * `critical` doubles the damage dice (the follow-up after a practice crit; there's no saved roll to check).
+ */
+export async function practiceRoll(
+  characterId: string,
+  request: RollRequest,
+  advantage: Advantage,
+  critical = false,
+  depth = 0
+): Promise<RollResponse | Fail> {
+  const { character: c, canEdit, library } = await loadCharacter(characterId);
+  if (!c) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only roll for your own character." };
+
+  // Plan as if every slot were free, so you can try any spell at any level.
+  const fresh = { ...c, spells: { ...c.spells, slots_used: {} } };
+  const req: RollRequest = request.kind === "damage" ? { kind: "damage", key: request.key, slot: request.slot } : request;
+  let plan;
+  try {
+    plan = planRoll(fresh, req, library);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const crit = req.kind === "damage" && critical;
+  let result: ReturnType<typeof roll> | null = null;
+  try {
+    const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
+    result = plan.expression ? roll(plan.expression, { advantage: adv, critical: crit, critOn: plan.critOn, critExtra: plan.critExtra }) : null;
+  } catch (e) {
+    return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
+  }
+
+  const opt = req.kind === "use" || req.kind === "damage" ? allOptions(fresh, library).find((x) => x.key === req.key) : undefined;
+  const row = opt?.kind === "table" && result ? tableRow(opt, result.total) : null;
+  const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
+  const label =
+    plan.rollType === "attack" ? `${plan.source} attack`
+    : plan.rollType === "damage" ? `${plan.source} damage${crit ? " (crit!)" : ""}`
+    : plan.rollType === "heal" ? `${plan.source} healing`
+    : plan.rollType === "other" ? (row ? `${plan.source}: ${result?.total} · ${row.name}` : result ? plan.source : `${plan.source}: used`)
+    : plan.source;
+  // "then" effects are only described in practice
+  const then = opt?.then && result && plan.rollType !== "save_dc" ? opt.then : null;
+  const self: SelfResult | null = then ? { note: [
+    then.temp_hp ? `You'd gain ${result!.total}${then.temp_hp === "dealt" ? " (× each creature hit)" : ""} temp HP` : "",
+    then.self_damage_x ? `You'd take ${result!.total * then.self_damage_x} ${then.self_damage_type ?? ""} damage` : "",
+  ].filter(Boolean).join(". ").replace(/\s+/g, " ") + ". (Practice: nothing changed.)" } : null;
+
+  let triggered: SavedRoll[] | undefined;
+  if (depth === 0 && req.kind === "use" && plan.resource) {
+    for (const t of allOptions(fresh, library).filter((x) => x.trigger_on === plan.resource && !x.row_of)) {
+      const res = await practiceRoll(characterId, { kind: "use", key: t.key }, "normal", false, 1);
+      if (!("error" in res)) (triggered ??= []).push(res.roll);
+    }
+  }
+
+  return {
+    triggered,
+    roll: {
+      id: `practice-${crypto.randomUUID()}`,
+      label: label + slotNote,
+      rollType: plan.rollType,
+      expression: result?.expression ?? "",
+      total: result?.total ?? null,
+      dice: result?.dice ?? [],
+      diceAll: result?.diceAll ?? [],
+      modifier: result?.modifier ?? 0,
+      isCrit: !!result?.isCrit && plan.d20,
+      isFumble: !!result?.isFumble && plan.d20,
+      dc: plan.dc,
+      ability: plan.ability,
+      inSession: false,
+      practice: true,
+      request,
+      followUp: plan.followUp && req.kind === "use" ? { key: req.key, slot: plan.spellSlot } : undefined,
+      success: null,
+      target: null,
+      applied: null,
+      ...(row ? { table: { row: row.name, text: row.text }, next: row.effect ? { key: rowKey(opt!.name, row.min), label: `${row.name}${row.effect.damage ? ` (${row.effect.damage}${row.effect.damage_type ? ` ${row.effect.damage_type}` : ""})` : ""}`, many: !!row.effect.many } : undefined } : {}),
+      self,
+    },
+    spells: c.spells,
+    resources: c.resources,
   };
 }
 
@@ -317,9 +455,9 @@ export async function changeHp(characterId: string, kind: "damage" | "heal" | "t
 }
 
 /** Sets how many uses of a resource (Rage, Channel Divinity...) are spent. */
-export async function setResourceUsed(characterId: string, index: number, used: number): Promise<{ resources: Resource[] } | Fail> {
+export async function setResourceUsed(characterId: string, index: number, used: number, practice = false): Promise<{ resources: Resource[]; triggered?: SavedRoll[] } | Fail> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
-  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  const { supabase, character, canEdit, library } = await loadCharacter(characterId);
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
   if (!character.resources[index]) return { error: "Unknown resource." };
@@ -327,9 +465,21 @@ export async function setResourceUsed(characterId: string, index: number, used: 
   const resources = character.resources.map((r, i) =>
     i === index ? { ...r, used: Math.min(Math.max(Math.floor(used), 0), r.max) } : r
   );
+  const spent = (resources[index].used ?? 0) > (character.resources[index].used ?? 0);
   const { error } = await supabase.from("characters").update({ resources }).eq("id", character.id);
   if (error) return { error: "Couldn't save. " + error.message };
-  return { resources };
+
+  // Spending a use by its pip sets off the same things as using it (Rage pip → Wild Surge)
+  let triggered: SavedRoll[] | undefined;
+  if (spent) {
+    for (const t of allOptions(character, library).filter((x) => x.trigger_on === resources[index].name && !x.row_of)) {
+      const res = practice
+        ? await practiceRoll(characterId, { kind: "use", key: t.key }, "normal", false, 1)
+        : await rollForCharacter(characterId, { kind: "use", key: t.key }, "normal", null, [], 1);
+      if (!("error" in res)) (triggered ??= []).push(res.roll);
+    }
+  }
+  return { resources, triggered };
 }
 
 /** Sets how many spell slots of one level are spent. */
@@ -418,4 +568,197 @@ export async function saveSheetStyle(characterId: string, style: unknown): Promi
     if (old.length) await admin.storage.from("vault").remove(old);
   } catch { /* tidying up is optional: the look is saved */ }
   return { style: clean };
+}
+
+/**
+ * Delete a character for good (owner or DM; the database's own rules check that too).
+ * Inventory, item log, death saves and fight spots go with it. Past rolls and HP changes stay
+ * in the session log and stats, just no longer linked to a character. Pictures are tidied up.
+ * Not allowed while the character is in a running fight.
+ */
+export async function deleteCharacter(characterId: string, typedName: string): Promise<{ ok: true } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only delete your own character." };
+  if (typedName.trim().toLowerCase() !== character.name.trim().toLowerCase()) {
+    return { error: `Type the name "${character.name}" to confirm.` };
+  }
+
+  const admin = createAdminClient();
+  const { data: fights } = await admin
+    .from("combatants").select("id, combats!inner(ended_at)")
+    .eq("character_id", characterId).is("combats.ended_at", null).limit(1);
+  if (fights?.length) return { error: `${character.name} is in a running fight. End the fight first.` };
+
+  const { data: pics } = await admin.from("characters").select("portrait").eq("id", characterId).maybeSingle();
+  const { error, count } = await supabase.from("characters").delete({ count: "exact" }).eq("id", characterId);
+  if (error) return { error: "Couldn't delete the character. " + error.message };
+  if (!count) return { error: "You can't delete this character." };
+
+  // Tidy up stored pictures (optional: the character is already gone).
+  try {
+    const files: string[] = [];
+    if (pics?.portrait) files.push(`portraits/character/${characterId}-${pics.portrait}.webp`);
+    const { data: bg } = await admin.storage.from("vault").list(`sheets/${characterId}`);
+    for (const f of Array.isArray(bg) ? bg : []) files.push(`sheets/${characterId}/${f.name}`);
+    if (files.length) await admin.storage.from("vault").remove(files);
+  } catch { /* nothing to tidy */ }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Homebrew: this character's own rules, actions and uses (content from other books).
+// ---------------------------------------------------------------------------
+
+/** Crit range, extra crit dice and toggles ("Flaming Tongue ignited"). */
+export async function saveHomebrew(characterId: string, input: Homebrew): Promise<{ homebrew: Homebrew } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const homebrew = cleanHomebrew(input);
+  const { error } = await supabase.from("characters").update({ homebrew }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { homebrew };
+}
+
+/** Add or change one of the character's own actions (`oldName` = the one being edited). */
+export async function saveCustomAction(characterId: string, input: Attack, oldName?: string | null): Promise<{ attacks: Attack[] } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const action = cleanCustomAction(input, character.resources.map((r) => r.name));
+  if ("error" in action) return action;
+  const stored = await storedAttacks(supabase, characterId);
+  const others = stored.filter((a) => !(a.custom && oldName && a.name === oldName));
+  if (others.some((a) => a.name.toLowerCase() === action.name.toLowerCase())) return { error: `${character.name} already has something called ${action.name}.` };
+  const attacks = [...others, action];
+  const { error } = await supabase.from("characters").update({ attacks }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { attacks };
+}
+
+export async function deleteCustomAction(characterId: string, name: string): Promise<{ attacks: Attack[] } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const attacks = (await storedAttacks(supabase, characterId)).filter((a) => !(a.custom && a.name === name));
+  const { error } = await supabase.from("characters").update({ attacks }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { attacks };
+}
+
+/** The attacks as saved (the loader also adds equipped weapons, which must not be written back). */
+async function storedAttacks(supabase: Awaited<ReturnType<typeof loadCharacter>>["supabase"], id: string): Promise<Attack[]> {
+  const { data } = await supabase.from("characters").select("attacks").eq("id", id).maybeSingle();
+  return Array.isArray(data?.attacks) ? (data!.attacks as Attack[]) : [];
+}
+
+/** Add one of the character's own limited uses ("Arcane Rebuke 4 / long rest"), or remove one they added. */
+export async function saveCustomResource(characterId: string, input: { name: string; max: number; recharge: string } | null, removeName?: string): Promise<{ resources: Resource[] } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  let resources = character.resources;
+  if (removeName) resources = resources.filter((r) => !((r as Resource & { custom?: boolean }).custom && r.name === removeName));
+  if (input) {
+    const name = String(input.name ?? "").trim().slice(0, 40);
+    const max = Math.round(Number(input.max));
+    const recharge = ["short rest", "long rest", "dawn", "never"].includes(input.recharge) ? input.recharge : "long rest";
+    if (!name) return { error: "Give the uses a name." };
+    if (!Number.isFinite(max) || max < 1 || max > 99) return { error: "Uses: a number from 1 to 99." };
+    if (resources.some((r) => r.name.toLowerCase() === name.toLowerCase())) return { error: `${character.name} already has ${name}.` };
+    resources = [...resources, { name, max, used: 0, recharge, custom: true } as Resource];
+  }
+  if (resources.length > 30) return { error: "That's a lot of uses. Remove some first." };
+  const { error } = await supabase.from("characters").update({ resources }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { resources };
+}
+
+/** "Then" effects on the roller after a roll (server only; the roll is already saved). */
+async function applyThen(
+  admin: ReturnType<typeof createAdminClient>,
+  c: { id: string; campaign_id: string; name: string; temp_hp?: number | null },
+  then: NonNullable<Attack["then"]>,
+  ctx: { rolled: number; dealt: number | null; userId: string; sessionId: string | null; combatId: string | null; round: number | null; rollId: string }
+): Promise<SelfResult | null> {
+  const notes: string[] = [];
+  if (then.temp_hp) {
+    const n = Math.max(0, Math.floor(then.temp_hp === "dealt" ? (ctx.dealt ?? ctx.rolled) : ctx.rolled));
+    if (n > 0) {
+      const { data: now } = await admin.from("characters").select("temp_hp").eq("id", c.id).single();
+      const temp = Math.max(now?.temp_hp ?? 0, n); // temp HP doesn't stack: keep the higher
+      await admin.from("characters").update({ temp_hp: temp }).eq("id", c.id);
+      await admin.from("effects").insert({
+        campaign_id: c.campaign_id, session_id: ctx.sessionId, combat_id: ctx.combatId, round: ctx.round, roll_event_id: ctx.rollId,
+        created_by: ctx.userId, actor_character_id: c.id, target_character_id: c.id, kind: "temp_hp", amount: n, rolled_amount: n,
+      });
+      notes.push(temp > n ? `You gain ${n} temp HP (you keep your ${temp})` : `You gain ${n} temp HP`);
+    }
+  }
+  if (then.self_damage_x) {
+    const n = ctx.rolled * then.self_damage_x;
+    if (n > 0) {
+      const a = await applyHp(admin, {
+        campaignId: c.campaign_id, sessionId: ctx.sessionId, combatId: ctx.combatId, round: ctx.round, kind: "damage", total: n,
+        rollId: ctx.rollId, actor: { characterId: c.id }, target: { characterId: c.id }, createdBy: ctx.userId,
+      });
+      if (a) notes.push(`You take ${a.amount} ${then.self_damage_type ?? ""} damage`.replace(/\s+/g, " ").trim());
+    }
+  }
+  if (!notes.length) return null;
+  const { data } = await admin.from("characters").select("hp_current, temp_hp").eq("id", c.id).single();
+  return { note: notes.join(". ") + ".", hp_current: data?.hp_current ?? undefined, temp_hp: data?.temp_hp ?? undefined };
+}
+
+/**
+ * Add a subclass's rules to one character in one tap (only Path of the Wild Soul for now).
+ * Actions and uses with the same name are replaced; the name-only features from a PDF import get real descriptions.
+ * Run it again after a level-up to pick up the new level's features.
+ */
+export async function applySubclassPreset(characterId: string): Promise<{ attacks: Attack[]; resources: Resource[]; added: string[] } | Fail> {
+  refresh();
+  const { supabase, character: c, canEdit } = await loadCharacter(characterId);
+  if (!c) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const barb = c.class_levels.find((x) => /^barbarian$/i.test(x.class) && isWildSoul(x.subclass));
+  if (!barb) return { error: "This works for a Barbarian with the subclass Path of the Wild Soul." };
+
+  const stored = await storedAttacks(supabase, characterId);
+  const hasRage = stored.some((a) => /^rage$/i.test(a.name) && !a.custom);
+  const conMod = Math.floor(((c.ability_scores.CON ?? 10) - 10) / 2);
+  const preset = wildSoulPreset(barb.level, conMod, hasRage);
+
+  // uses: add the missing ones, update the maximum of ours, keep what's used
+  let resources = [...c.resources];
+  for (const u of preset.uses) {
+    const old = resources.find((r) => r.name.toLowerCase() === u.name.toLowerCase());
+    if (old) resources = resources.map((r) => (r === old ? { ...r, max: u.max, recharge: u.recharge, used: Math.min(r.used ?? 0, u.max) } : r));
+    else resources.push({ ...u, used: 0, custom: true } as Resource);
+  }
+  // actions: through the same checks as the editor
+  const names = resources.map((r) => r.name);
+  const actions: Attack[] = [];
+  for (const a of preset.actions) {
+    const clean = cleanCustomAction(a, names);
+    if ("error" in clean) return { error: `${a.name}: ${clean.error}` };
+    actions.push(clean);
+  }
+  const attacks = [...stored.filter((a) => !actions.some((x) => x.name.toLowerCase() === a.name.toLowerCase())), ...actions];
+  // features: replace the name-only ones from the sheet, keep everything else
+  const features = [
+    ...c.features.filter((f) => {
+      const name = typeof f === "string" ? f : f.name;
+      return !preset.replaces.some((re) => re.test(name));
+    }),
+    ...preset.features,
+  ];
+  const { error } = await supabase.from("characters").update({ attacks, resources, features }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { attacks, resources, added: [...actions.map((a) => a.name), ...preset.uses.map((u) => `${u.name} (${u.max})`)] };
 }

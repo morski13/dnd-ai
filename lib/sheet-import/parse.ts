@@ -32,8 +32,8 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
 export function parseClassLevel(s: string): { classes: ImportedSheet["classes"]; unknown: string[] } {
   const classes: ImportedSheet["classes"] = [];
   const unknown: string[] = [];
-  // split between classes: "/", "+", "&", ";", " and ", or a comma followed by another "Name 3"
-  const parts = s.split(/\s*(?:\/|\+|&|;|\band\b|,(?=\s*[A-Za-z]+\s*(?:\([^)]*\))?\s*\d))\s*/i).map((p) => p.trim()).filter(Boolean);
+  // split between classes: "/", "|", "+", "&", ";", " and ", or a comma followed by another "Name 3"
+  const parts = s.split(/\s*(?:\/|\||\+|&|;|\band\b|,(?=\s*[A-Za-z]+\s*(?:\([^)]*\))?\s*\d))\s*/i).map((p) => p.trim()).filter(Boolean);
   for (const part of parts) {
     const cls = CLASS_NAMES.find((c) => new RegExp(`\\b${c}\\b`, "i").test(part));
     if (!cls) {
@@ -52,14 +52,30 @@ export function parseClassLevel(s: string): { classes: ImportedSheet["classes"];
   return { classes, unknown };
 }
 
-/** "1d8+3 slashing", "2d6 + 4 Piercing", "0 Bludgeoning" → dice, flat bonus, type. */
+/** "1d8+3 slashing", "2d6 + 4 Piercing", "0 Bludgeoning", "2d6+2d6+7" → dice, flat bonus, type. Same-size dice add up (4d6). */
 export function parseDamage(s: string): { dice: string; flat: number; type: string } {
+  const { dice, flat, type } = readDamage(s);
+  return { dice, flat, type };
+}
+/** True when the sheet wrote a flat bonus ("1d8+4", "1d8+0"), false for plain "1d8" (many sheets leave the modifier out). */
+export const damageHasFlat = (s: string) => readDamage(s).hasFlat;
+
+function readDamage(s: string) {
   const t = s.replace(/[−–]/g, "-");
-  const m = t.match(/(\d+)\s*d\s*(\d+)/i);
-  const dice = m ? `${m[1]}d${m[2]}` : "";
-  const flatM = m ? t.slice(m.index! + m[0].length).match(/^\s*([+-]\s*\d+)/) : t.match(/^\s*([+-]?\s*\d+)/);
+  // only the leading sum ("1d8+3 slashing (versatile 1d10)" stops before the words)
+  const expr = (t.match(/^\s*[+-]?\s*\d[\d\sdD+-]*/)?.[0] ?? "").replace(/\s/g, "");
+  const bySides = new Map<number, number>();
+  let flat = 0, hasFlat = false;
+  for (const m of expr.matchAll(/([+-]?)(\d*)[dD](\d+)|([+-]?)(\d+)/g)) {
+    if (m[3] !== undefined) {
+      if (m[1] === "-") continue;
+      const sides = Number(m[3]);
+      bySides.set(sides, (bySides.get(sides) ?? 0) + (m[2] ? Number(m[2]) : 1));
+    } else { flat += (m[4] === "-" ? -1 : 1) * Number(m[5]); hasFlat = true; }
+  }
+  const dice = [...bySides].map(([sides, n]) => `${clamp(n, 1, 100)}d${sides}`).join("+");
   const type = t.match(/\b(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\b/i)?.[1]?.toLowerCase() ?? "";
-  return { dice, flat: flatM ? Number(flatM[1].replace(/\s/g, "")) : 0, type };
+  return { dice, flat, type, hasFlat };
 }
 
 export function parseSpeed(s: string): number | null {
@@ -96,7 +112,10 @@ export function parseFeatureBlock(text: string, fallbackName: string): SheetFeat
     const line = raw.trim();
     if (!line) continue;
     if (/^===.*===$/.test(line)) continue; // "=== RANGER FEATURES ==="
-    const head = line.match(/^(?:[*•\-–]\s*)?([A-Z][^.:•|]{1,48}?)\s*(?:[•|].*|[.:])\s*(.*)$/);
+    const head = line.match(/^(?:[*•\-–]\s*)?([A-Z][^.:•|]{1,48}?)\s*(?:[•|].*|[.:]|\s[-–]\s)\s*(.*)$/);
+    // a short line in a list of names ("Rage [4] +3dmg", "Action Surge", "ABS x2") is a feature of its own
+    const listName = !head && /^[A-Z]/.test(line) && line.length <= 50 && line.split(/\s+/).length <= 6
+      && !/^(you|your|when|if|the|a|an|this|once|as|while|in|at|on|for|whenever|each|after|before|it|they)\b/i.test(line);
     const bulletOnly = line.match(/^[*•\-–]\s*(.{2,50})$/);
     // a heading: a bullet, or a short name followed by its text ("Natural Explorer. You…"), or a short "Name:" line;
     // a sentence ("You have advantage on…", "Turn undead.") is description
@@ -106,6 +125,9 @@ export function parseFeatureBlock(text: string, fallbackName: string): SheetFeat
     if (head && isHead) {
       if (cur) out.push(cur);
       cur = { name: head[1].trim(), description: head[2]?.trim() ?? "" };
+    } else if (listName) {
+      if (cur) out.push(cur);
+      cur = { name: line.replace(/\s*\[\s*\]\s*$/, ""), description: "" };
     } else if (bulletOnly) {
       if (cur) out.push(cur);
       cur = { name: bulletOnly[1].trim(), description: "" };
@@ -132,6 +154,7 @@ function inferProf(total: number | null, mod: number | null, prof: number | null
 
 export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
   const sheet = emptySheet("form");
+  fields = fields.map((f) => (f.value.includes("\r") ? { ...f, value: f.value.replace(/\r\n?/g, "\n") } : f));
   const byKey = new Map<string, PdfField>();
   for (const f of fields) { const k = key(f.name); if (!byKey.has(k) || (!byKey.get(k)!.value && f.value)) byKey.set(k, f); }
   const get = (...names: string[]) => { for (const n of names) { const v = byKey.get(key(n))?.value; if (v) return v; } return ""; };
@@ -150,6 +173,16 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     if (classes.length === 1 && !/\d/.test(cl) && lvl) classes[0].level = clamp(lvl, 1, 20);
     sheet.classes = classes;
     sheet.unknownClasses = unknown;
+    // a separate Subclass box: "Path of the Wild Soul" (or "Champion / Thief") goes to the classes without one, in order
+    const sub = get("Subclass", "Subclasses", "Archetype");
+    if (sub) {
+      const subs = sub.split(/\s*[\/|;]\s*/).map((x) => x.trim()).filter(Boolean);
+      for (const cls of sheet.classes) if (!cls.subclass && subs.length) cls.subclass = subs.shift()!.slice(0, 40);
+    }
+    // a subclass name written in the XP box ("Champion"): words, no number → the next class without a subclass
+    const xp = get("Experience Points", "XP", "ExperiencePoints");
+    const free = sheet.classes.find((c) => !c.subclass);
+    if (free && xp && !/\d/.test(xp) && /^[a-z][a-z' -]{2,39}$/i.test(xp.trim()) && !/^(none|n\/a|milestone)$/i.test(xp.trim())) free.subclass = xp.trim();
   }
 
   for (const a of ABILITIES) {
@@ -162,7 +195,7 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     }
   }
   const mods = Object.fromEntries(ABILITIES.map((a) => [a, sheet.scores[a] != null ? Math.floor((sheet.scores[a]! - 10) / 2) : null])) as Record<Ability, number | null>;
-  sheet.profBonus = num(get("ProfBonus", "Proficiency Bonus", "Prof Bonus"));
+  sheet.profBonus = num(get("ProfBonus", "Proficiency Bonus", "Prof Bonus", "Prof Bonus 0"));
   if (sheet.profBonus == null && sheet.classes.length) {
     const lvl = sheet.classes.reduce((s, c) => s + c.level, 0);
     sheet.profBonus = 2 + Math.floor((Math.min(20, lvl) - 1) / 4);
@@ -183,12 +216,17 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
   // skills
   const marked = new Map<string, "P" | "E">();
   for (const [box, s] of OFFICIAL_SKILL_BOXES) if (on(box)) marked.set(s, "P");
+  // Southlands sheet: 18 boxes "Prof.0"…"Prof.17", one per skill in alphabetical order
+  if (!marked.size && SKILL_NAMES.every((_, i) => byKey.has(`prof${i}`))) {
+    [...SKILL_NAMES].sort().forEach((s, i) => { if (on(`prof${i}`)) marked.set(s, "P"); });
+  }
   for (const s of SKILL_NAMES) {
     const v = SKILL_FIELDS[s].map((k) => byKey.get(`${k}prof`)?.value ?? "").find(Boolean) ?? "";
     if (/^e/i.test(v)) marked.set(s, "E"); else if (v && !/^(off|false|no|0|--)$/i.test(v)) marked.set(s, "P");
   }
   for (const s of SKILL_NAMES) {
-    const total = num(SKILL_FIELDS[s].map((k) => byKey.get(k)?.value ?? "").find(Boolean));
+    const ab = (SKILLS[s as keyof typeof SKILLS] as string).toLowerCase();
+    const total = num([...SKILL_FIELDS[s], key(s) + ab].map((k) => byKey.get(k)?.value ?? "").find(Boolean));
     const inferred = inferProf(total, mods[SKILLS[s as keyof typeof SKILLS] as Ability], sheet.profBonus);
     const m = marked.get(s) ?? (marked.size ? "" : inferred);
     // a box ticked + a total that shows double proficiency = expertise
@@ -197,7 +235,7 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     if (level === "E") sheet.expertise.push(s);
   }
 
-  sheet.hp = num(get("HPMax", "MaxHP", "Max HP", "HP Max", "Hit Point Maximum", "HitPointMaximum", "HP"));
+  sheet.hp = num(get("HPMax", "MaxHP", "Max HP", "HP Max", "Hit Point Maximum", "HitPointMaximum", "Max HP 0", "HP"));
   sheet.ac = num(get("AC", "Armor Class", "ArmorClass"));
   sheet.speed = parseSpeed(get("Speed", "Walking Speed"));
   if (sheet.hp != null && (sheet.hp < 1 || sheet.hp > 999)) sheet.hp = null;
@@ -217,9 +255,22 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     };
     sheet.attacks.push(attack);
   }
+  const officialAttacks = sheet.attacks.length > 0;
+  for (let i = 0; i <= 8 && !officialAttacks; i++) {
+    const name = get(`Attack Name ${i}`);
+    if (!name) continue;
+    const bonusRaw = get(`Attack Bonus ${i}`);
+    const dmg = get(`Damage Type ${i}`, `Damage ${i}`);
+    const d = parseDamage(dmg);
+    sheet.attacks.push({
+      name: name.slice(0, 60), bonus: /\d/.test(bonusRaw) ? num(bonusRaw) : null,
+      damage: d.dice ? `${d.dice}${d.flat ? (d.flat > 0 ? `+${d.flat}` : `${d.flat}`) : ""}` : d.flat ? String(d.flat) : "",
+      damageType: d.type, notes: get(`Range Properties ${i}`).slice(0, 80),
+    });
+  }
 
   // spells: D&D Beyond "spellName0…"; the official sheet "Spells 1014…"; anything else named like a spell list
-  const spellFields = fields.filter((f) => f.value && (/^spellname\d+$/.test(key(f.name)) || /^spells\d+$/.test(key(f.name)) || /^(cantrip|spell)\d+$/.test(key(f.name))))
+  const spellFields = fields.filter((f) => f.value && (/^spellname\d+$/.test(key(f.name)) || /^spells\d+$/.test(key(f.name)) || /^(cantrip|spell)\d+$/.test(key(f.name)) || /^(level\dspell|cantrips?)\d+$/.test(key(f.name))))
     .sort((a, b) => a.page - b.page || b.y - a.y);
   const spells: string[] = [];
   for (const f of spellFields) for (const piece of f.value.split(/\n|;/)) {
@@ -227,7 +278,8 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     if (n && n.length <= 50 && !/^=+/.test(n) && !/^(spells?|cantrips?|name|spell name)$/i.test(n) && !spells.some((s) => s.toLowerCase() === n.toLowerCase())) spells.push(n);
   }
   sheet.spells = spells.slice(0, 120);
-  sheet.spellAbility = abilityOf(get("SpellcastingAbility 2", "spellCastingAbility0", "Spellcasting Ability", "SpellcastingAbility"));
+  sheet.spellAbility = abilityOf(get("SpellcastingAbility 2", "spellCastingAbility0", "Spellcasting Ability", "SpellcastingAbility"))
+    ?? abilityOf(get("Spellcasting Class")); // some sheets put the ability ("STR") in the class box
 
   // equipment: D&D Beyond's rows, or the official sheet's Equipment box
   const rows: SheetItem[] = [];
@@ -238,7 +290,7 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
     const it = parseItemLine(f.value);
     if (it) rows.push({ name: it.name, qty: clamp(qty || 1, 1, 9999) });
   }
-  const block = get("Equipment", "Inventory", "Gear");
+  const block = get("Equipment", "Inventory", "Gear", "Treasure & Equipment", "Treasure and Equipment");
   const items = rows.length ? rows : block ? parseItemBlock(block) : [];
   // the same item listed twice (D&D Beyond repeats containers' contents) → add the amounts
   for (const it of items) {
@@ -253,11 +305,12 @@ export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
 
   // features and the "about me" boxes
   const featureText = [get("Features and Traits", "FeaturesTraits", "Features & Traits", "Features"),
-    ...[1, 2, 3, 4, 5, 6].map((i) => get(`FeaturesTraits${i}`)), get("Feat+Traits", "Additional Features and Traits")].filter(Boolean).join("\n");
+    ...[1, 2, 3, 4, 5, 6].map((i) => get(`FeaturesTraits${i}`)), get("Feat+Traits", "Additional Features and Traits", "Additional Features & Traits")].filter(Boolean).join("\n");
   if (featureText) sheet.features.push(...parseFeatureBlock(featureText, "Features and traits"));
   const about: [string, string][] = [
     ["Personality traits", get("PersonalityTraits", "Personality Traits", "Personality")], ["Ideals", get("Ideals")], ["Bonds", get("Bonds")], ["Flaws", get("Flaws")],
-    ["Proficiencies & languages", get("ProficienciesLang", "Other Proficiencies and Languages", "Proficiencies", "Languages")],
+    ["Proficiencies & languages", get("ProficienciesLang", "Other Proficiencies and Languages", "Proficiencies, Languages, & Traits", "Proficiencies", "Languages")],
+    ["Background feature", get("Additional Treasure") && /defining event|feature/i.test(get("Additional Treasure")) ? get("Additional Treasure") : ""],
     ["Backstory", get("Backstory", "Character Backstory")], ["Allies & organizations", get("Allies", "Allies & Organizations")],
   ];
   for (const [n, v] of about) if (v) sheet.features.push({ name: n, description: v.replace(/\s+\n/g, "\n").slice(0, 2000) });

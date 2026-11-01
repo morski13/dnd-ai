@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { readPdfFields } from "./read-pdf";
-import { cleanSpellName, fieldsToSheet, parseClassLevel, parseDamage, parseFeatureBlock, parseItemBlock, parseItemLine, sheetScore } from "./parse";
+import { cleanSpellName, damageHasFlat, fieldsToSheet, parseClassLevel, parseDamage, parseFeatureBlock, parseItemBlock, parseItemLine, sheetScore } from "./parse";
 import { cleanAiSheet } from "./clean";
 import { findIn, makeIndex } from "./match";
 import { buildAttacks, buildFeatures, type LibWeapon } from "./build";
@@ -257,5 +257,35 @@ describe("turning sheet attacks into app attacks", () => {
     const f = buildFeatures([{ name: "Rage", description: "Big." }], { spells: ["Toll the Dead"], classes: ["Artificer 5"] });
     expect(f.map((x) => x.name)).toEqual(["Rage", "Spells not in the app's library", "Classes the app doesn't have yet"]);
     expect(f[0].source).toBe("From your sheet");
+  });
+});
+
+describe("Kobold Press Southlands sheet", () => {
+  const F = (name: string, value: string) => ({ name, value, page: 0, y: 0 });
+  it("reads classes split by |, the Subclass box, Prof.N skills, Attack Name.N rows and \\r lines", () => {
+    const skillBoxes = Array.from({ length: 18 }, (_, i) => F(`Prof.${i}`, [0, 3, 7].includes(i) ? "Yes" : ""));
+    const s = fieldsToSheet([
+      F("Character Name", "Kazar"), F("Class & Level", "Barbarian 10 | Fighter 3"), F("Subclass", "Path of the Wild Soul"), F("Experience Points", "Champion"),
+      F("Strength", "19"), F("Dexterity", "15"), F("Constitution", "20"), F("Charisma", "12"), F("Max HP.0", "147"),
+      ...skillBoxes, F("Athletics Str", "+8"),
+      F("Attack Name.0", "Claws"), F("Attack Bonus.0", "+8"), F("Damage/Type.0", "1d4+4"),
+      F("Attack Name.1", "Flaming Tongue"), F("Attack Bonus.1", "+8"), F("Damage/Type.1", "2d6+2d6+7"),
+      F("Treasure & Equipment", "Morningstar\r2x Handaxe"), F("Level 1 Spell.0", "blazing hands"),
+      F("Features & Traits", "Rage [4] +3dmg\rAction Surge\rWild Surge - Each creature within 30 feet\rof you takes 1d10 necrotic damage."),
+    ]);
+    expect(s.classes).toEqual([{ class: "Barbarian", subclass: "Path of the Wild Soul", level: 10 }, { class: "Fighter", subclass: "Champion", level: 3 }]);
+    expect(s.hp).toBe(147);
+    expect(s.skills).toEqual(["Acrobatics", "Athletics", "Intimidation"]);
+    expect(s.attacks.map((a) => [a.name, a.damage])).toEqual([["Claws", "1d4+4"], ["Flaming Tongue", "4d6+7"]]);
+    expect(s.equipment).toEqual([{ name: "Morningstar", qty: 1 }, { name: "Handaxe", qty: 2 }]);
+    expect(s.spells).toEqual(["blazing hands"]);
+    expect(s.features.map((f) => f.name)).toEqual(["Rage [4] +3dmg", "Action Surge", "Wild Surge"]);
+    expect(s.features[2].description).toContain("1d10 necrotic");
+  });
+  it("adds up same-size dice and leaves a missing modifier alone", () => {
+    expect(parseDamage("2d6+2d6+7 fire")).toEqual({ dice: "4d6", flat: 7, type: "fire" });
+    expect(parseDamage("1d8+3 slashing (versatile 1d10)")).toEqual({ dice: "1d8", flat: 3, type: "slashing" });
+    expect(damageHasFlat("1d8")).toBe(false);
+    expect(damageHasFlat("1d8+0")).toBe(true);
   });
 });

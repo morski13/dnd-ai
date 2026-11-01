@@ -32,7 +32,7 @@ export type FullCharacter = SheetCharacter & {
 
 const COLUMNS =
   "id, campaign_id, name, species, class_levels, ability_scores, hp_max, hp_current, temp_hp, ac, speed, " +
-  "proficiencies, features, inventory, spells, resources, sheet_values, attacks, owner_user_id, rule_set, hit_dice_used, concentration";
+  "proficiencies, features, inventory, spells, resources, sheet_values, attacks, owner_user_id, rule_set, hit_dice_used, concentration, homebrew";
 
 export const SPELL_COLUMNS =
   "name, level, school, classes, casting_time, ritual, range, components, duration, concentration, description, higher_levels, action, roll";
@@ -63,6 +63,7 @@ export async function loadCharacter(id: string) {
   character.resources ??= [];
   character.sheet_values ??= {};
   character.hit_dice_used ??= {};
+  character.homebrew ??= {};
 
   const [{ data: spells }, { data: member }] = await Promise.all([
     character.spells.known.length

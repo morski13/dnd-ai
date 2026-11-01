@@ -10,7 +10,7 @@ import { ACTION_LABEL, Empty, Pips, RulesText, Tag } from "./ui";
 
 const LEVEL_NAME = (l: number) => (l === 0 ? "Cantrips" : `Level ${l}`);
 
-export function SpellsTab({ characterId, c, options, library, canEdit, pending, classes, onCast, onSlots, onRestoreSlots, onSpellsChange, onLibraryAdd }: {
+export function SpellsTab({ characterId, c, options, library, canEdit, pending, classes, practice = false, onCast, onSlots, onRestoreSlots, onSpellsChange, onLibraryAdd }: {
   characterId: string;
   c: SheetCharacter;
   options: Option[];
@@ -18,6 +18,7 @@ export function SpellsTab({ characterId, c, options, library, canEdit, pending, 
   canEdit: boolean;
   pending: boolean;
   classes: string[];
+  practice?: boolean; // practice rolls: empty slots don't block casting
   onCast: (key: string, slot?: number) => void;
   onSlots: (level: number, used: number) => void;
   onRestoreSlots: () => void;
@@ -69,6 +70,7 @@ export function SpellsTab({ characterId, c, options, library, canEdit, pending, 
                 slotLevels={slotLevels}
                 canEdit={canEdit}
                 pending={pending}
+                practice={practice}
                 onCast={onCast}
                 onRemove={async () => {
                   const res = await removeSpell(characterId, s.name);
@@ -101,8 +103,8 @@ export function SpellsTab({ characterId, c, options, library, canEdit, pending, 
   );
 }
 
-function SpellCard({ s, c, option, slotLevels, canEdit, pending, onCast, onRemove }: {
-  s: SpellInfo; c: SheetCharacter; option?: Option; slotLevels: number[]; canEdit: boolean; pending: boolean;
+function SpellCard({ s, c, option, slotLevels, canEdit, pending, practice = false, onCast, onRemove }: {
+  s: SpellInfo; c: SheetCharacter; option?: Option; slotLevels: number[]; canEdit: boolean; pending: boolean; practice?: boolean;
   onCast: (key: string, slot?: number) => void; onRemove: () => void;
 }) {
   const key = `spell:${s.name}`;
@@ -146,7 +148,7 @@ function SpellCard({ s, c, option, slotLevels, canEdit, pending, onCast, onRemov
                 <button
                   key={l}
                   type="button"
-                  disabled={pending || left === 0}
+                  disabled={pending || (left === 0 && !practice)}
                   onClick={() => onCast(key, l || undefined)}
                   className="h-11 rounded-xl bg-accent px-4 text-sm font-bold text-accent-text disabled:opacity-40"
                 >

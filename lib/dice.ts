@@ -17,7 +17,7 @@ export type RollResult = {
   diceAll: number[];  // every die rolled, including dropped ones
   modifier: number;   // sum of the plain numbers
   natural: number | null; // the d20 that counted, for d20 rolls
-  isCrit: boolean;    // natural 20
+  isCrit: boolean;    // natural 20 (or lower with a wider crit range: Improved Critical 19–20)
   isFumble: boolean;  // natural 1
 };
 
@@ -93,7 +93,11 @@ export function format(terms: Term[]): string {
 
 export function roll(
   input: string,
-  opts: { advantage?: Advantage; critical?: boolean; rng?: Rng } = {}
+  opts: {
+    advantage?: Advantage; critical?: boolean; rng?: Rng;
+    critOn?: number;      // the lowest natural d20 that is a crit (default 20)
+    critExtra?: string;   // extra dice added on a critical hit, not doubled (Brutal Critical: "1d8")
+  } = {}
 ): RollResult {
   const rng = opts.rng ?? secureRng;
   const parsed = parse(input);
@@ -112,6 +116,7 @@ export function roll(
     terms = terms.map((t) =>
       t.type === "dice" ? { ...t, count: t.count * 2, keep: t.keep ? { ...t.keep, n: t.keep.n * 2 } : undefined } : t
     );
+    if (opts.critExtra) terms = [...terms, ...parse(opts.critExtra).terms.filter((t) => t.type === "dice")];
   }
 
   const dice: number[] = [];
@@ -147,7 +152,7 @@ export function roll(
     diceAll,
     modifier,
     natural,
-    isCrit: natural === 20,
+    isCrit: natural !== null && natural >= Math.min(20, Math.max(2, opts.critOn ?? 20)),
     isFumble: natural === 1,
   };
 }

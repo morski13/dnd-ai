@@ -9,7 +9,7 @@ import {
   saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, restoreAllSlots, rollForCharacter, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, practiceRoll, restoreAllSlots, rollForCharacter, saveHomebrew, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
@@ -21,6 +21,9 @@ import { GearTab } from "./parts/gear-tab";
 import type { Gear } from "@/lib/items-data";
 import { HpCard } from "./parts/hp-card";
 import { RestPanel } from "./parts/rest-panel";
+import { DeleteCharacter } from "./parts/delete-character";
+import { HomebrewPanel } from "./parts/homebrew-panel";
+import { critRules, type Homebrew } from "@/lib/homebrew";
 import { RollTray } from "./parts/roll-tray";
 import { SpellsTab } from "./parts/spells-tab";
 import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./parts/ui";
@@ -37,15 +40,18 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [resources, setResources] = useState<Resource[]>(character.resources);
   const [spells, setSpells] = useState<SpellBook>(character.spells);
   const [library, setLibrary] = useState<SpellInfo[]>(initialLibrary);
+  const [homebrew, setHomebrew] = useState<Homebrew>(character.homebrew ?? {});
   const [tab, setTab] = useState<Tab>("Attacks");
   const [advantage, setAdvantage] = useState<Advantage>("normal");
-  const [last, setLast] = useState<SavedRoll | null>(null);
+  const [practice, setPractice] = useState(false); // practice rolls: worked out, never saved, nothing spent
+  const [last, setLast] = useState<(SavedRoll & { after?: string | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const dice = useDice();
 
   // The character as it is right now (slots and spell list change while you play).
-  const c: SheetCharacter & { features: (string | Feature)[] } = useMemo(() => ({ ...character, spells }), [character, spells]);
+  const c: SheetCharacter & { features: (string | Feature)[] } = useMemo(() => ({ ...character, spells, homebrew }), [character, spells, homebrew]);
+  const crit = critRules(c);
   const options = useMemo(() => allOptions(c, library), [c, library]);
   const m = mods(c);
   const classes = c.class_levels.map((cl) => cl.class);
@@ -54,10 +60,21 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     if (!canEdit || pending) return;
     setError(null);
     startTransition(async () => {
+      if (practice) {
+        const crit = request.kind === "damage" && !!last?.practice && last.isCrit;
+        const res = await practiceRoll(character.id, request, advantage, crit);
+        if ("error" in res) return setError(res.error);
+        await dice.show(asShown(res.roll));
+        setLast(res.roll);
+        await showTriggered(res.roll, res.triggered);
+        return; // nothing was spent or saved, so the sheet stays as it is
+      }
       const res = await rollForCharacter(character.id, request, advantage);
       if ("error" in res) return setError(res.error);
       await dice.show(asShown(res.roll));
       setLast(res.roll);
+      applySelf(res.roll);
+      await showTriggered(res.roll, res.triggered);
       if (res.concentration !== undefined) setConc(res.concentration);
       setConcNote(res.endedConcentration ? `You stopped concentrating on ${res.endedConcentration}.` : null);
       const cc = res.roll.applied?.concentration;
@@ -65,6 +82,19 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       setSpells(res.spells);
       setResources(res.resources);
     });
+  }
+
+  // Rolls set off by this one (Wild Surge after Rage): their dice tumble next, and the tray shows the last one.
+  async function showTriggered(by: SavedRoll | null, triggered?: SavedRoll[]) {
+    for (const t of triggered ?? []) {
+      await dice.show(asShown(t));
+      setLast({ ...t, after: by?.label ?? null });
+      applySelf(t);
+    }
+  }
+  // HP changed by a roll's "then" (temp HP from Wild Surge, damage from Magic Reserves)
+  function applySelf(r: SavedRoll) {
+    if (r.self?.hp_current !== undefined) setHp({ cur: r.self.hp_current, temp: r.self.temp_hp ?? 0 });
   }
 
   function run<T>(fn: () => Promise<T | { error: string }>, done: (r: T) => void) {
@@ -87,19 +117,25 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     c.class_levels.map((cl) => `${cl.class} ${cl.level}${c.class_levels.length === 1 && cl.subclass ? ` (${cl.subclass})` : ""}`).join(" / "),
   ].filter(Boolean).join(" · ");
 
-  const sheetOptions = options.filter((o) => !o.fromSpell && o.kind !== "boost");
+  const sheetOptions = options.filter((o) => !o.fromSpell && o.kind !== "boost" && !o.row_of);
   const spellOptions = options.filter((o) => o.fromSpell && (o.damage || o.kind === "heal"));
-  const boosts = options.filter((o) => o.kind === "boost" && !o.fromSpell);
+  const boosts = options.filter((o) => o.kind === "boost" && !o.fromSpell && !o.row_of);
 
   // After an attack or a save spell, offer the damage roll (same slot level, crit-aware).
   const followUp = (() => {
-    if (!last?.followUp) return null;
+    if (last?.next && !!last.practice === practice) {
+      const next = last.next;
+      return { label: `Roll ${next.label}`, onClick: () => doRoll({ kind: "use", key: next.key }) };
+    }
+    if (!last?.followUp || !!last.practice !== practice) return null;
     const o = options.find((x) => x.key === last.followUp!.key);
     if (!o) return null;
     const expr = damageExpression(c, o, last.followUp.slot);
     return {
       label: last.isCrit ? `Roll crit damage (${expr}, dice doubled)` : `Roll damage (${expr})`,
-      onClick: () => doRoll({ kind: "damage", key: o.key, slot: last.followUp!.slot, parentRollId: last.id }),
+      onClick: () => doRoll(last.practice
+        ? { kind: "damage", key: o.key, slot: last.followUp!.slot }
+        : { kind: "damage", key: o.key, slot: last.followUp!.slot, parentRollId: last.id }),
     };
   })();
 
@@ -183,16 +219,42 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         {tab === "Attacks" && (
           <div className="flex flex-col gap-5">
             <BestMoves c={c} options={options} />
-            <OptionGroup title="Weapons & attacks" items={sheetOptions} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} onUse={(o) => doRoll({ kind: "use", key: o.key })} />
-            <OptionGroup title="Spells" items={spellOptions} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} onUse={(o) => doRoll({ kind: "use", key: o.key })}
+            {((homebrew.toggles?.length ?? 0) > 0 || crit.range < 20 || crit.extra > 0) && (
+              <div className="flex flex-col gap-2">
+                {(crit.range < 20 || crit.extra > 0) && (
+                  <p className="text-sm text-muted">
+                    Crits on {crit.range === 20 ? "a 20" : `${crit.range}–20`}{crit.extra > 0 ? ` · +${crit.extra} weapon ${crit.extra === 1 ? "die" : "dice"} on a melee crit` : ""}
+                  </p>
+                )}
+                {(homebrew.toggles ?? []).map((t) => (
+                  <button key={t.id} type="button" role="switch" aria-checked={t.on} disabled={!canEdit}
+                    onClick={() => {
+                      const next = { ...homebrew, toggles: (homebrew.toggles ?? []).map((x) => (x.id === t.id ? { ...x, on: !x.on } : x)) };
+                      setHomebrew(next);
+                      run(() => saveHomebrew(character.id, next), (r) => setHomebrew(r.homebrew));
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left ${t.on ? "border-accent-line bg-accent-surface" : "border-line bg-surface"}`}>
+                    <span className="min-w-0">
+                      <span className={`block font-semibold ${t.on ? "text-accent" : ""}`}>{t.name}</span>
+                      <span className="block text-xs text-muted">+{t.damage}{t.damage_type ? ` ${t.damage_type}` : ""} on {t.applies_to === "*" ? "every weapon hit" : t.applies_to}</span>
+                    </span>
+                    <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${t.on ? "bg-accent" : "bg-line"}`}>
+                      <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${t.on ? "left-6" : "left-1"}`} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <OptionGroup title="Weapons & attacks" items={sheetOptions} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} practice={practice} onUse={(o) => doRoll({ kind: "use", key: o.key })} />
+            <OptionGroup title="Spells" items={spellOptions} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} practice={practice} onUse={(o) => doRoll({ kind: "use", key: o.key })}
               empty={c.spells?.ability ? "No damage or healing spells yet. See the Spells tab." : undefined} />
-            <OptionGroup title="Class tricks" items={boosts} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} onUse={(o) => doRoll({ kind: "use", key: o.key })} />
+            <OptionGroup title="Class tricks" items={boosts} c={c} canEdit={canEdit} pending={pending} resourceLeft={resourceLeft} practice={practice} onUse={(o) => doRoll({ kind: "use", key: o.key })} />
           </div>
         )}
 
         {tab === "Spells" && (
           <SpellsTab
-            characterId={character.id} c={c} options={options} library={library} canEdit={canEdit} pending={pending} classes={classes}
+            characterId={character.id} c={c} options={options} library={library} canEdit={canEdit} pending={pending} classes={classes} practice={practice}
             onCast={(key, slot) => doRoll({ kind: "use", key, slot })}
             onSlots={(level, used) => {
               setSpells({ ...spells, slots_used: { ...spells.slots_used, [String(level)]: used } });
@@ -225,7 +287,15 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
           </>
         )}
 
-        {tab === "Features" && <FeaturesTab features={character.features} featText={featText} />}
+        {tab === "Features" && (
+          <>
+            {canEdit && (
+              <HomebrewPanel characterId={character.id} name={character.name} homebrew={homebrew} setHomebrew={setHomebrew}
+                attacks={c.attacks} resources={resources} setResources={setResources} classLevels={c.class_levels} ruleSet={character.rule_set} />
+            )}
+            <FeaturesTab features={character.features} featText={featText} />
+          </>
+        )}
 
         {tab === "Gear" && <GearTab characterId={character.id} rules={character.rule_set ?? "2024"} gear={gear} canEdit={canEdit} />}
       </section>
@@ -241,7 +311,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
               <div className="mt-1">
                 <Pips max={r.max} used={r.used ?? 0} label={r.name} disabled={!canEdit} onChange={(used) => {
                   setResources(resources.map((x, j) => (j === i ? { ...x, used } : x)));
-                  run(() => setResourceUsed(character.id, i, used), (res) => setResources(res.resources));
+                  run(() => setResourceUsed(character.id, i, used, practice), (res) => {
+                    setResources(res.resources);
+                    if (res.triggered?.length) startTransition(async () => { await showTriggered({ label: `${r.name} used` } as SavedRoll, res.triggered); });
+                  });
                 }} />
               </div>
               {r.recharge && <p className="mt-1 text-xs text-muted">Back on a {r.recharge}</p>}
@@ -255,10 +328,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
           onRested={(r) => { setHp({ cur: r.hp_current, temp: r.temp_hp }); setResources(r.resources); setSpells(r.spells); setHitDiceUsed(r.hit_dice_used); if (r.kind === "long") setConc(null); }} />
       )}
 
+      {canEdit && <DeleteCharacter characterId={character.id} name={character.name} />}
+
     </div>
     </div>
 
-      {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp} />}
+      {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp}
+        practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }} />}
     </>
   );
 }
@@ -278,11 +354,12 @@ function describe(c: SheetCharacter, o: Option) {
     o.resource ? `uses ${o.resource}` : null,
     o.range,
     o.note,
+    o.custom ? "own rule" : null,
   ].filter(Boolean).join(" · ");
 }
 
-function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, empty }: {
-  title: string; items: Option[]; c: SheetCharacter; canEdit: boolean; pending: boolean;
+function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, empty, practice = false }: {
+  title: string; items: Option[]; c: SheetCharacter; canEdit: boolean; pending: boolean; practice?: boolean;
   resourceLeft: (name?: string) => number; onUse: (o: Option) => void; empty?: string;
 }) {
   if (items.length === 0 && !empty) return null;
@@ -292,8 +369,9 @@ function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, e
       <div className="mt-2 flex flex-col gap-2">
         {items.length === 0 && empty && <Empty text={empty} />}
         {items.map((o) => {
-          const noSlot = !!o.level && lowestFreeSlot(c, o.level) === null;
-          const noResource = resourceLeft(o.resource) <= 0;
+          // practice rolls don't spend anything, so empty slots / resources don't block them
+          const noSlot = !practice && !!o.level && lowestFreeSlot(c, o.level) === null;
+          const noResource = !practice && resourceLeft(o.resource) <= 0;
           const label = noSlot ? "No slots" : noResource ? `No ${o.resource}` : optionButtonLabel(c, o);
           return (
             <div key={o.key} className="flex items-center gap-3 rounded-2xl bg-surface p-4">

@@ -25,10 +25,17 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const [spells, setSpells] = useState<SpellBook>(character.spells);
   const [resources, setResources] = useState<Resource[]>(character.resources);
   const c = useMemo(() => ({ ...character, spells }), [character, spells]);
-  const options = useMemo(
-    () => allOptions(c, library).filter((o) => o.kind !== "boost" && (o.damage || o.kind === "heal")),
-    [c, library]
-  );
+  const options = useMemo(() => {
+    const all = allOptions(c, library);
+    // uses that set something off (Rage → Wild Surge) are buttons here too, like the character's own actions
+    const triggers = new Set(all.map((o) => o.trigger_on).filter(Boolean));
+    return all.filter((o) => !o.row_of && (
+      o.kind === "table" || o.kind === "roll"
+      || (o.kind !== "boost" && (o.damage || o.kind === "heal"))
+      || (o.kind === "boost" && !!o.resource && (o.custom || triggers.has(o.resource)))
+    ));
+  }, [c, library]);
+  const everything = useMemo(() => allOptions(c, library), [c, library]); // incl. table rows (for follow-ups)
   const meC = combatants.find((x) => x.characterId === character.id) ?? null;
   const others = combatants.filter((x) => x.characterId !== character.id);
   const targets = meC ? [...others, meC] : others;
@@ -44,6 +51,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const [attack, setAttack] = useState<SavedRoll | null>(null);
   const [damage, setDamage] = useState<SavedRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [after, setAfter] = useState<string | null>(null); // "Rage: used" when the card shows a triggered roll
   const [pending, start] = useTransition();
   const dice = useDice();
   const mapAim = useMapAim();
@@ -51,7 +59,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const selected = options.find((o) => o.key === key) ?? null;
   const target = targets.find((t) => t.id === targetId) ?? null;
   const targetRef = target ? { characterId: target.characterId, monsterId: target.monsterId } : null;
-  const multi = selected?.kind === "save";
+  const multi = selected?.kind === "save" || !!selected?.many || selected?.kind === "table";
   const moreRefs = multi ? targets.filter((t) => also.includes(t.id) && t.id !== targetId).map((t) => ({ characterId: t.characterId, monsterId: t.monsterId })) : [];
   const short = character.name.split(" ")[0];
   const left = (o: Option) => {
@@ -66,9 +74,11 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       setSpells(res.spells);
       setResources(res.resources);
       if (res.roll.rollType === "save_dc") { setSaves(res.saves); setAppliedAll(undefined); }
-      else if (res.roll.rollType === "damage") setAppliedAll(res.appliedAll);
+      else if (res.roll.rollType === "damage" || res.roll.rollType === "heal") setAppliedAll(res.appliedAll);
       else { setSaves(undefined); setAppliedAll(undefined); }
       onDone(res.roll);
+      // set off by this roll (Wild Surge after Rage): show those dice too, and keep the last one on the card
+      for (const t of res.triggered ?? []) { await dice.show(asShown(t)); setAfter(res.roll.label); onDone(t); }
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
   }
   function go(fn: () => ReturnType<typeof rollForCharacter>, onDone: (r: SavedRoll) => void) {
@@ -110,6 +120,8 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
     : selected.kind === "save" ? `Cast · ${optionButtonLabel(c, selected)}`
     : selected.kind === "heal" ? "Roll healing"
     : selected.kind === "damage_only" ? "Roll damage"
+    : selected.kind === "table" || selected.kind === "roll" ? `Roll ${selected.name}`
+    : selected.kind === "boost" ? `Use ${selected.name}`
     : "Roll attack";
 
   return (
@@ -182,13 +194,25 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
         </button>
       )}
       <button type="button" disabled={!canEdit || !selected || pending || !!(selected && left(selected))}
-        onClick={() => selected && go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); })}
+        onClick={() => selected && (setAfter(null), go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); }))}
         className={canAim ? "mt-2 h-11 w-full rounded-xl border border-line text-sm text-soft disabled:opacity-50" : "mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50"}>
         {pending ? "Rolling…" : canAim ? `${bigLabel} without the map` : bigLabel}
       </button>
 
       {error && <p className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
 
+      {attack && after && <p className="mt-3 text-xs text-accent">After {after}:</p>}
+      {attack?.table && (
+        <p className="mt-2 rounded-xl bg-accent-surface px-3 py-2 text-sm"><b className="text-accent">{attack.table.row}.</b> {attack.table.text}</p>
+      )}
+      {attack?.next && !damage && (
+        <button type="button" disabled={pending || !canEdit}
+          onClick={() => { const next = attack.next!; setAfter(null); go(() => rollForCharacter(character.id, { kind: "use", key: next.key }, "normal", targetRef, next.many ? moreRefs : []), (r) => { setAttack(r); setDamage(null); }); }}
+          className="mt-2 h-12 w-full rounded-xl border border-danger-line bg-danger-bg px-2 text-sm font-bold text-danger">
+          Roll {attack.next.label}{attack.next.many ? " · pick everyone it hits above" : ""}
+        </button>
+      )}
+      {(damage?.self ?? attack?.self) && <p className="mt-2 text-sm text-soft">{(damage?.self ?? attack?.self)!.note}</p>}
       {attack && (
         <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-bg p-3">
           <ResultLine roll={attack} />
@@ -203,13 +227,13 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
             ) : attack.followUp ? (
               <button type="button" disabled={pending}
                 onClick={() => {
-                  const o = options.find((x) => x.key === attack.followUp!.key);
+                  const o = everything.find((x) => x.key === attack.followUp!.key);
                   if (!o) return;
                   go(() => rollForCharacter(character.id, { kind: "damage", key: o.key, slot: attack.followUp!.slot, parentRollId: attack.id }, "normal"), setDamage);
                 }}
                 className="h-11 w-full rounded-xl border border-danger-line bg-danger-bg px-2 text-sm font-bold text-danger">
                 {attack.isCrit ? "Crit damage!" : "Roll damage"}
-                {(() => { const o = options.find((x) => x.key === attack.followUp?.key); return o ? <span className="block text-xs font-normal">{damageExpression(c, o, attack.followUp?.slot)}</span> : null; })()}
+                {(() => { const o = everything.find((x) => x.key === attack.followUp?.key); return o ? <span className="block text-xs font-normal">{damageExpression(c, o, attack.followUp?.slot)}</span> : null; })()}
               </button>
             ) : null}
           </div>

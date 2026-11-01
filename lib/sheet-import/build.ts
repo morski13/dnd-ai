@@ -2,7 +2,7 @@
 // and the features list. Pure (tested); the server passes in the library rows it found.
 import type { Attack } from "../rules";
 import type { Ability } from "../rules";
-import { parseDamage } from "./parse";
+import { damageHasFlat, parseDamage } from "./parse";
 import type { SheetAttack, SheetFeature } from "./types";
 
 export type LibWeapon = { name: string; damage?: string; type?: string; props?: string[]; range?: { normal?: number; long?: number } };
@@ -34,7 +34,8 @@ export function buildAttacks(rows: SheetAttack[], o: {
     if (!lib && r.bonus != null) ability = Math.abs(o.prof + dex - r.bonus) < Math.abs(o.prof + str - r.bonus) ? "DEX" : "STR";
     const abMod = ability === "DEX" ? dex : str;
     const extra = r.bonus != null ? r.bonus - (o.prof + abMod) : 0; // magic +1, or a fighting style
-    const flatExtra = d.flat - abMod;
+    // "1d8" with no "+4": the sheet left the modifier out, it isn't a −4
+    const flatExtra = damageHasFlat(r.damage) ? d.flat - abMod : 0;
 
     if (lib) {
       equip.push(lib.name);

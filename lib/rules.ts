@@ -1,6 +1,7 @@
 // D&D 5e rules math (from 03-rules-math-reference.md).
 // Turns a character's data (+ the spell library) into bonuses, options and dice expressions.
 import { combine, signed, timesDice } from "./dice";
+import { activeToggles, critRules, type Homebrew } from "./homebrew";
 
 export const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
 export type Ability = (typeof ABILITIES)[number];
@@ -18,7 +19,7 @@ export type ActionType = "action" | "bonus" | "reaction" | "free" | "other";
 /** One thing a character can do on their turn: a weapon, a spell, or a class trick ("boost"). */
 export type Attack = {
   name: string;
-  kind: "weapon" | "spell_attack" | "save" | "heal" | "damage_only" | "boost";
+  kind: "weapon" | "spell_attack" | "save" | "heal" | "damage_only" | "boost" | "table" | "roll";
   ability?: Ability | "finesse" | "spell";
   damage?: string;            // dice, e.g. "1d12" or "3d4+3"
   damage_type?: string;
@@ -45,6 +46,29 @@ export type Attack = {
   drawback?: string;
   note?: string;
   damage_only?: boolean;      // (old data) no attack roll
+  custom?: boolean;           // the character's own action (homebrew / another book), made in the sheet's Homebrew panel
+  // --- the character's own actions only (see lib/homebrew.ts) ---
+  table?: TableRow[];         // kind "table": roll `damage` (the table die, "1d8") and look up the row
+  trigger_on?: string;        // roll this automatically when a use of this resource is spent (Wild Surge on Rage)
+  many?: boolean;             // can hit several creatures at once (an area)
+  dc_ability?: Ability;       // save DC = 8 + proficiency + this modifier (instead of the spellcasting ability)
+  spend_rolled?: boolean;     // spends as many uses as the roll shows (Magic Reserves: spell levels)
+  then?: ThenEffect;          // what happens to me after the roll
+  row_of?: string;            // a table row's effect: the table it belongs to (not listed on its own)
+  text?: string;              // what a table row does, in words
+};
+
+/** After a roll: things that happen to the roller. */
+export type ThenEffect = {
+  temp_hp?: "dealt" | "rolled";   // gain temp HP equal to the damage dealt (all targets) or the roll
+  self_damage_x?: number;         // take the roll × this as damage (Magic Reserves: 5 × the d4)
+  self_damage_type?: string;
+};
+
+/** One line of a roll table. `effect` is rolled like any action when the row comes up (damage, a save, healing…). */
+export type TableRow = {
+  min: number; max: number; name: string; text?: string;
+  effect?: Pick<Attack, "kind" | "damage" | "damage_type" | "save_ability" | "half_on_save" | "many" | "then" | "add_mod" | "ability"> | null;
 };
 
 /** A spell from the library (srd_spells table) or a custom one. */
@@ -84,6 +108,8 @@ export type SheetCharacter = {
   proficiencies: { saves?: Ability[]; skills?: string[]; expertise?: string[] };
   spells: SpellBook;
   attacks: Attack[];
+  homebrew?: Homebrew | null;   // this character's own rules (crit range, extra crit dice, toggles)
+  rule_set?: "2014" | "2024" | null;
 };
 
 export const abilityMod = (score: number) => Math.floor((score - 10) / 2);
@@ -118,6 +144,17 @@ export function allOptions(c: SheetCharacter, library: SpellInfo[]): Option[] {
     kind: a.damage_only && a.kind === "weapon" ? "damage_only" : a.kind,
     key: `atk:${a.name}`,
   }));
+  // each table row with something to roll is an option of its own, reached only through the table
+  for (const a of c.attacks) {
+    if (a.kind !== "table") continue;
+    for (const r of a.table ?? []) {
+      if (!r.effect || !r.effect.kind) continue;
+      sheet.push({
+        ...r.effect, name: `${a.name}: ${r.name}`, key: rowKey(a.name, r.min), row_of: a.name, custom: true,
+        action: "free", dc_ability: a.dc_ability, text: r.text,
+      } as Option);
+    }
+  }
   const taken = new Set(sheet.map((o) => o.name));
   const byName = new Map(library.map((s) => [s.name, s]));
   const spells: Option[] = [];
@@ -135,6 +172,11 @@ export function allOptions(c: SheetCharacter, library: SpellInfo[]): Option[] {
 }
 
 export const isRollable = (o: Attack) => !!o.damage || o.kind === "heal";
+export const rowKey = (table: string, min: number) => `atk:${table}#${min}`;
+/** The row of a table that a total lands on. */
+export const tableRow = (o: Attack, total: number) => (o.table ?? []).find((r) => total >= r.min && total <= r.max) ?? null;
+/** Save DC of an option: 8 + proficiency + its own ability (homebrew), else the spell save DC. */
+export const saveDCFor = (c: SheetCharacter, o: Attack) => (o.dc_ability ? 8 + pb(c) + mods(c)[o.dc_ability] : spellSaveDC(c));
 export const actionOf = (o: Attack): ActionType => o.action ?? (o.kind === "boost" ? "free" : "action");
 
 /** The modifier an option uses (STR, DEX, better of the two for finesse, or the spellcasting ability). */
@@ -167,12 +209,15 @@ export function damageExpression(c: SheetCharacter, o: Attack, slotLevel?: numbe
     flat += c.spells.heal_bonus.base + c.spells.heal_bonus.per_slot_level * (slotLevel ?? level);
   }
   if (flat) parts.push(String(flat));
+  for (const t of activeToggles(c.homebrew, o)) parts.push(t.damage);
   return combine(...parts);
 }
 
 /** What the big button on an option shows: "+5", "DC 13", "2d4+3" or "Use". */
 export function optionButtonLabel(c: SheetCharacter, o: Attack) {
-  if (o.kind === "save") return `DC ${spellSaveDC(c)}`;
+  if (o.kind === "save") return `DC ${saveDCFor(c, o)}`;
+  if (o.kind === "table") return o.damage ?? "Roll";
+  if (o.kind === "roll") return o.damage ?? "Roll";
   if (o.kind === "weapon" || o.kind === "spell_attack") return signed(attackBonus(c, o));
   if (o.kind === "heal" || o.kind === "damage_only") return damageExpression(c, o, o.level);
   if (o.kind === "boost" && o.damage) return damageExpression(c, o);
@@ -214,6 +259,8 @@ export type RollPlan = {
   spellSlot?: number;   // slot spent (for spells with level > 0)
   resource?: string;    // resource spent
   followUp?: boolean;   // offer a damage roll next
+  critOn?: number;      // attack: lowest natural d20 that crits (Improved Critical: 19)
+  critExtra?: string;   // damage: extra dice on a critical hit, not doubled (Brutal Critical: "1d8")
 };
 
 export function planRoll(c: SheetCharacter, req: RollRequest, library: SpellInfo[] = []): RollPlan {
@@ -245,16 +292,27 @@ export function planRoll(c: SheetCharacter, req: RollRequest, library: SpellInfo
       const isHeal = o.kind === "heal";
       if (req.kind === "damage" || isHeal || o.kind === "damage_only" || (o.kind === "boost" && o.damage)) {
         if (!o.damage) throw new Error(`${o.name} has no damage to roll`);
+        // Brutal Critical: extra weapon dice on a melee weapon crit (the first die of the weapon's damage)
+        const brutal = critRules(c).extra;
+        const die = o.damage.match(/d(\d+)/)?.[1];
+        const critExtra = brutal > 0 && o.kind === "weapon" && !o.ranged && die ? `${brutal}d${die}` : undefined;
+        const types = [o.damage_type, ...activeToggles(c.homebrew, o).map((t) => t.damage_type)].filter((t, i, a) => t && a.indexOf(t) === i);
         return {
           rollType: isHeal ? "heal" : "damage", source: o.name, expression: damageExpression(c, o, slot),
-          d20: false, damageType: o.damage_type, ...spend, ...(req.kind === "damage" ? { resource: undefined } : {}),
+          d20: false, damageType: types.join(" + ") || undefined, critExtra,
+          ...spend, ...(req.kind === "damage" ? { resource: undefined } : {}),
         };
       }
       if (o.kind === "save") {
-        return { rollType: "save_dc", source: o.name, expression: "", d20: false, ability: o.save_ability ?? "DEX", dc: spellSaveDC(c), followUp: !!o.damage, ...spend };
+        return { rollType: "save_dc", source: o.name, expression: "", d20: false, ability: o.save_ability ?? "DEX", dc: saveDCFor(c, o), followUp: !!o.damage, ...spend };
+      }
+      // a roll table (Wild Surge) or a plain roll (Magic Reserves' d4): rolled and logged, nothing applied
+      if (o.kind === "table" || o.kind === "roll") {
+        if (!o.damage) throw new Error(`${o.name} has no dice to roll`);
+        return { rollType: "other", source: o.name, expression: o.damage, d20: false, ...spend };
       }
       if (o.kind === "weapon" || o.kind === "spell_attack") {
-        return { rollType: "attack", source: o.name, expression: d20(attackBonus(c, o)), d20: true, followUp: !!o.damage, ...spend };
+        return { rollType: "attack", source: o.name, expression: d20(attackBonus(c, o)), d20: true, followUp: !!o.damage, critOn: critRules(c).range, ...spend };
       }
       // A boost or utility spell: nothing to roll, but it's logged (and spends its slot/resource).
       return { rollType: "other", source: o.name, expression: "", d20: false, ...spend };
