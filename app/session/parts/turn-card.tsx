@@ -9,7 +9,7 @@ import type { Combatant } from "@/lib/session-data";
 import {
   allOptions, damageExpression, lowestFreeSlot, optionButtonLabel, type Option, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
-import { rollForCharacter, type RollResponse, type SavedRoll } from "../../characters/[id]/actions";
+import { rollQuick, type RollResponse, type SavedRoll } from "../../characters/[id]/actions";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, DeathSavePanel, HpBar } from "./moderator";
@@ -81,7 +81,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       for (const t of res.triggered ?? []) { await dice.show(asShown(t)); setAfter(res.roll.label); onDone(t); }
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
   }
-  function go(fn: () => ReturnType<typeof rollForCharacter>, onDone: (r: SavedRoll) => void) {
+  function go(fn: () => ReturnType<typeof rollQuick>, onDone: (r: SavedRoll) => void) {
     setError(null);
     start(async () => {
       const res = await fn();
@@ -144,7 +144,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       ) : (<>
       {inCombat && myInitiative == null && canEdit && (
         <button type="button" disabled={pending}
-          onClick={() => go(() => rollForCharacter(character.id, { kind: "initiative" }, adv), (r) => { setAttack(r); setDamage(null); })}
+          onClick={() => go(() => rollQuick(character.id, { kind: "initiative" }, adv), (r) => { setAttack(r); setDamage(null); })}
           className="mt-3 h-12 w-full rounded-xl border border-accent-strong text-[15px] font-bold text-accent disabled:opacity-50">
           Roll initiative ({signed(Math.floor(((character.ability_scores.DEX ?? 10) - 10) / 2))})
         </button>
@@ -194,7 +194,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
         </button>
       )}
       <button type="button" disabled={!canEdit || !selected || pending || !!(selected && left(selected))}
-        onClick={() => selected && (setAfter(null), go(() => rollForCharacter(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); }))}
+        onClick={() => selected && (setAfter(null), go(() => rollQuick(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); }))}
         className={canAim ? "mt-2 h-11 w-full rounded-xl border border-line text-sm text-soft disabled:opacity-50" : "mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50"}>
         {pending ? "Rolling…" : canAim ? `${bigLabel} without the map` : bigLabel}
       </button>
@@ -207,7 +207,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       )}
       {attack?.next && !damage && (
         <button type="button" disabled={pending || !canEdit}
-          onClick={() => { const next = attack.next!; setAfter(null); go(() => rollForCharacter(character.id, { kind: "use", key: next.key }, "normal", targetRef, next.many ? moreRefs : []), (r) => { setAttack(r); setDamage(null); }); }}
+          onClick={() => { const next = attack.next!; setAfter(null); go(() => rollQuick(character.id, { kind: "use", key: next.key }, "normal", targetRef, next.many ? moreRefs : []), (r) => { setAttack(r); setDamage(null); }); }}
           className="mt-2 h-12 w-full rounded-xl border border-danger-line bg-danger-bg px-2 text-sm font-bold text-danger">
           Roll {attack.next.label}{attack.next.many ? " · pick everyone it hits above" : ""}
         </button>
@@ -229,7 +229,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
                 onClick={() => {
                   const o = everything.find((x) => x.key === attack.followUp!.key);
                   if (!o) return;
-                  go(() => rollForCharacter(character.id, { kind: "damage", key: o.key, slot: attack.followUp!.slot, parentRollId: attack.id }, "normal"), setDamage);
+                  go(() => rollQuick(character.id, { kind: "damage", key: o.key, slot: attack.followUp!.slot, parentRollId: attack.id }, "normal"), setDamage);
                 }}
                 className="h-11 w-full rounded-xl border border-danger-line bg-danger-bg px-2 text-sm font-bold text-danger">
                 {attack.isCrit ? "Crit damage!" : "Roll damage"}

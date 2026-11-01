@@ -46,6 +46,14 @@ export async function loadCharacter(id: string) {
   const empty = { supabase, userId: userId ?? null, character: null, canEdit: false, library: [] as SpellInfo[] };
   if (!userId) return empty;
 
+  // Equipped gear only needs the id, so it loads at the same time as the character (not after it).
+  // .then() starts the query now; Supabase queries otherwise wait until they're awaited.
+  const gearP = supabase.from("character_items").select("name, srd_id").eq("character_id", id).eq("equipped", true).not("srd_id", "is", null)
+    .then(async ({ data: gear }) => {
+      const { data: lib } = gear?.length ? await supabase.from("srd_items").select("id, kind, data").in("id", gear.map((g) => g.srd_id as string)) : { data: [] };
+      return { gear, lib };
+    });
+
   const first = await supabase.from("characters").select(COLUMNS).eq("id", id).maybeSingle();
   let data = first.data;
   // a newer column not in the database yet (SQL file not run): load without it instead of "not found"
@@ -71,17 +79,16 @@ export async function loadCharacter(id: string) {
   character.hit_dice_used ??= {};
   character.homebrew ??= {};
 
-  const [{ data: spells }, { data: member }] = await Promise.all([
+  const [{ data: spells }, { data: member }, { gear, lib }] = await Promise.all([
     character.spells.known.length
       ? spellsNamed(character.spells.known).then((data) => ({ data }))
       : Promise.resolve({ data: [] }),
     supabase.from("campaign_members").select("role")
       .eq("campaign_id", character.campaign_id).eq("user_id", userId).maybeSingle(),
+    gearP,
   ]);
 
   // Equipped weapons from the Gear tab become attacks (unless the sheet already has one with that name).
-  const { data: gear } = await supabase.from("character_items").select("name, srd_id").eq("character_id", id).eq("equipped", true).not("srd_id", "is", null);
-  const { data: lib } = gear?.length ? await supabase.from("srd_items").select("id, kind, data").in("id", gear.map((g) => g.srd_id as string)) : { data: [] };
   type W = { kind: string; data: { damage?: string; type?: string; props?: string[]; range?: { long?: number; normal?: number } } | null };
   const byId = new Map(((lib ?? []) as (W & { id: string })[]).map((x) => [x.id, x]));
   for (const g of (gear ?? []) as { name: string; srd_id: string }[]) {

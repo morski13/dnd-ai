@@ -20,7 +20,7 @@ import { HEALTH_LABEL, HpBar } from "./parts/moderator";
 import { TavernButton } from "../tavern/panel";
 
 export function SessionView({ data, shops = [] }: { data: SessionData; shops?: { id: string; name: string }[] }) {
-  useLive(data.campaign.id, data.session?.id ?? null);
+  useLive(data.campaign.id, data.session?.id ?? null, data.userId ?? null);
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);

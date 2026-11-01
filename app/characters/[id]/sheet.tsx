@@ -1,6 +1,7 @@
 "use client";
 // The interactive character sheet. Every tap on a bonus asks the server to roll and save it.
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { signed, type Advantage } from "@/lib/dice";
 import type { Feature, FullCharacter, Resource } from "@/lib/character-data";
@@ -9,7 +10,7 @@ import {
   saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, practiceRoll, restoreAllSlots, rollForCharacter, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, practiceRoll, restoreAllSlots, rollQuick, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
@@ -50,6 +51,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const dice = useDice();
+  const router = useRouter();
 
   // The character as it is right now (slots and spell list change while you play).
   const c: SheetCharacter & { features: (string | Feature)[] } = useMemo(() => ({ ...character, spells, homebrew }), [character, spells, homebrew]);
@@ -72,7 +74,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         await showTriggered(res.roll, res.triggered);
         return; // nothing was spent or saved, so the sheet stays as it is
       }
-      const res = await rollForCharacter(character.id, request, advantage);
+      const res = await rollQuick(character.id, request, advantage); // the dice land first, the page refreshes after
       if ("error" in res) return setError(res.error);
       await dice.show(asShown(res.roll));
       setLast(res.roll);
@@ -85,6 +87,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       if (cc && res.roll.applied?.target.characterId === character.id) { if (!cc.kept) setConc(null); setConcNote(concText(cc)); }
       setSpells(res.spells);
       setResources(res.resources);
+      setTimeout(() => router.refresh(), 0); // other screens (stats, lists) see it now, without keeping the button busy
     });
   }
 

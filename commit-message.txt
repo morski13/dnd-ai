@@ -1,9 +1,15 @@
-Name the app Lemound's Tiny Hut and add its logo
+Faster rolls online: server next to the database, fewer waits per tap
 
-- App name in one place: lib/brand.ts (APP_NAME, APP_SHORT_NAME "Tiny Hut" for the home screen)
-- Browser tab title, sign-in screen, iOS/Android home-screen name and theme colour use it
-- Logo: hut under an amber dome (public/icons/logo-mark.svg) + <Logo> component,
-  on the sign-in screen and next to the label in the home header
-- Icons: app/icon.svg + app/favicon.ico (tab), app/apple-icon.png (iOS),
-  app/manifest.ts with 192/512/maskable icons, public/icons/splash.png
-- proxy.ts: the manifest is no longer redirected to /login for logged-out visitors
+- vercel.json: functions run in Frankfurt (fra1), next to the Supabase database,
+  instead of Vercel's default Washington (iad1). Every database call no longer crosses the Atlantic.
+  docs/DEPLOY.md: how to check the Supabase region and which Vercel region matches it.
+- rollForCharacter: the character save, live session, target, "is DM" and auto-apply lookups
+  go to the database together instead of one after another (one wait instead of five).
+- rollQuick: the same roll without a page render inside the answer. The character sheet and the
+  Session turn card use it and refresh the page in the background after the dice land.
+- loadCharacter: equipped gear (and its SRD items) loads at the same time as the character.
+- Session Realtime: your own new rolls no longer trigger a second refresh
+  (the screen you rolled from already refreshes once).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014ScUJ9qunEPNYEVKkRAWhz

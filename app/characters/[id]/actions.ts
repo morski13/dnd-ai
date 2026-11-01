@@ -50,15 +50,34 @@ export type RollResponse = {
 };
 
 type Fail = { error: string };
+
+/**
+ * The same roll, but the answer comes back without a fresh copy of the page.
+ * For screens that show the result from the answer and then call router.refresh() themselves
+ * in the background (the character sheet, the Session turn card): the dice land a whole
+ * page render sooner. router.refresh() also clears the 30 s client cache, like refresh() does.
+ */
+export async function rollQuick(
+  characterId: string,
+  request: RollRequest,
+  advantage: Advantage,
+  target?: Target | null,
+  moreTargets?: Target[],
+): Promise<RollResponse | Fail> {
+  return rollForCharacter(characterId, request, advantage, target, moreTargets, 0, true);
+}
+
 export async function rollForCharacter(
   characterId: string,
   request: RollRequest,
   advantage: Advantage,
   target?: Target | null,
   moreTargets?: Target[],
-  depth = 0                    // 1 = rolled by a trigger (a trigger never sets off another one)
+  depth = 0,                   // 1 = rolled by a trigger (a trigger never sets off another one)
+  quick = false                // true = the caller refreshes the page itself (see rollQuick)
 ): Promise<RollResponse | Fail> {
-  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
+  // other screens (stats, lists) show this change at once, not after the 30 s client cache
+  if (!quick && depth === 0) refresh();
   const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only roll for your own character." };
@@ -138,14 +157,21 @@ export async function rollForCharacter(
     }
   }
 
-  if (Object.keys(changes).length) {
-    const { error } = await supabase.from("characters").update(changes).eq("id", c.id);
-    if (error) return { error: "Couldn't save the spell slot / resource. " + error.message };
-  }
-
+  // These don't depend on each other, so they go to the database together (one wait instead of five).
   const admin = createAdminClient();
-  const { session, combat } = await liveState(admin, c.campaign_id);
-  const tgt = await lookupTarget(admin, c.campaign_id, parentTarget ?? target);
+  const saveChanges = async () => {
+    if (!Object.keys(changes).length) return null;
+    const { error } = await supabase.from("characters").update(changes).eq("id", c.id);
+    return error;
+  };
+  const [saveError, { session, combat }, tgt, viewerIsDm, autoApply] = await Promise.all([
+    saveChanges(),
+    liveState(admin, c.campaign_id),
+    lookupTarget(admin, c.campaign_id, parentTarget ?? target),
+    isCampaignDm(admin, c.campaign_id, userId),
+    campaignAutoApply(admin, c.campaign_id),
+  ]);
+  if (saveError) return { error: "Couldn't save the spell slot / resource. " + saveError.message };
   const success = plan.rollType === "attack" && result
     ? hitOrMiss(result.total, tgt?.ac, result.isCrit, result.isFumble)
     : null;
@@ -182,7 +208,6 @@ export async function rollForCharacter(
     .single();
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
 
-  const viewerIsDm = await isCampaignDm(admin, c.campaign_id, userId);
   const base = { campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null, createdBy: userId };
 
   // A save spell: the app rolls every target's save now (monster saves secretly).
@@ -198,7 +223,7 @@ export async function rollForCharacter(
   // Damage from a save spell: full damage on a failed save; half (or none) on a success, for each target.
   let appliedAll: Applied[] | undefined;
   const dealt: number[] = []; // damage really taken by each target (for "temp HP equal to the damage dealt")
-  if (plan.rollType === "damage" && parentIsSave && parentRollId && result && session && await campaignAutoApply(admin, c.campaign_id)) {
+  if (plan.rollType === "damage" && parentIsSave && parentRollId && result && session && autoApply) {
     const { data: rows } = await admin.from("roll_events").select("monster_id, character_id, success").eq("parent_roll_id", parentRollId).eq("roll_type", "save");
     appliedAll = [];
     for (const r of rows ?? []) {
@@ -218,7 +243,7 @@ export async function rollForCharacter(
   // Fight moderator: damage / healing with a target changes their HP right away.
   let applied: Applied | null = appliedAll?.[0] ?? null;
   if (!parentIsSave && (plan.rollType === "damage" || plan.rollType === "heal") && result && tgt && session && !parentMissed
-      && await campaignAutoApply(admin, c.campaign_id)) {
+      && autoApply) {
     applied = await applyHp(admin, {
       campaignId: c.campaign_id, sessionId: session.id, combatId: combat?.id ?? null, round: combat?.round ?? null,
       kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id,
@@ -230,7 +255,7 @@ export async function rollForCharacter(
 
   // Healing (Mass Healing Word…) or area damage with no save (Wild Surge's burst): everyone picked gets the same amount.
   const area = plan.rollType === "heal" || (plan.rollType === "damage" && !parentIsSave && !parentMissed && !!opt?.many);
-  if (area && result && session && moreTargets?.length && await campaignAutoApply(admin, c.campaign_id)) {
+  if (area && result && session && moreTargets?.length && autoApply) {
     appliedAll = applied ? [applied] : [];
     for (const t of moreTargets) {
       if (!t?.characterId && !t?.monsterId) continue;

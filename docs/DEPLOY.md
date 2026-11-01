@@ -32,6 +32,15 @@ git push
    Tip: you can paste your whole `.env.local` into the first Name box and Vercel splits it into rows.
 5. **Deploy**. When it's done you get an address like `https://dnd-ai-xxxx.vercel.app`.
 
+### Keep the server next to the database
+Every tap asks the database several times, so the server has to sit in the same region as Supabase.
+Without this, Vercel runs in Washington (US East), and every database call crosses the Atlantic.
+- Supabase region: Supabase → **Project Settings → General**.
+- `vercel.json` in the repo sets the server region. It's `fra1` (Frankfurt) now, which matches a Supabase project in `eu-central-1`.
+  Another Supabase region → change it: `eu-west-1` Ireland = `dub1`, `eu-west-2` London = `lhr1`, `eu-west-3` Paris = `cdg1`,
+  `eu-north-1` Stockholm = `arn1`, `us-east-1` = `iad1`. Commit, push, Vercel redeploys.
+- Check: Vercel → your project → **Settings → Functions → Function Region** shows the same city.
+
 ## 3. Tell Supabase the new address
 Supabase → your project → **Authentication → URL Configuration**:
 - **Site URL**: your Vercel address (`https://dnd-ai-xxxx.vercel.app`). The "confirm your email" links point here.
