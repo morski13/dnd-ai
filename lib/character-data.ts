@@ -28,11 +28,12 @@ export type FullCharacter = SheetCharacter & {
   rule_set?: "2014" | "2024";
   hit_dice_used?: Record<string, number>;
   concentration?: { spell: string; since?: string } | null;
+  inspiration?: boolean;
 };
 
 const COLUMNS =
   "id, campaign_id, name, species, class_levels, ability_scores, hp_max, hp_current, temp_hp, ac, speed, " +
-  "proficiencies, features, inventory, spells, resources, sheet_values, attacks, owner_user_id, rule_set, hit_dice_used, concentration, homebrew";
+  "proficiencies, features, inventory, spells, resources, sheet_values, attacks, owner_user_id, rule_set, hit_dice_used, concentration, homebrew, inspiration";
 
 export const SPELL_COLUMNS =
   "name, level, school, classes, casting_time, ritual, range, components, duration, concentration, description, higher_levels, action, roll";
@@ -45,7 +46,12 @@ export async function loadCharacter(id: string) {
   const empty = { supabase, userId: userId ?? null, character: null, canEdit: false, library: [] as SpellInfo[] };
   if (!userId) return empty;
 
-  const { data } = await supabase.from("characters").select(COLUMNS).eq("id", id).maybeSingle();
+  const first = await supabase.from("characters").select(COLUMNS).eq("id", id).maybeSingle();
+  let data = first.data;
+  // a newer column not in the database yet (SQL file not run): load without it instead of "not found"
+  if (first.error && /column/i.test(first.error.message)) {
+    ({ data } = await supabase.from("characters").select(COLUMNS.replace(", inspiration", "")).eq("id", id).maybeSingle());
+  }
   const character = data as unknown as FullCharacter | null;
   if (!character) return empty;
 
@@ -87,6 +93,22 @@ export async function loadCharacter(id: string) {
       name: g.name, kind: "weapon", damage: d.damage, damage_type: d.type?.toLowerCase(), add_mod: true,
       ability: (d.props ?? []).includes("Finesse") ? "finesse" : ranged ? "DEX" : "STR", ranged,
       ...(d.range?.long ? { range: `${d.range.normal}/${d.range.long} ft` } : {}),
+    });
+  }
+
+  // Barbarians: Rage and Reckless Attack as buttons (shown, never saved back), unless the sheet already has them.
+  const barb = character.class_levels.find((cl) => /^barbarian$/i.test(cl.class));
+  const has = (n: string) => character.attacks.some((x) => x.name.toLowerCase() === n.toLowerCase());
+  if (barb && !has("Rage") && character.resources.some((r) => r.name === "Rage")) {
+    character.attacks.push({
+      name: "Rage", kind: "boost", action: "bonus", resource: "Rage", applies: "str_weapon", damage_bonus: barb.level >= 16 ? 4 : barb.level >= 9 ? 3 : 2,
+      note: "Advantage on STR checks and saves, resistance to bludgeoning, piercing and slashing",
+    });
+  }
+  if (barb && barb.level >= 2 && !has("Reckless Attack")) {
+    character.attacks.push({
+      name: "Reckless Attack", kind: "boost", action: "free", applies: "str_weapon", gives_advantage: true,
+      drawback: "Attacks against you have advantage until your next turn", note: "Advantage on STR melee attacks this turn",
     });
   }
 

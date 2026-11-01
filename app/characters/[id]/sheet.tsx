@@ -9,7 +9,7 @@ import {
   saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, practiceRoll, restoreAllSlots, rollForCharacter, saveHomebrew, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, practiceRoll, restoreAllSlots, rollForCharacter, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
@@ -41,6 +41,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [spells, setSpells] = useState<SpellBook>(character.spells);
   const [library, setLibrary] = useState<SpellInfo[]>(initialLibrary);
   const [homebrew, setHomebrew] = useState<Homebrew>(character.homebrew ?? {});
+  const [inspired, setInspired] = useState(!!character.inspiration);
+  const r2024 = character.rule_set === "2024";
   const [tab, setTab] = useState<Tab>("Attacks");
   const [advantage, setAdvantage] = useState<Advantage>("normal");
   const [practice, setPractice] = useState(false); // practice rolls: worked out, never saved, nothing spent
@@ -66,6 +68,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         if ("error" in res) return setError(res.error);
         await dice.show(asShown(res.roll));
         setLast(res.roll);
+        giveAdvantage(request);
         await showTriggered(res.roll, res.triggered);
         return; // nothing was spent or saved, so the sheet stays as it is
       }
@@ -74,6 +77,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       await dice.show(asShown(res.roll));
       setLast(res.roll);
       applySelf(res.roll);
+      giveAdvantage(request);
       await showTriggered(res.roll, res.triggered);
       if (res.concentration !== undefined) setConc(res.concentration);
       setConcNote(res.endedConcentration ? `You stopped concentrating on ${res.endedConcentration}.` : null);
@@ -91,6 +95,12 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       setLast({ ...t, after: by?.label ?? null });
       applySelf(t);
     }
+  }
+  // Reckless Attack (or any trick that gives advantage): the next rolls are with advantage
+  function giveAdvantage(request: RollRequest) {
+    if (request.kind !== "use") return;
+    const o = options.find((x) => x.key === request.key);
+    if (o?.kind === "boost" && o.gives_advantage) setAdvantage("advantage");
   }
   // HP changed by a roll's "then" (temp HP from Wild Surge, damage from Magic Reserves)
   function applySelf(r: SavedRoll) {
@@ -185,6 +195,24 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         choices={(spells.known ?? []).filter((n) => library.find((x) => x.name === n)?.concentration)}
         onSet={(spell) => run(() => setConcentration(character.id, spell), (r) => { setConc(r.concentration); setConcNote(null); })} />
 
+      <button type="button" role="switch" aria-checked={inspired} disabled={!canEdit || pending}
+        onClick={() => {
+          const on = !inspired;
+          setInspired(on);
+          // spending it (2014): advantage on the next roll; 2024's Heroic Inspiration is a reroll, done by hand
+          if (!on && !r2024) setAdvantage("advantage");
+          run(() => setInspiration(character.id, on), (r) => setInspired(r.inspiration));
+        }}
+        className={`mt-3 flex min-h-11 w-full items-center gap-3 rounded-xl border px-3 text-left text-sm ${inspired ? "border-accent-line bg-accent-surface" : "border-line bg-surface"}`}>
+        <span aria-hidden className={`text-lg ${inspired ? "text-accent" : "text-muted"}`}>{inspired ? "★" : "☆"}</span>
+        <span className="min-w-0 flex-1">
+          <span className={`font-semibold ${inspired ? "text-accent" : ""}`}>{r2024 ? "Heroic Inspiration" : "Inspiration"}</span>
+          <span className="block text-xs text-muted">
+            {inspired ? (r2024 ? "Tap to spend it: reroll one die you just rolled" : "Tap to spend it: your next roll has advantage") : "None right now · tap when the DM gives it"}
+          </span>
+        </span>
+      </button>
+
       <section className="mt-3 grid grid-cols-4 gap-2">
         <StatBox label="AC" value={character.ac ?? "–"} sheet={character.sheet_values.ac !== undefined && character.sheet_values.ac !== character.ac ? character.sheet_values.ac : undefined} />
         <StatBox label="Speed" value={character.speed ?? "–"} sheet={character.sheet_values.speed !== undefined && character.sheet_values.speed !== character.speed ? character.sheet_values.speed : undefined} />
@@ -192,7 +220,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         <StatBox label="Prof." value={signed(pb(c))} sub={`lvl ${totalLevel(c.class_levels)}`} />
       </section>
 
-      <section className="mt-3 grid grid-cols-6 gap-1.5">
+      <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">Ability checks</p>
+      <section className="mt-1.5 grid grid-cols-6 gap-1.5">
         {ABILITIES.map((a) => (
           <button key={a} type="button" disabled={!canEdit} onClick={() => doRoll({ kind: "ability", ability: a })}
             className="flex min-h-20 flex-col items-center justify-center rounded-xl border border-line bg-surface py-2 active:border-accent">
@@ -201,6 +230,21 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
             <span className="text-xs text-muted">{c.ability_scores[a] ?? 10}</span>
           </button>
         ))}
+      </section>
+
+      <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">Saving throws</p>
+      <section className="mt-1.5 grid grid-cols-6 gap-1.5" aria-label="Saving throws">
+        {ABILITIES.map((a) => {
+          const prof = !!c.proficiencies.saves?.includes(a);
+          return (
+            <button key={a} type="button" disabled={!canEdit} onClick={() => doRoll({ kind: "save", ability: a })}
+              aria-label={`${a} saving throw ${signed(saveBonus(c, a))}`}
+              className={`flex min-h-14 flex-col items-center justify-center rounded-xl border py-1.5 active:border-accent ${prof ? "border-accent-line bg-accent-surface" : "border-line bg-surface"}`}>
+              <span className="text-[11px] text-muted">{a}{prof ? " ●" : ""}</span>
+              <span className="text-base font-bold">{signed(saveBonus(c, a))}</span>
+            </button>
+          );
+        })}
       </section>
 
     </div>

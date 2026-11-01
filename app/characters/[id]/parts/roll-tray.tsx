@@ -1,5 +1,6 @@
 "use client";
 // Bottom panel: the last roll, the damage follow-up, and Disadvantage / Normal / Advantage.
+import { useState, useSyncExternalStore } from "react";
 import { signed, type Advantage } from "@/lib/dice";
 import type { SavedRoll } from "../actions";
 
@@ -13,9 +14,42 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
   practice?: boolean;                    // practice rolls: worked out, never saved
   setPractice?: (on: boolean) => void;
 }) {
+  // Hide / show: remembered on this device. A roll that needs a next step (damage, a Wild Surge effect) opens it again.
+  const hidden = useSyncExternalStore(subscribe, () => readHidden(), () => false);
+  const [hiddenAt, setHiddenAt] = useState<string | null>(null); // the roll that was showing when it was hidden
+  const needsYou = (!!damage && last?.id !== hiddenAt) || !!error;
+  const open = !hidden || needsYou;
+  const show = (v: boolean) => {
+    if (!v) setHiddenAt(last?.id ?? null);
+    try { localStorage.setItem(KEY, v ? "1" : "0"); } catch { /* no storage */ }
+    window.dispatchEvent(new Event(KEY));
+  };
+
+  const advLabel = advantage === "advantage" ? "Adv" : advantage === "disadvantage" ? "Disadv" : null;
+  if (!open) {
+    return (
+      <div className={`dock z-10 border-t bg-surface-2/95 backdrop-blur ${practice ? "border-accent-line" : "border-line"}`}>
+        <button type="button" onClick={() => show(true)} aria-expanded={false} aria-label="Show the roll panel"
+          className="mx-auto flex h-12 w-full max-w-md items-center gap-3 px-5 text-left">
+          <span aria-hidden className="text-accent">▴</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-soft">
+            {pending ? "Rolling…" : last ? `${last.label}${last.table ? ` · ${last.table.row}` : ""}` : "Rolls"}
+            {practice && <span className="text-accent"> · practice</span>}
+          </span>
+          {advLabel && <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-bold text-accent-text">{advLabel}</span>}
+          {last && !pending && last.total != null && <span className="shrink-0 font-heading text-2xl font-bold">{last.total}</span>}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={`dock z-10 border-t bg-surface-2/95 backdrop-blur ${practice ? "border-accent-line" : "border-line"}`}>
-      <div className="mx-auto max-w-md px-5 py-3">
+      <div className="relative mx-auto max-w-md px-5 py-3">
+        <button type="button" onClick={() => show(false)} aria-expanded aria-label="Hide the roll panel"
+          className="absolute -top-px left-1/2 flex h-7 -translate-x-1/2 -translate-y-full items-center gap-1 rounded-t-lg border border-b-0 border-line bg-surface-2 px-3 text-xs text-soft">
+          ▾ Hide
+        </button>
         {setPractice && (
           <button type="button" role="switch" aria-checked={practice} disabled={pending} onClick={() => setPractice(!practice)}
             className="mb-2 flex w-full items-center justify-between gap-3 text-left">
@@ -96,4 +130,12 @@ function breakdown(r: SavedRoll) {
   if (r.rollType === "other" && !r.dice.length) return r.practice ? "Practice: nothing spent" : "Logged";
   const dice = r.diceAll.length > r.dice.length ? `[${r.diceAll.join(", ")}] → ${r.dice.join(", ")}` : `[${r.dice.join(", ")}]`;
   return `${r.expression}: ${dice}${r.modifier ? ` ${signed(r.modifier)}` : ""}`;
+}
+
+const KEY = "roll-tray-open";
+function readHidden() { try { return localStorage.getItem(KEY) === "0"; } catch { return false; } }
+function subscribe(cb: () => void) {
+  window.addEventListener(KEY, cb);
+  window.addEventListener("storage", cb);
+  return () => { window.removeEventListener(KEY, cb); window.removeEventListener("storage", cb); };
 }

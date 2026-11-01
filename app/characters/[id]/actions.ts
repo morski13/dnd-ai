@@ -762,3 +762,14 @@ export async function applySubclassPreset(characterId: string): Promise<{ attack
   if (error) return { error: error.message };
   return { attacks, resources, added: [...actions.map((a) => a.name), ...preset.uses.map((u) => `${u.name} (${u.max})`)] };
 }
+
+/** Inspiration on / off (the DM gives it, the player spends it). */
+export async function setInspiration(characterId: string, on: boolean): Promise<{ inspiration: boolean } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const { error } = await supabase.from("characters").update({ inspiration: !!on }).eq("id", characterId);
+  if (error) return { error: error.message.includes("inspiration") ? "Run supabase/28-inspiration.sql first." : error.message };
+  return { inspiration: !!on };
+}
