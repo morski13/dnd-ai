@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCharacter } from "@/lib/character-data";
 import { sortCombatants } from "@/lib/session-data";
-import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat } from "@/lib/roll-service";
+import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat, type TableSession } from "@/lib/roll-service";
 
 type Fail = { error: string };
 export type QuickRoll = {
@@ -37,6 +37,8 @@ export async function startSession(): Promise<Fail | void> {
   if (!campaignId || !isDm) return { error: "Only the DM can start a session." };
   const admin = createAdminClient();
   const { session } = await liveState(admin, campaignId);
+  // the players started tracking this game: the DM takes it over, same session, same rolls
+  if (session && (session as { kind?: string }).kind === "table") await admin.from("sessions").update({ kind: "dm" }).eq("id", session.id);
   if (!session) {
     const { data: unstarted } = await supabase.from("sessions").select("id")
       .eq("campaign_id", campaignId).is("started_at", null).order("number").limit(1).maybeSingle();
@@ -56,20 +58,109 @@ export async function startSession(): Promise<Fail | void> {
 
 export async function endSession(sessionId: string): Promise<Fail | void> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
-  const { supabase, campaignId, isDm } = await me();
+  const { campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can end the session." };
-  const { data: combats } = await supabase.from("combats").select("id").eq("session_id", sessionId).is("ended_at", null);
-  for (const c of combats ?? []) await supabase.rpc("end_combat", { p_combat_id: c.id });
-  const { error } = await supabase.from("sessions").update({ ended_at: new Date().toISOString() })
+  const r = await closeSession(campaignId, sessionId);
+  if (r) return r;
+  redirect("/");
+}
+
+/**
+ * Ends a session: running fights end (their hidden rolls are revealed, like end_combat), the session's
+ * hidden rolls are revealed (house rule), and shops opened for the party close.
+ * Only call after checking who may end it.
+ */
+async function closeSession(campaignId: string, sessionId: string): Promise<Fail | null> {
+  const admin = createAdminClient();
+  const { data: combats } = await admin.from("combats").select("id").eq("session_id", sessionId).is("ended_at", null);
+  for (const c of combats ?? []) {
+    await admin.from("combats").update({ ended_at: new Date().toISOString() }).eq("id", c.id);
+    await admin.from("roll_events").update({ hidden: false }).eq("combat_id", c.id);
+    await admin.from("effects").update({ hidden: false }).eq("combat_id", c.id);
+    const { data: seen } = await admin.from("roll_events").select("monster_id").eq("combat_id", c.id).not("monster_id", "is", null);
+    const ids = [...new Set((seen ?? []).map((x) => x.monster_id as string))];
+    if (ids.length) await admin.from("monsters").update({ visibility: "party" }).in("id", ids);
+  }
+  const { error } = await admin.from("sessions").update({ ended_at: new Date().toISOString() })
     .eq("id", sessionId).eq("campaign_id", campaignId);
   if (error) return { error: error.message };
-  // House rule: hidden DM rolls are revealed afterwards.
-  const admin = createAdminClient();
   await admin.from("roll_events").update({ hidden: false }).eq("session_id", sessionId);
   await admin.from("effects").update({ hidden: false }).eq("session_id", sessionId);
-  // Shops opened for the party close when the session ends.
-  await supabase.from("shops").update({ is_open: false, opened_session: null }).eq("campaign_id", campaignId).eq("is_open", true);
-  redirect("/");
+  await admin.from("shops").update({ is_open: false, opened_session: null }).eq("campaign_id", campaignId).eq("is_open", true);
+  return null;
+}
+
+// ---------------------------------------------------------------- sessions the players start
+
+/** The campaign of this character, if the user is a member of it (and whether they're its DM). */
+async function memberOf(characterId: string) {
+  const { supabase, userId } = await me();
+  if (!userId) return null;
+  const { data: ch } = await supabase.from("characters").select("campaign_id").eq("id", characterId).maybeSingle();
+  if (!ch) return null;
+  const { data: m } = await supabase.from("campaign_members").select("role").eq("campaign_id", ch.campaign_id).eq("user_id", userId).maybeSingle();
+  if (!m) return null;
+  return { userId, campaignId: ch.campaign_id as string, isDm: m.role === "dm" || m.role === "co_dm" };
+}
+
+async function describe(admin: ReturnType<typeof createAdminClient>, s: { id: string; number: number; kind?: string; started_by?: string | null }, userId: string): Promise<TableSession> {
+  let startedBy: string | null = null;
+  if (s.started_by) {
+    const { data } = await admin.from("profiles").select("display_name").eq("id", s.started_by).maybeSingle();
+    startedBy = (data?.display_name as string) ?? null;
+  }
+  return { id: s.id, number: s.number, kind: s.kind === "table" ? "table" : "dm", startedBy, mine: s.started_by === userId };
+}
+
+/** The running session of this character's campaign, as the sheet shows it. */
+export async function currentSession(characterId: string): Promise<TableSession> {
+  const who = await memberOf(characterId);
+  if (!who) return null;
+  const admin = createAdminClient();
+  const { session } = await liveState(admin, who.campaignId);
+  return session ? describe(admin, session as { id: string; number: number }, who.userId) : null;
+}
+
+/**
+ * "Track this game": any member starts a session when none is running, so the table's rolls count in the
+ * stats even when the DM doesn't use Session mode. If one is already running (the DM's or another
+ * player's), you simply join it. A session the DM planned but hasn't started is used first.
+ */
+export async function startTableSession(characterId: string): Promise<Fail | { session: TableSession }> {
+  refresh();
+  const who = await memberOf(characterId);
+  if (!who) return { error: "You're not in this character's campaign." };
+  const { userId, campaignId } = who;
+  const admin = createAdminClient();
+  const { session } = await liveState(admin, campaignId);
+  if (session) return { session: await describe(admin, session as { id: string; number: number }, userId) };
+  const now = new Date().toISOString();
+  const { data: unstarted } = await admin.from("sessions").select("id")
+    .eq("campaign_id", campaignId).is("started_at", null).order("number").limit(1).maybeSingle();
+  let error: { message: string } | null = null;
+  if (unstarted) {
+    ({ error } = await admin.from("sessions").update({ started_at: now, kind: "table", started_by: userId }).eq("id", unstarted.id));
+  } else {
+    const { data: last } = await admin.from("sessions").select("number").eq("campaign_id", campaignId)
+      .order("number", { ascending: false }).limit(1).maybeSingle();
+    ({ error } = await admin.from("sessions").insert({ campaign_id: campaignId, number: (last?.number ?? 0) + 1, started_at: now, kind: "table", started_by: userId }));
+  }
+  if (error) return { error: /kind|started_by/.test(error.message) ? "Ask whoever runs the app to run supabase/29-table-sessions.sql first." : "Couldn't start tracking. " + error.message };
+  const { session: fresh } = await liveState(admin, campaignId);
+  return { session: fresh ? await describe(admin, fresh as { id: string; number: number }, userId) : null };
+}
+
+/** End a session the players started (any player of the campaign may; the DM may end any session). */
+export async function endTableSession(characterId: string, sessionId: string): Promise<Fail | { ok: true }> {
+  refresh();
+  const who = await memberOf(characterId);
+  if (!who) return { error: "You're not in this character's campaign." };
+  const admin = createAdminClient();
+  const { data: s } = await admin.from("sessions").select("*").eq("id", sessionId).eq("campaign_id", who.campaignId).is("ended_at", null).maybeSingle();
+  if (!s) return { error: "That session isn't running any more." };
+  if ((s as { kind?: string }).kind !== "table" && !who.isDm) return { error: "The DM runs this session; only the DM can end it." };
+  const r = await closeSession(who.campaignId, sessionId);
+  return r ?? { ok: true };
 }
 
 // ---------------------------------------------------------------- combat

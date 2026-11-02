@@ -15,6 +15,11 @@ import {
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
 import { PrintButton } from "./parts/print-button";
+import { TableCard } from "./parts/table-card";
+import { useFight } from "./parts/fight-store";
+import { attacksPerAction, spend, turnFinished, turnLeft } from "@/lib/turn";
+import type { Combo } from "@/lib/combos";
+import type { TableSession } from "@/lib/roll-service";
 import { PortraitButton } from "../../components/map/portrait";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { useWarmRolls } from "../../components/dice/use-warm-rolls";
@@ -34,9 +39,13 @@ import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./par
 
 type Tab = "Attacks" | "Spells" | "Skills" | "Features" | "Gear";
 
-export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null }: {
+export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null, live: initialLive = null }: {
   character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear; levelPlan?: string | null; portrait?: string | null;
+  live?: TableSession;
 }) {
+  const [live, setLive] = useState<TableSession>(initialLive);
+  const [fight, setFight] = useFight(character.id);
+  const [turnWarning, setTurnWarning] = useState<string | null>(null);
   const [hp, setHp] = useState({ cur: character.hp_current ?? character.hp_max ?? 0, temp: character.temp_hp ?? 0 });
   const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>(character.hit_dice_used ?? {});
   const [conc, setConc] = useState<{ spell: string } | null>(character.concentration ?? null);
@@ -65,34 +74,72 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const m = mods(c);
   const classes = c.class_levels.map((cl) => cl.class);
 
+  // fight mode is on for the running session
+  const inFight = !!live && fight.on && fight.sessionId === live.id;
+  const perAction = attacksPerAction(c.class_levels, c.features);
+
+  /** Fight mode: what this roll costs this turn (checks and damage rolls cost nothing). */
+  function spendTurn(request: RollRequest) {
+    if (!inFight || request.kind !== "use") return;
+    const o = options.find((x) => x.key === request.key);
+    if (!o || o.row_of) return;
+    let warning: string | null = null;
+    setFight((f) => {
+      const r = spend(f.turn, o, perAction);
+      warning = r.warning;
+      const hasBonus = options.some((x) => actionOf(x) === "bonus" && !r.turn.ongoing.includes(x.name));
+      return { ...f, turn: { ...r.turn, over: r.turn.over || turnFinished(r.turn, hasBonus) } };
+    });
+    setTurnWarning(warning);
+  }
+
+  /** One roll from start to finish (dice, tray, spent uses). Resolves with the saved roll, or null. */
+  async function rollNow(request: RollRequest, adv: Advantage): Promise<SavedRoll | null> {
+    if (practice) {
+      const crit = request.kind === "damage" && !!last?.practice && last.isCrit;
+      const res = await practiceRoll(character.id, request, adv, crit);
+      if ("error" in res) { setError(res.error); return null; }
+      await dice.show(asShown(res.roll));
+      setLast(res.roll);
+      giveAdvantage(request);
+      await showTriggered(res.roll, res.triggered);
+      return res.roll; // nothing was spent or saved, so the sheet stays as it is
+    }
+    const res = await rollQuick(character.id, request, adv); // the dice land first, the page refreshes after
+    if ("error" in res) { setError(res.error); return null; }
+    spendTurn(request);
+    await dice.show(asShown(res.roll));
+    setLast(res.roll);
+    applySelf(res.roll);
+    giveAdvantage(request);
+    await showTriggered(res.roll, res.triggered);
+    if (res.concentration !== undefined) setConc(res.concentration);
+    setConcNote(res.endedConcentration ? `You stopped concentrating on ${res.endedConcentration}.` : null);
+    const cc = res.roll.applied?.concentration;
+    if (cc && res.roll.applied?.target.characterId === character.id) { if (!cc.kept) setConc(null); setConcNote(concText(cc)); }
+    setSpells(res.spells);
+    setResources(res.resources);
+    setTimeout(() => router.refresh(), 0); // other screens (stats, lists) see it now, without keeping the button busy
+    return res.roll;
+  }
+
   function doRoll(request: RollRequest) {
     if (!canEdit || pending) return;
     setError(null);
+    startTransition(async () => { await rollNow(request, advantage); });
+  }
+
+  /** Best moves → "Do it": the boosts, then the attack or spell (with advantage when the move has it). */
+  function doCombo(combo: Combo) {
+    if (!canEdit || pending) return;
+    setError(null);
     startTransition(async () => {
-      if (practice) {
-        const crit = request.kind === "damage" && !!last?.practice && last.isCrit;
-        const res = await practiceRoll(character.id, request, advantage, crit);
-        if ("error" in res) return setError(res.error);
-        await dice.show(asShown(res.roll));
-        setLast(res.roll);
-        giveAdvantage(request);
-        await showTriggered(res.roll, res.triggered);
-        return; // nothing was spent or saved, so the sheet stays as it is
-      }
-      const res = await rollQuick(character.id, request, advantage); // the dice land first, the page refreshes after
-      if ("error" in res) return setError(res.error);
-      await dice.show(asShown(res.roll));
-      setLast(res.roll);
-      applySelf(res.roll);
-      giveAdvantage(request);
-      await showTriggered(res.roll, res.triggered);
-      if (res.concentration !== undefined) setConc(res.concentration);
-      setConcNote(res.endedConcentration ? `You stopped concentrating on ${res.endedConcentration}.` : null);
-      const cc = res.roll.applied?.concentration;
-      if (cc && res.roll.applied?.target.characterId === character.id) { if (!cc.kept) setConc(null); setConcNote(concText(cc)); }
-      setSpells(res.spells);
-      setResources(res.resources);
-      setTimeout(() => router.refresh(), 0); // other screens (stats, lists) see it now, without keeping the button busy
+      for (const b of combo.parts.boosts) if (!(await rollNow({ kind: "use", key: b.key }, advantage))) return;
+      const first = combo.parts.main ?? combo.parts.bonus;
+      if (!first) return;
+      const adv: Advantage = combo.parts.advantage ? "advantage" : advantage;
+      if (combo.parts.advantage) setAdvantage("advantage");
+      await rollNow({ kind: "use", key: first.key }, adv);
     });
   }
 
@@ -222,6 +269,14 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         </span>
       </button>
 
+      <TableCard characterId={character.id} canEdit={canEdit} live={live} setLive={setLive} fight={fight} setFight={setFight}
+        perAction={perAction} canSurge={resources.some((r) => /^action surge$/i.test(r.name) && (r.used ?? 0) < r.max)}
+        spendSurge={() => {
+          const i = resources.findIndex((r) => /^action surge$/i.test(r.name));
+          if (i >= 0) run(() => setResourceUsed(character.id, i, (resources[i].used ?? 0) + 1), (r) => setResources(r.resources));
+        }}
+        warning={inFight ? turnWarning : null} />
+
       <section className="mt-3 grid grid-cols-4 gap-2">
         <StatBox label="AC" value={character.ac ?? "–"} sheet={character.sheet_values.ac !== undefined && character.sheet_values.ac !== character.ac ? character.sheet_values.ac : undefined} />
         <StatBox label="Speed" value={character.speed ?? "–"} sheet={character.sheet_values.speed !== undefined && character.sheet_values.speed !== character.speed ? character.sheet_values.speed : undefined} />
@@ -273,7 +328,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       <section className="mt-4">
         {tab === "Attacks" && (
           <div className="flex flex-col gap-5">
-            <BestMoves c={c} options={options} />
+            <BestMoves c={c} options={options} turn={inFight ? turnLeft(fight.turn) : null} onDo={canEdit ? doCombo : undefined} busy={pending} />
             {((homebrew.toggles?.length ?? 0) > 0 || crit.range < 20 || crit.extra > 0) && (
               <div className="flex flex-col gap-2">
                 {(crit.range < 20 || crit.extra > 0) && (

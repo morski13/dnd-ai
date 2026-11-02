@@ -6,6 +6,7 @@ import type { SheetCharacter, SpellInfo } from "@/lib/rules";
 import { getGear } from "@/lib/items-data";
 import { spellsNamed } from "@/lib/srd-cache";
 import { cleanSheetStyle } from "@/lib/themes";
+import { TABLE_SESSION_HOURS, type TableSession } from "@/lib/roll-service";
 
 export type Resource = { name: string; max: number; used?: number; recharge?: string };
 export type Feature = { name: string; source?: string; description?: string; feat?: boolean };
@@ -151,5 +152,21 @@ export async function getCharacterSheet(id: string) {
   const portraitStamp = Number((pRow as { portrait?: number | null } | null)?.portrait) || null;
   const portrait = portraitStamp ? `/api/portrait/character/${id}?v=${portraitStamp}` : null;
 
-  return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait };
+  const live = await runningSession(supabase, character.campaign_id, userId);
+  return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live };
+}
+
+/** The campaign's running session for the sheet's "Track this game" card (a stale player session counts as ended). */
+async function runningSession(supabase: Awaited<ReturnType<typeof createClient>>, campaignId: string, userId: string): Promise<TableSession> {
+  const { data } = await supabase.from("sessions").select("*").eq("campaign_id", campaignId)
+    .not("started_at", "is", null).is("ended_at", null).order("number", { ascending: false }).limit(1).maybeSingle();
+  const s = data as { id: string; number: number; kind?: string; started_by?: string | null; started_at: string } | null;
+  if (!s) return null;
+  if (s.kind === "table" && Date.now() - Date.parse(s.started_at) > TABLE_SESSION_HOURS * 3600_000) return null;
+  let startedBy: string | null = null;
+  if (s.started_by) {
+    const { data: p } = await supabase.from("profiles").select("display_name").eq("id", s.started_by).maybeSingle();
+    startedBy = (p?.display_name as string) ?? null;
+  }
+  return { id: s.id, number: s.number, kind: s.kind === "table" ? "table" : "dm", startedBy, mine: s.started_by === userId };
 }

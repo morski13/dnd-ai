@@ -145,12 +145,13 @@ export function characterUnit(
 
   // Turn plans from the Best moves engine (damage only; healing is handled separately).
   const combos = findCombos(c, options, target)
-    .filter((x) => x.damage > 0 && x.parts.main.kind !== "heal" && x.parts.bonus?.kind !== "heal")
+    .filter((x) => x.damage > 0 && !!x.parts.main && x.parts.main.kind !== "heal" && x.parts.bonus?.kind !== "heal")
     .sort((a, b) => b.damage - a.damage);
   const plans: Plan[] = [];
   const seen = new Set<string>();
   for (const combo of combos) {
-    const { main, bonus, boosts, advantage } = combo.parts;
+    const { bonus, boosts, advantage } = combo.parts;
+    const main = combo.parts.main!; // a whole fresh turn always has an action
     const slotLevel = Math.max(main.level ?? 0, bonus?.level ?? 0) || undefined;
     const resourceBoost = boosts.find((b) => b.resource);
     const resource = resourceBoost?.resource ?? main.resource ?? bonus?.resource;

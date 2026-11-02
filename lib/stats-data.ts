@@ -24,7 +24,7 @@ export type MonsterRow = { type: string; count: number; damageDealt: number; dow
 export type StatsView = {
   campaignName: string;
   isDm: boolean;
-  sessions: { id: string; number: number; title: string | null; live: boolean }[];
+  sessions: { id: string; number: number; title: string | null; live: boolean; players?: boolean }[];
   scope: "session" | "campaign";
   session: { id: string; number: number; title: string | null; live: boolean } | null;
   characters: CharacterInfo[];
@@ -73,7 +73,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
   const cid = campaign.id;
 
   const [sessionsRes, charsRes, monstersRes, combatsRes, spellsRes, encountersRes, rolls, effects] = await Promise.all([
-    supabase.from("sessions").select("id, number, title, started_at, ended_at").eq("campaign_id", cid).order("number"),
+    supabase.from("sessions").select("*").eq("campaign_id", cid).order("number"), // "*": `kind` exists only after SQL 29
     supabase.from("characters").select("id, name, hp_max, owner_user_id, created_at").eq("campaign_id", cid).order("created_at").order("name"),
     supabase.from("monsters").select("id, name, kind, hp_max").eq("campaign_id", cid),
     supabase.from("combats").select("id, session_id, name, round").eq("campaign_id", cid).not("session_id", "is", null).order("started_at"),
@@ -98,7 +98,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
   const withRolls = new Set(rolls.map((r) => r.session_id));
   const sessions = (sessionsRes.data ?? [])
     .filter((s) => withRolls.has(s.id))
-    .map((s) => ({ id: s.id, number: s.number, title: s.title, live: !!s.started_at && !s.ended_at }));
+    .map((s) => ({ id: s.id, number: s.number, title: s.title, live: !!s.started_at && !s.ended_at, players: (s as { kind?: string }).kind === "table" }));
 
   const scope: "session" | "campaign" = params.scope === "campaign" || !sessions.length ? "campaign" : "session";
   const session = scope === "session" ? sessions.find((s) => String(s.number) === params.s) ?? sessions[sessions.length - 1] : null;

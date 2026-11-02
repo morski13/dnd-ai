@@ -98,7 +98,7 @@ function Filters({ d }: { d: StatsView }) {
         <nav aria-label="Sessions" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
           {d.sessions.map((s) => (
             <Link key={s.id} href={href(d, { s: s.number })} className={chip(d.session?.id === s.id)}>
-              Session {s.number}{s.live && <span className="text-[10px] uppercase tracking-wider">· live</span>}
+              Session {s.number}{s.players && <span className="text-[10px] uppercase tracking-wider" title="Started by the players from their sheets">· players</span>}{s.live && <span className="text-[10px] uppercase tracking-wider">· live</span>}
             </Link>
           ))}
         </nav>

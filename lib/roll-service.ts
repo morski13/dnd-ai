@@ -5,12 +5,24 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export type Admin = ReturnType<typeof createAdminClient>;
 export type Target = { characterId?: string | null; monsterId?: string | null };
 
+/** The running session as the character sheet shows it ("table" = started by a player). */
+export type TableSession = { id: string; number: number; kind: "dm" | "table"; startedBy: string | null; mine: boolean } | null;
+
+/** A session the players started and forgot to end closes by itself after this long. */
+export const TABLE_SESSION_HOURS = 12;
+
 /** The running session (started, not ended) and its running fight, if any. */
 export async function liveState(admin: Admin, campaignId: string) {
-  const { data: session } = await admin
-    .from("sessions").select("id, number")
+  // "*": the kind / started_by columns only exist after 29-table-sessions.sql, and rolls must work without it
+  const { data: row } = await admin
+    .from("sessions").select("*")
     .eq("campaign_id", campaignId).not("started_at", "is", null).is("ended_at", null)
     .order("number", { ascending: false }).limit(1).maybeSingle();
+  let session = row as { id: string; number: number; kind?: string; started_at: string } | null;
+  if (session?.kind === "table" && Date.now() - Date.parse(session.started_at) > TABLE_SESSION_HOURS * 3600_000) {
+    await admin.from("sessions").update({ ended_at: new Date().toISOString() }).eq("id", session.id);
+    session = null;
+  }
   if (!session) return { session: null, combat: null };
   const { data: combat } = await admin
     .from("combats").select("id, round, turn_index")

@@ -1,16 +1,27 @@
 "use client";
 // "Best moves": the strongest damage turn, the best turn that costs nothing, and the best heal.
+// "Do it" rolls the move's pieces in order (boosts, then the attack or spell). In fight mode the list
+// is worked out again after every roll from what's left of the turn (Rage already on, bonus action used…).
 import { useMemo, useState } from "react";
-import { bestMoves, type Combo, type Target } from "@/lib/combos";
+import { bestMoves, type Combo, type Target, type TurnLeft } from "@/lib/combos";
 import type { Option, SheetCharacter } from "@/lib/rules";
 
 const ACS = [10, 12, 13, 14, 15, 16, 18];
 
-export function BestMoves({ c, options }: { c: SheetCharacter; options: Option[] }) {
+export function BestMoves({ c, options, turn, onDo, busy = false }: {
+  c: SheetCharacter; options: Option[];
+  /** fight mode: plan only what's left of this turn */
+  turn?: TurnLeft | null;
+  /** roll the move (missing when the sheet is view-only) */
+  onDo?: (combo: Combo) => void;
+  busy?: boolean;
+}) {
   const [t, setT] = useState<Target>({ ac: 13, saveBonus: 2, allyAdjacent: false });
   const [open, setOpen] = useState<string | null>(null);
-  const moves = useMemo(() => bestMoves(c, options, t), [c, options, t]);
-  if (!moves.bestDamage && !moves.bestHeal) return null;
+  const moves = useMemo(() => bestMoves(c, options, t, turn ?? undefined), [c, options, t, turn]);
+  if (!moves.bestDamage && !moves.bestHeal) {
+    return turn ? <p className="rounded-[18px] border border-line bg-surface p-4 text-sm text-muted">Nothing left to plan this turn. End your turn, or keep your reaction ready.</p> : null;
+  }
 
   const rows: { key: string; label: string; combo: Combo; heal?: boolean }[] = [];
   if (moves.bestDamage) rows.push({ key: "dmg", label: "Most damage", combo: moves.bestDamage });
@@ -20,7 +31,7 @@ export function BestMoves({ c, options }: { c: SheetCharacter; options: Option[]
   return (
     <section className="rounded-[18px] border border-accent-line bg-accent-surface p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">Best moves this turn</p>
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent">{turn ? "Best next move · what's left of this turn" : "Best moves this turn"}</p>
       </div>
 
       {/* Target settings */}
@@ -78,12 +89,26 @@ export function BestMoves({ c, options }: { c: SheetCharacter; options: Option[]
                 {combo.notes.map((n) => <li key={n} className="text-[#F2C48D]">Careful: {n}</li>)}
               </ol>
             )}
+            {onDo && (
+              <div className="border-t border-line px-3 py-2">
+                <button type="button" disabled={busy} onClick={() => onDo(combo)}
+                  className="h-10 w-full rounded-lg bg-accent text-sm font-bold text-accent-text disabled:opacity-50">
+                  {busy ? "Rolling…" : `Do it: ${doLabel(combo)}`}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
       <p className="mt-2 text-[11px] leading-snug text-muted">
-        Average results vs AC {t.ac}, target save +{t.saveBonus}. Turn 1 shown (e.g. Rage costs its bonus action only once).
+        Average results vs AC {t.ac}, target save +{t.saveBonus}.{turn ? " Worked out again after every roll." : " Turn 1 shown (e.g. Rage costs its bonus action only once)."}{onDo ? " Do it rolls the boosts and the attack; the bonus action comes next." : ""}
       </p>
     </section>
   );
+}
+
+/** What "Do it" rolls now: boosts first, then the action's roll (or the bonus action when nothing else is left). */
+function doLabel(c: Combo) {
+  const first = [...c.parts.boosts.map((b) => b.name), c.parts.main?.name ?? c.parts.bonus?.name].filter(Boolean);
+  return first.join(" → ");
 }
