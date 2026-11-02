@@ -8,6 +8,7 @@ import {
   awards, computeStats, fightSummaries, monsterType,
   type ActorStats, type Award, type FightSummary, type StatActor, type StatEffect, type StatRoll,
 } from "@/lib/stats/compute";
+import { buildRecap, type Recap } from "@/lib/stats/recap";
 
 /** One color per character, always the same one (checked for color-blind safety on the dark theme). */
 export const CHARACTER_COLORS = ["#d95926", "#199e70", "#3987e5", "#d55181", "#c98500", "#9085e9"];
@@ -179,4 +180,77 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     campaignName: campaign.name, isDm, sessions, scope, session, characters, focus, stats,
     awards: awards(charStats), party, trends, dm,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Session recap (/stats/recap)
+
+export type RecapView = {
+  campaignName: string; isDm: boolean;
+  session: { id: string; number: number; title: string | null; live: boolean; players: boolean; story: string | null };
+  sessions: { number: number; live: boolean }[];
+  characters: CharacterInfo[];
+  recap: Recap;
+};
+
+/** Everything that happened in one session (the newest one with rolls when `s` is missing), as the logged-in user sees it. */
+export async function getRecapData(params: { s?: string }): Promise<RecapView | { campaignName: string | null; empty: true }> {
+  await connection();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) redirect("/login");
+  const ctx = await recapContext(supabase, userId);
+  if (!ctx) return { campaignName: null, empty: true };
+  const { campaign, isDm } = ctx;
+  const { data: sessionRows } = await supabase.from("sessions").select("*").eq("campaign_id", campaign.id).not("started_at", "is", null).order("number");
+  const all = (sessionRows ?? []) as { id: string; number: number; title: string | null; started_at: string | null; ended_at: string | null; recap: string | null; kind?: string }[];
+  const chosen = all.find((s) => String(s.number) === params.s) ?? [...all].reverse().find((s) => s.ended_at) ?? all[all.length - 1];
+  if (!chosen) return { campaignName: campaign.name, empty: true };
+  const data = await recapFor(supabase, campaign.id, chosen.id, userId, { onlyOpen: false });
+  return {
+    campaignName: campaign.name, isDm,
+    session: { id: chosen.id, number: chosen.number, title: chosen.title, live: !!chosen.started_at && !chosen.ended_at, players: chosen.kind === "table", story: chosen.recap },
+    sessions: all.map((s) => ({ number: s.number, live: !s.ended_at })),
+    characters: data.characters, recap: data.recap,
+  };
+}
+
+type Supa = Awaited<ReturnType<typeof createClient>>;
+
+/** The campaign the user has open, and whether they are its DM. */
+export async function recapContext(supabase: Supa, userId: string) {
+  const { data: m } = await supabase.from("campaign_members").select("role, campaigns(id, name)").eq("user_id", userId)
+    .order("last_active_at", { ascending: false, nullsFirst: false }).order("joined_at", { ascending: true }).limit(1).maybeSingle();
+  const campaign = m?.campaigns as unknown as { id: string; name: string } | null;
+  return m && campaign ? { campaign, isDm: m.role === "dm" || m.role === "co_dm" } : null;
+}
+
+/**
+ * One session's recap. `onlyOpen`: leave out secret DM rolls even for the DM (for the AI story, which
+ * every player reads). Players never get them anyway: the database hides them.
+ */
+export async function recapFor(supabase: Supa, campaignId: string, sessionId: string, userId: string, o: { onlyOpen: boolean }) {
+  const [charsRes, monstersRes, combatsRes, spells, rolls, effects] = await Promise.all([
+    supabase.from("characters").select("id, name, hp_max, owner_user_id, species, class_levels, created_at").eq("campaign_id", campaignId).order("created_at").order("name"),
+    supabase.from("monsters").select("id, name, kind, hp_max").eq("campaign_id", campaignId),
+    supabase.from("combats").select("id, name, round").eq("session_id", sessionId).order("started_at"),
+    srdSpellNames(),
+    readAll<StatRoll>((a, b) => { let q = supabase.from("roll_events").select(ROLL_COLUMNS).eq("session_id", sessionId); if (o.onlyOpen) q = q.eq("hidden", false); return q.order("created_at").order("id").range(a, b); }),
+    readAll<StatEffect>((a, b) => { let q = supabase.from("effects").select(EFFECT_COLUMNS).eq("session_id", sessionId); if (o.onlyOpen) q = q.eq("hidden", false); return q.order("created_at").order("id").range(a, b); }),
+  ]);
+  const chars = charsRes.data ?? [];
+  const characters: CharacterInfo[] = chars.map((c, i) => ({
+    key: `c:${c.id}`, id: c.id, name: c.name, short: shortName(c.name), color: CHARACTER_COLORS[i % CHARACTER_COLORS.length], mine: c.owner_user_id === userId,
+  }));
+  const actors: StatActor[] = [
+    ...chars.map((c) => ({ key: `c:${c.id}`, id: c.id, kind: "character" as const, name: c.name, hpMax: c.hp_max })),
+    ...(monstersRes.data ?? []).map((m) => ({ key: `m:${m.id}`, id: m.id, kind: "monster" as const, name: m.name, hpMax: m.hp_max, ally: m.kind === "npc" })),
+  ];
+  const recap = buildRecap(rolls, effects, actors, (combatsRes.data ?? []) as { id: string; name: string | null; round: number }[], new Set(spells.map((s) => s.name as string)));
+  const party = chars.map((c) => ({
+    name: c.name as string,
+    line: [c.species, ((c.class_levels ?? []) as { class: string; level: number }[]).map((cl) => `${cl.class} ${cl.level}`).join(" / ")].filter(Boolean).join(" "),
+  }));
+  return { characters, recap, party };
 }

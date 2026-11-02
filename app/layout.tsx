@@ -3,6 +3,7 @@ import { Manrope, Spectral } from "next/font/google";
 import { APP_NAME, APP_SHORT_NAME, APP_TAGLINE } from "@/lib/brand";
 import { DiceProvider } from "./components/dice/dice-provider";
 import { ServiceWorker } from "./components/sw-register";
+import { NAV_SCRIPT } from "./components/nav-script";
 import "./globals.css";
 
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
@@ -23,7 +24,11 @@ export const viewport: Viewport = { themeColor: "#15130F" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${manrope.variable} ${spectral.variable} h-full antialiased`}>
+    <html lang="en" className={`${manrope.variable} ${spectral.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* the side menu hidden or shown (tablets, laptops), set before the first paint */}
+        <script dangerouslySetInnerHTML={{ __html: NAV_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans">
         <DiceProvider>{children}</DiceProvider>
         <ServiceWorker />

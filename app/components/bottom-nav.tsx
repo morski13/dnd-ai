@@ -2,10 +2,12 @@
 // phones: a bar along the bottom; tablets (md, 768px+): a rail down the left with icons;
 // laptops (lg, 1024px+): a wider side bar with the logo and the names written out.
 // The page makes room for it in globals.css (body:has([data-app-nav])).
+// On tablets and laptops the side menu can be hidden to a slim strip on the left (nav-toggle.tsx).
 import Link from "next/link";
 import { APP_SHORT_NAME } from "@/lib/brand";
 import { CubeIcon, DieIcon, HomeIcon, MapIcon, PersonIcon, StatsIcon } from "./icons";
 import { Logo } from "./logo";
+import { HideNavButton, NavRail } from "./nav-toggle";
 
 const items = [
   { key: "home", label: "Home", Icon: HomeIcon, href: "/" },
@@ -20,12 +22,17 @@ export type NavKey = (typeof items)[number]["key"];
 
 export function BottomNav({ active }: { active: NavKey }) {
   return (
+    <>
+    <NavRail />
     <nav data-app-nav aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface-2 md:inset-x-auto md:top-0 md:left-0 md:w-[5.5rem] md:overflow-y-auto md:border-t-0 md:border-r lg:w-60">
-      <Link href="/" className="hidden h-24 items-center justify-center gap-3 px-3 md:flex lg:justify-start lg:px-6" aria-label="Home">
-        <Logo decorative className="h-11 w-11 shrink-0" />
-        <span className="hidden font-heading text-xl font-bold leading-tight lg:block">{APP_SHORT_NAME}</span>
-      </Link>
+      <div className="hidden md:flex md:flex-col md:items-center md:pt-2 lg:flex-row lg:justify-between lg:pr-3">
+        <Link href="/" className="flex h-20 items-center justify-center gap-3 px-3 lg:h-24 lg:justify-start lg:px-6" aria-label="Home">
+          <Logo decorative className="h-11 w-11 shrink-0" />
+          <span className="hidden font-heading text-xl font-bold leading-tight lg:block">{APP_SHORT_NAME}</span>
+        </Link>
+        <HideNavButton />
+      </div>
       <ul className="mx-auto grid max-w-md grid-cols-6 pb-[env(safe-area-inset-bottom)] md:max-w-none md:grid-cols-1 md:gap-1 md:px-2 md:pb-4 lg:px-3">
         {items.map(({ key, label, Icon, href }) => {
           const on = key === active;
@@ -43,5 +50,6 @@ export function BottomNav({ active }: { active: NavKey }) {
         })}
       </ul>
     </nav>
+    </>
   );
 }

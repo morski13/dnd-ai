@@ -46,7 +46,7 @@ async function Stats({ searchParams }: { searchParams: SP }) {
       {!d.sessions.length ? (
         <div className="mt-6 rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
           <p className="font-semibold text-text">No session rolls yet</p>
-          <p className="mt-1">Stats fill in from the rolls made in Session mode. Start a session, roll, and they show up here.</p>
+          <p className="mt-1">Stats fill in from the rolls made in a session: the DM&apos;s Session mode, or Track game on a character sheet. Start one, roll, and they show up here.</p>
         </div>
       ) : (
         <>
@@ -104,6 +104,9 @@ function Filters({ d }: { d: StatsView }) {
         </nav>
       )}
       {d.session?.title && <p className="text-sm text-muted">Session {d.session.number} · {d.session.title}</p>}
+      {d.scope === "session" && d.session && (
+        <Link href={`/stats/recap?s=${d.session.number}`} className="mt-2 inline-flex h-10 items-center gap-2 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">📜 Session {d.session.number} recap</Link>
+      )}
 
       <nav aria-label="Who" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
         <Link href={href(d, { c: null })} className={chip(!d.focus)}>Party</Link>

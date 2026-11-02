@@ -4,6 +4,7 @@
 //    count in everyone's stats. If one is running (the DM's or another player's), the sheet just shows it.
 //  - Fight mode: the app counts this turn's Action (and the attacks in it), Bonus Action and Reaction.
 //    "End turn" any time; when everything is used the turn closes by itself.
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { TableSession } from "@/lib/roll-service";
 import { actionsLeft, actionSurge, endLine, NEW_FIGHT, nextTurn, type Turn } from "@/lib/turn";
@@ -18,6 +19,7 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const t = fight.on && fight.sessionId === (live?.id ?? null) ? fight.turn : null;
 
   const track = () => start(async () => {
@@ -33,6 +35,7 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
     if ("error" in r) return setError(r.error);
     setLive(null);
     setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
+    router.push(`/stats/recap?s=${r.number}`); // the session's stats and story, right away
   });
   const fightOn = () => setFight({ on: true, turn: NEW_FIGHT, sessionId: live?.id ?? null });
   const fightOff = () => setFight({ on: false, turn: NEW_FIGHT, sessionId: null });

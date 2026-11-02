@@ -199,5 +199,17 @@ button:disabled { opacity: 0.6; }
 @media (min-width: 1024px) {
   :root { --nav-w: 15rem; }
 }
+/* tablets and laptops: the side menu can be hidden to a slim strip on the left (app/components/nav-toggle.tsx) */
+:root { --nav-rail: 3.5rem; }
+@media (min-width: 768px) {
+  [data-app-nav] { transition: transform 220ms ease; }
+  body:has([data-app-nav]) { transition: padding-left 220ms ease; }
+  html[data-nav="hidden"] { --nav-w: var(--nav-rail); }
+  html[data-nav="hidden"] [data-app-nav] { transform: translateX(-100%); visibility: hidden; transition: transform 220ms ease, visibility 0s 220ms; }
+  html[data-nav="hidden"] .nav-rail { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-app-nav], body:has([data-app-nav]) { transition: none !important; }
+}
 /* a bar fixed above the phone's bottom nav: same place on phones, flush with the bottom and right of the side bar on bigger screens */
 .dock { position: fixed; right: 0; left: var(--nav-w); bottom: var(--nav-h); }

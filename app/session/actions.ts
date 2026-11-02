@@ -60,9 +60,10 @@ export async function endSession(sessionId: string): Promise<Fail | void> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { campaignId, isDm } = await me();
   if (!campaignId || !isDm) return { error: "Only the DM can end the session." };
+  const { data: ended } = await createAdminClient().from("sessions").select("number").eq("id", sessionId).maybeSingle();
   const r = await closeSession(campaignId, sessionId);
   if (r) return r;
-  redirect("/");
+  redirect(ended ? `/stats/recap?s=${ended.number}` : "/"); // straight to what happened
 }
 
 /**
@@ -151,7 +152,7 @@ export async function startTableSession(characterId: string): Promise<Fail | { s
 }
 
 /** End a session the players started (any player of the campaign may; the DM may end any session). */
-export async function endTableSession(characterId: string, sessionId: string): Promise<Fail | { ok: true }> {
+export async function endTableSession(characterId: string, sessionId: string): Promise<Fail | { ok: true; number: number }> {
   refresh();
   const who = await memberOf(characterId);
   if (!who) return { error: "You're not in this character's campaign." };
@@ -160,7 +161,7 @@ export async function endTableSession(characterId: string, sessionId: string): P
   if (!s) return { error: "That session isn't running any more." };
   if ((s as { kind?: string }).kind !== "table" && !who.isDm) return { error: "The DM runs this session; only the DM can end it." };
   const r = await closeSession(who.campaignId, sessionId);
-  return r ?? { ok: true };
+  return r ?? { ok: true, number: (s as { number: number }).number };
 }
 
 // ---------------------------------------------------------------- combat
