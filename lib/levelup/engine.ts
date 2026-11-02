@@ -315,6 +315,9 @@ export function applyLevelUp(c: LevelChar, plan: Plan, answers: Answers, hpRoll:
 
   // features you get anyway (+ the new subclass's features up to this level)
   for (const f of plan.auto) addFeature({ name: f.name, source: f.source, description: f.text });
+  // multiclassing: the armor, weapons and tools the new class teaches (kept like the builder's "Proficiencies")
+  const mcProf = plan.isNew && c.class_levels.length ? data.classes[cls]?.mcProf ?? [] : [];
+  if (mcProf.length) { addFeature({ name: "Proficiencies", source: `${cls} (multiclass)`, description: mcProf.join(", ") }); summary.push(`New proficiencies: ${mcProf.join(", ")}.`); }
   const subChoice = plan.choices.find((c2) => c2.kind === "subclass");
   if (pickedSub && subChoice?.gives?.[pickedSub]) {
     const sd = data.classes[cls].subclasses.find((s) => s.name === pickedSub);
@@ -392,6 +395,7 @@ export function levelDown(c: LevelChar, cls: string, data: RulesData): { patch: 
   const dropSub = !!cur.subclass && !!cd && lvl - 1 < cd.subclassLevel;
   const sources = new Set([`${cls} ${lvl}`, ...(sub || cur.subclass ? [`${sub?.name ?? cur.subclass} ${lvl}`] : [])]);
   if (dropSub && cur.subclass) for (let i = 1; i <= lvl; i++) sources.add(`${sub?.name ?? cur.subclass} ${i}`);
+  if (lvl === 1) sources.add(`${cls} (multiclass)`); // the class goes: its multiclass proficiencies too
   const removed: string[] = [];
   const features = c.features.filter((f) => {
     if (typeof f === "string" || !f.source || !sources.has(f.source)) return true;

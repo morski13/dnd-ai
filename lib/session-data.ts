@@ -41,6 +41,8 @@ export type LogRow = {
   dc: number | null; ability: string | null; damage_type: string | null; target: string | null; spell_slot: number | null; masked: boolean;
   secret?: boolean; // DM only: still hidden from the players
   rolled_by?: string | null; // who rolled (null when secret from you)
+  offline?: boolean;         // rolled without internet, sent later (SQL 30)
+  physical?: boolean;        // real dice, typed in (SQL 30)
 };
 
 /** focusParam: "c:<characterId>" or "m:<monsterId>" (which card to show; from the URL). */

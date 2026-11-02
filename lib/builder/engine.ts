@@ -4,6 +4,7 @@
 // level-up engine, so a new character is built exactly like a level-up from nothing.
 import { CLASSES } from "../classes";
 import { applyLevelUp, type LevelChar } from "../levelup/engine";
+import { looseApply, type Missing } from "../levelup/multi";
 import type { Plan, RulesData } from "../levelup/types";
 import { ABILITIES, type Ability } from "../rules";
 import { ALL_SKILLS, MENTAL, givesFor, needsFor } from "./special";
@@ -22,7 +23,7 @@ export function blankDraft(rules: "2014" | "2024"): Draft {
     background: "", customBackground: { name: "", abilities: [], feat: null, skills: [] }, bgAsi: { mode: "1-1-1" }, languages: [],
     method: "standard", base: { STR: 8, DEX: 8, CON: 8, INT: 8, WIS: 8, CHA: 8 }, classSkills: [], feats: {}, level: { picks: {}, hp: "average" },
     kit: [], bgKit: [], details: { name: "", playerName: "", alignment: "", personality: "", ideals: "", bonds: "", flaws: "", backstory: "" },
-    targetLevel: 1, forMe: true,
+    targetLevel: 1, ups: [], upHp: "average", forMe: true,
   };
 }
 
@@ -328,17 +329,24 @@ export type BuiltCharacter = {
  * The character to save. `plan` is the level-up engine's level-1 plan for this draft (with `first: true`),
  * `featText` the rules text of feats by name. Throws with a message when a choice is missing.
  */
-export function buildCharacter(d: Draft, data: BuilderData, levelData: RulesData, plan: Plan, featText: (n: string) => string): BuiltCharacter {
+export function buildCharacter(d: Draft, data: BuilderData, levelData: RulesData, plan: Plan, featText: (n: string) => string,
+  opts: { loose?: boolean } = {}): BuiltCharacter & { missing: Missing[] } {
   const problems = [...speciesProblems(d, data), ...backgroundProblems(d, data), ...skillProblems(d, data), ...kitProblems(d, data)];
   const be = checkBase(d.method, d.base);
   if (be) problems.unshift(be);
   if (!CLASSES[d.cls] || !data.classes[d.cls]) problems.unshift("Pick a class.");
   if (!d.details.name.trim()) problems.push("Give your character a name.");
-  if (problems.length) throw new Error(problems[0]);
+  if (problems.length && !opts.loose) throw new Error(problems[0]);
 
   const base = baseCharacter(d, data);
-  const { patch } = applyLevelUp(base, plan, d.level, null, levelData);
-  const sp = speciesOf(d, data)!, sub = subOf(d, data), bg = backgroundOf(d, data)!;
+  // loose: the builder showing what's next while choices are still open (only finished choices count)
+  const loose = opts.loose ? looseApply(base, plan, d.level, levelData) : null;
+  const patch = loose ? loose.after : applyLevelUp(base, plan, d.level, null, levelData).patch;
+  const sp = speciesOf(d, data), sub = subOf(d, data), bg = backgroundOf(d, data);
+  if (!sp || !bg) {
+    // only while building (loose): the class alone
+    return { row: { ...patch, rule_set: data.rules }, bag: [], missing: loose?.missing ?? [] };
+  }
   const gives = givesFor(data.rules, sp, sub);
   const scores = patch.ability_scores as Record<Ability, number>;
 
@@ -382,6 +390,7 @@ export function buildCharacter(d: Draft, data: BuilderData, levelData: RulesData
 
   const speed = gives.speed ?? sp.speed;
   return {
+    missing: loose?.missing ?? [],
     row: {
       name: d.details.name.trim().slice(0, 60), player_name: d.details.playerName.trim().slice(0, 40) || null,
       species: (sub && sp.subs.length > 1 ? `${sp.name} (${sub.name.replace(/^.*?:\s*/, "").replace(/^Draconic Ancestry \((.+)\)$/, "$1")})` : sub?.name ?? sp.name).slice(0, 40),

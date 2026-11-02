@@ -1,5 +1,6 @@
 // Loads everything the Statistics screen needs, as the logged-in user.
 // Only rolls made during a session count. The database hides secret DM rolls from players.
+import { wrappedSlides, type Slide } from "./stats/wrapped";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -253,4 +254,51 @@ export async function recapFor(supabase: Supa, campaignId: string, sessionId: st
     line: [c.species, ((c.class_levels ?? []) as { class: string; level: number }[]).map((cl) => `${cl.class} ${cl.level}`).join(" / ")].filter(Boolean).join(" "),
   }));
   return { characters, recap, party };
+}
+
+/** Home's "Last session" strip: the newest finished session with rolls (secret DM rolls left out for everyone). */
+export async function lastSessionStrip(supabase: Supa, campaignId: string, userId: string) {
+  const { data: rows } = await supabase.from("sessions").select("id, number, title").eq("campaign_id", campaignId)
+    .not("ended_at", "is", null).order("number", { ascending: false }).limit(3);
+  for (const s of (rows ?? []) as { id: string; number: number; title: string | null }[]) {
+    const { recap } = await recapFor(supabase, campaignId, s.id, userId, { onlyOpen: true });
+    if (!recap.party.rolls) continue;
+    const moment = recap.moments.find((m) => m.kind === "big-hit") ?? recap.moments.find((m) => m.kind === "crit") ?? recap.moments.find((m) => m.kind !== "fight") ?? null;
+    return {
+      number: s.number, title: s.title, mvp: recap.mvp,
+      awards: recap.awards.filter((a) => a.winners.length && a.id !== "mvp").slice(0, 2),
+      moment: moment?.text ?? null, rolls: recap.party.rolls, damage: recap.party.damage,
+    };
+  }
+  return null;
+}
+
+/** Campaign Wrapped (/stats/wrapped): the whole campaign's highlights. Only rolls everyone can see, even for the DM (every slide is shareable). */
+export async function getWrappedData() {
+  await connection();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) redirect("/login");
+  const ctx = await recapContext(supabase, userId);
+  if (!ctx) return { campaignName: null, slides: [] as Slide[] };
+  const cid = ctx.campaign.id;
+  const [charsRes, monstersRes, spells, rolls, effects] = await Promise.all([
+    supabase.from("characters").select("id, name, hp_max").eq("campaign_id", cid),
+    supabase.from("monsters").select("id, name, kind, hp_max").eq("campaign_id", cid),
+    srdSpellNames(),
+    readAll<StatRoll>((a, b) => supabase.from("roll_events").select(ROLL_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).eq("hidden", false).order("created_at").order("id").range(a, b)),
+    readAll<StatEffect>((a, b) => supabase.from("effects").select(EFFECT_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).eq("hidden", false).order("created_at").order("id").range(a, b)),
+  ]);
+  const actors: StatActor[] = [
+    ...(charsRes.data ?? []).map((c) => ({ key: `c:${c.id}`, id: c.id, kind: "character" as const, name: c.name, hpMax: c.hp_max })),
+    ...(monstersRes.data ?? []).map((m) => ({ key: `m:${m.id}`, id: m.id, kind: "monster" as const, name: m.name, hpMax: m.hp_max, ally: m.kind === "npc" })),
+  ];
+  const all = computeStats(rolls, effects, actors, new Set(spells.map((s) => s.name as string)));
+  const stats = [...all.values()];
+  const sessions = new Set(rolls.map((r) => r.session_id)).size;
+  return {
+    campaignName: ctx.campaign.name,
+    slides: wrappedSlides(stats.filter((s) => s.kind === "character"), stats.filter((s) => s.kind === "monster" && !actors.find((x) => x.key === s.key && x.ally)), sessions),
+  };
 }

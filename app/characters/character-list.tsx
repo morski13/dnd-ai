@@ -124,7 +124,8 @@ function Card({ c, color, isMine, canClaim }: {
       </Link>
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <p className={`text-xs ${isMine ? "font-semibold text-accent" : "text-muted"}`}>Played by {who}</p>
+        <p className={`text-xs ${isMine ? "font-semibold text-accent" : "text-muted"}`}>Played by {who}
+          {isMine && c.toConfirm > 0 && <span className="ml-2 rounded-full bg-bg px-2 py-0.5 font-normal text-muted">{c.toConfirm} to confirm</span>}</p>
         {canClaim && <ClaimButton id={c.id} />}
       </div>
     </article>

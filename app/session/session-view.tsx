@@ -10,6 +10,8 @@ import { FreeRoll } from "./parts/free-roll";
 import { MonsterCard } from "./parts/monster-card";
 import { TableDice } from "./parts/table-dice";
 import { TableLog } from "./parts/table-log";
+import { QuickLog } from "./parts/quick-log";
+import { OddsChip } from "./parts/odds-chip";
 import { TurnCard } from "./parts/turn-card";
 import { useLive } from "./use-live";
 import { useWarmRolls } from "../components/dice/use-warm-rolls";
@@ -75,6 +77,9 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
           <h1 className="mt-1 font-heading text-[26px] font-bold leading-tight">{combat ? `Combat · Round ${combat.round}` : "Exploring"}</h1>
         </div>
         {data.isDm && combat && (
+          <div className="mt-3"><OddsChip combatId={combat.id} version={combatants.map((c) => `${c.id}:${c.hp ?? ""}:${c.health ?? ""}`).join("|") + `|${data.log[0]?.id ?? ""}|${combat.round}`} /></div>
+        )}
+        {data.isDm && combat && (
           <button type="button" disabled={pending}
             onClick={() => start(async () => { await endCombat(combat.id); router.refresh(); })}
             className="h-11 shrink-0 rounded-xl border border-line bg-surface px-4 text-sm font-semibold">
@@ -137,7 +142,15 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
           />
         ) : focusChar && data.focus ? (
           <TurnCard
-            key={focusChar.id}
+            key={`${focusChar.id}:${combat?.round ?? 0}:${current?.characterId === focusChar.id}`} /* a fresh turn tracker each turn */
+            incoming={(() => {
+              // the newest roll at the table hit (or targets) this character: offer reactions
+              const r = data.log[0];
+              if (!r || r.masked || r.target !== focusChar.name || r.actor_kind !== "monster") return null;
+              const kind = r.roll_type === "attack" ? "attack" : r.roll_type === "damage" ? "damage" : r.roll_type === "save_dc" ? "spell" : null;
+              return kind ? { kind, total: r.total, hit: r.success, ac: focusChar.ac ?? null, by: r.actor } as const : null;
+            })()}
+            movement={(() => { const tk = battle?.tokens.find((x) => x.characterId === focusChar.id); return tk ? { moved: tk.movedFt, budget: tk.budget, dashes: tk.dashes } : null; })()}
             character={focusChar}
             library={data.focus.library}
             canEdit={data.focus.canEdit}
@@ -173,6 +186,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
           />
         )}
 
+        {data.isDm && <QuickLog party={data.party} monsters={[...data.monsters].sort((a, b) => Number(monsterIdsInFight.includes(b.id)) - Number(monsterIdsInFight.includes(a.id)))} />}
         <FreeRoll characterId={mine?.characterId ?? data.myCharacterIds[0] ?? null} isDm={data.isDm} />
         <TableLog rows={data.log} isDm={data.isDm} />
         <TableDice rows={data.log} me={data.userId} />

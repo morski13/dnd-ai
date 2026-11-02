@@ -4,7 +4,8 @@ import { refresh } from "next/cache";
 // Dice are rolled HERE on the server, every bonus comes from the character's data, and only
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
-import { roll, type Advantage } from "@/lib/dice";
+import { roll, type Advantage, type Rng } from "@/lib/dice";
+import { replayRng } from "@/lib/offline-rolls";
 import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
 import { cleanBonuses, cleanCustomAction, cleanHomebrew, type Bonuses, type Homebrew } from "@/lib/homebrew";
@@ -14,10 +15,12 @@ import { createClient } from "@/lib/supabase/server";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
 import type { ConcentrationCheck } from "@/lib/moderator/concentration";
 import { maskSaves, rollTargetSaves, type TargetSave } from "@/lib/moderator/saves";
-import { applyHp, campaignAutoApply, isCampaignDm, maskFor, type Applied } from "@/lib/moderator/apply";
+import { adjustHp, applyHp, campaignAutoApply, isCampaignDm, maskFor, type Applied } from "@/lib/moderator/apply";
 
 export type SavedRoll = {
   id: string;
+  physical?: boolean;      // real dice, typed in
+  offline?: boolean;       // rolled without internet: kept on the phone until it's sent
   label: string;           // "Shortbow attack", "Stealth", "Healing Word (level 2)"
   rollType: string;
   expression: string;
@@ -93,10 +96,13 @@ export async function rollForCharacter(
   target?: Target | null,
   moreTargets?: Target[],
   depth = 0,                   // 1 = rolled by a trigger (a trigger never sets off another one)
-  quick = false                // true = the caller refreshes the page itself (see rollQuick)
+  quick = false,               // true = the caller refreshes the page itself (see rollQuick)
+  replay?: { rng: Rng; at?: string; offline?: boolean; physical?: boolean } // given dice: rolled offline (when) or real dice typed in (server only)
 ): Promise<RollResponse | Fail> {
   // other screens (stats, lists) show this change at once, not after the 30 s client cache
   if (!quick && depth === 0) refresh();
+  // replayed dice only ever come from syncOfflineRoll on the server (a browser can't send a function)
+  if (replay && typeof replay.rng !== "function") replay = undefined;
   const { supabase, userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only roll for your own character." };
@@ -153,7 +159,7 @@ export async function rollForCharacter(
   let result: ReturnType<typeof roll> | null = null;
   try {
     const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
-    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode }) : null;
+    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode, rng: replay?.rng }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
   }
@@ -199,9 +205,7 @@ export async function rollForCharacter(
     ? hitOrMiss(result.total, vsAc, result.isCrit, result.isFumble)
     : null;
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
-  const { data: saved, error } = await admin
-    .from("roll_events")
-    .insert({
+  const insertRow = {
       campaign_id: c.campaign_id,
       session_id: session?.id ?? null,
       combat_id: combat?.id ?? null,
@@ -226,9 +230,20 @@ export async function rollForCharacter(
       parent_roll_id: parentRollId,
       target_character_id: tgt?.characterId ?? null,
       target_monster_id: tgt?.monsterId ?? null,
+  };
+  const { data: saved, error } = await admin
+    .from("roll_events")
+    .insert({
+      ...insertRow,
+      ...(replay?.at ? { created_at: replay.at } : {}),
+      ...(replay?.offline ? { offline: true } : {}),
+      ...(replay?.physical ? { physical: true } : {}),
     })
     .select("id")
-    .single();
+    .single()
+    // before 30-offline-physical-rolls.sql there's no "offline" column: save it without the mark
+    .then(async (res) => (res.error && replay && /offline|physical/.test(res.error.message)
+      ? admin.from("roll_events").insert({ ...insertRow, ...(replay.at ? { created_at: replay.at } : {}) }).select("id").single() : res));
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
 
   const base = { campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null, createdBy: userId };
@@ -866,4 +881,80 @@ export async function setInspiration(characterId: string, on: boolean): Promise<
   const { error } = await supabase.from("characters").update({ inspiration: !!on }).eq("id", characterId);
   if (error) return { error: error.message.includes("inspiration") ? "Run supabase/28-inspiration.sql first." : error.message };
   return { inspiration: !!on };
+}
+
+/**
+ * A roll made without internet, sent once the phone is back online: the same dice go through the usual roll
+ * (slots and resources are spent now, the stats count it at the time it was rolled, up to 12 hours back).
+ * `parentRollId` for a damage roll is the saved id of the attack it follows (the phone maps its own ids).
+ */
+export async function syncOfflineRoll(characterId: string, q: { request: RollRequest; advantage: Advantage; values: number[]; at: string; physical?: boolean }): Promise<Fail | { id: string; label: string }> {
+  const values = (Array.isArray(q?.values) ? q.values : []).slice(0, 400).map((v) => Math.floor(Number(v)));
+  const t = Date.parse(q?.at);
+  const now = Date.now();
+  const at = new Date(Number.isFinite(t) ? Math.min(now, Math.max(now - 12 * 3600_000, t)) : now).toISOString();
+  const adv: Advantage = q?.advantage === "advantage" || q?.advantage === "disadvantage" ? q.advantage : "normal";
+  const res = await rollForCharacter(characterId, q.request, adv, null, [], 0, true, { rng: replayRng(values), at, offline: true, physical: !!q.physical });
+  if ("error" in res) return res;
+  return { id: res.roll.id, label: res.roll.label };
+}
+
+/**
+ * Real dice: the player typed what their dice showed (the phone turned it into dice values, lib/physical).
+ * It goes through the usual roll, so hits, crits, damage, slots, resources and stats all count it.
+ */
+export async function realDiceRoll(characterId: string, request: RollRequest, advantage: Advantage, values: number[], target?: Target | null, moreTargets?: Target[]): Promise<RollResponse | Fail> {
+  const clean = (Array.isArray(values) ? values : []).slice(0, 400).map((v) => Math.floor(Number(v)));
+  const res = await rollForCharacter(characterId, request, advantage, target, moreTargets, 0, true, { rng: replayRng(clean), physical: true });
+  if ("error" in res) return res;
+  return { ...res, roll: { ...res.roll, physical: true } };
+}
+
+/**
+ * Typed the wrong number? Within 2 minutes the player can take a real-dice roll back: its HP changes are undone,
+ * its spell slot comes back, and it's gone from the log. Then they type it again.
+ */
+export async function undoRealDiceRoll(characterId: string, rollId: string): Promise<Fail | { ok: true }> {
+  refresh();
+  const { supabase, userId, character: c, canEdit } = await loadCharacter(characterId);
+  if (!c || !canEdit) return { error: "You can only change your own rolls." };
+  const admin = createAdminClient();
+  const { data: r, error } = await admin.from("roll_events").select("id, character_id, rolled_by, created_at, spell_slot, physical").eq("id", rollId).maybeSingle();
+  if (error && /physical/.test(error.message)) return { error: "Run supabase/30-offline-physical-rolls.sql first." };
+  if (!r || r.character_id !== c.id || r.rolled_by !== userId || !r.physical) return { error: "Only your own real-dice rolls can be taken back." };
+  if (Date.now() - Date.parse(r.created_at) > 2 * 60_000) return { error: "It's been more than 2 minutes, so it stays. Ask your DM to fix it." };
+  const { data: effects } = await admin.from("effects").select("id").eq("roll_event_id", rollId).eq("undone", false).order("created_at", { ascending: false });
+  for (const e of effects ?? []) {
+    const u = await adjustHp(admin, e.id, "undo", userId!);
+    if ("error" in u) return { error: `Couldn't undo the HP change: ${u.error}` };
+  }
+  if (r.spell_slot) {
+    const k = String(r.spell_slot);
+    const used = { ...(c.spells.slots_used ?? {}) };
+    if ((used[k] ?? 0) > 0) { used[k] = used[k] - 1; await supabase.from("characters").update({ spells: { ...c.spells, slots_used: used } }).eq("id", c.id); }
+  }
+  await admin.from("roll_events").delete().eq("id", rollId);
+  return { ok: true };
+}
+
+/** "Confirm your numbers": keep the app's number or use the sheet's; either way the note goes away for good. */
+export async function confirmNumber(characterId: string, key: "ac" | "speed" | "hp_max", use: "sheet" | "app"): Promise<Fail | { value: number }> {
+  refresh();
+  if (!["ac", "speed", "hp_max"].includes(key)) return { error: "Unknown number." };
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const sv = { ...(character.sheet_values ?? {}) } as Record<string, number>;
+  const sheetValue = sv[key];
+  delete sv[key];
+  const patch: Record<string, unknown> = { sheet_values: sv };
+  let value = Number(character[key] ?? 0);
+  if (use === "sheet" && typeof sheetValue === "number") {
+    value = sheetValue;
+    patch[key] = value;
+    if (key === "hp_max") patch.hp_current = Math.min(value, character.hp_current ?? value);
+  }
+  const { error } = await supabase.from("characters").update(patch).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { value };
 }

@@ -1,6 +1,7 @@
 // Session recap: what happened in one session. Opens by itself when a session ends (DM's or the players'),
 // and from Statistics. Numbers come from the same rules as the statistics; the story is written by the AI
 // from those numbers only.
+import { ShareButton } from "../../components/share-card";
 import Link from "next/link";
 import { Suspense } from "react";
 import { aiProviders } from "@/lib/ai/client";
@@ -85,8 +86,15 @@ async function Recap({ searchParams }: { searchParams: SP }) {
                 <p className="font-heading text-xl font-bold">{r.mvp}</p>
                 <p className="text-sm text-soft">{mvpLine(r.heroes[0])}</p>
               </div>
+              <div className="ml-auto shrink-0"><ShareButton card={{ kicker: `Session ${d.session.number} MVP`, big: String(r.heroes[0]?.damage ?? ""), emoji: "👑", title: r.mvp, sub: mvpLine(r.heroes[0]), name: r.mvp, campaign: d.campaignName }} /></div>
             </div>
           )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <ShareButton label="Share this session" card={{ kicker: `Session ${d.session.number}${d.session.title ? ` · ${d.session.title}` : ""}`, big: String(r.party.damage), emoji: "⚔️",
+              title: "damage dealt by the party", sub: `${r.party.nat20} natural 20s · ${r.party.kills} enemies down · ${r.party.healing} healed`, campaign: d.campaignName }} />
+            <Link href="/stats/wrapped" className="inline-flex min-h-9 items-center text-xs font-bold text-accent underline">Campaign Wrapped ›</Link>
+          </div>
 
           <Section title="The story" sub="Written by the AI from this page's numbers only, for the whole table">
             <Story sessionId={d.session.id} initial={d.session.story} aiReady={aiProviders().length > 0} />
@@ -130,7 +138,7 @@ async function Recap({ searchParams }: { searchParams: SP }) {
 
           {r.awards.length > 0 && (
             <Section title="Awards">
-              <Awards awards={r.awards} colorOf={colorOf} />
+              <Awards awards={r.awards} colorOf={colorOf} campaign={d.campaignName} />
             </Section>
           )}
 

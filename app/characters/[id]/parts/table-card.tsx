@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { TableSession } from "@/lib/roll-service";
 import { actionsLeft, actionSurge, endLine, NEW_FIGHT, nextTurn, type Turn } from "@/lib/turn";
-import { endTableSession, startTableSession } from "../../../session/actions";
+import { endTableSession, joinTableFight, leaveTableFight, startTableSession } from "../../../session/actions";
 import type { Fight } from "./fight-store";
 
 export function TableCard({ characterId, canEdit, live, setLive, fight, setFight, perAction, canSurge, spendSurge, warning }: {
@@ -37,8 +37,17 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
     setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
     router.push(`/stats/recap?s=${r.number}`); // the session's stats and story, right away
   });
-  const fightOn = () => setFight({ on: true, turn: NEW_FIGHT, sessionId: live?.id ?? null });
-  const fightOff = () => setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
+  // the fight is a real one in the session, so rolls carry it and the recap shows it
+  const [fightNote, setFightNote] = useState<string | null>(null);
+  const fightOn = () => {
+    setFight({ on: true, turn: NEW_FIGHT, sessionId: live?.id ?? null });
+    joinTableFight(characterId).then((r) => setFightNote("error" in r ? r.error : r.started ? "Fight started: everyone's rolls now count in it." : null)).catch(() => {});
+  };
+  const fightOff = () => {
+    setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
+    setFightNote(null);
+    leaveTableFight(characterId).then(() => router.refresh()).catch(() => {});
+  };
 
   return (
     <section className="mt-3 rounded-2xl border border-line bg-surface p-3" aria-label="Game tracking and fight mode">
@@ -76,6 +85,7 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
               <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${t ? "left-6" : "left-1"}`} />
             </span>
           </button>
+          {fightNote && <p className="mt-1 text-xs text-soft" role="status">{fightNote}</p>}
           {t && <TurnPanel t={t} perAction={perAction} canSurge={canSurge} warning={warning}
             onEnd={() => setFight((f) => ({ ...f, turn: { ...f.turn, over: true } }))}
             onNext={() => setFight((f) => ({ ...f, turn: nextTurn(f.turn) }))}
@@ -87,8 +97,10 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
   );
 }
 
-function TurnPanel({ t, perAction, canSurge, warning, onEnd, onNext, onSurge, onDrop }: {
+export function TurnPanel({ t, perAction, canSurge, warning, onEnd, onNext, onSurge, onDrop, movement }: {
   t: Turn; perAction: number; canSurge: boolean; warning: string | null; onEnd: () => void; onNext: () => void; onSurge: () => void; onDrop: (name: string) => void;
+  /** from the battle map: feet moved this turn, how far you can go, and Dashes (each one is your Action) */
+  movement?: { moved: number; budget: number; dashes: number } | null;
 }) {
   if (t.over) {
     return (
@@ -109,6 +121,12 @@ function TurnPanel({ t, perAction, canSurge, warning, onEnd, onNext, onSurge, on
         <Pip label="Bonus action" text={t.bonusUsed ? "used" : "ready"} ready={!t.bonusUsed} />
         <Pip label="Reaction" text={t.reactionUsed ? "used" : "ready"} ready={!t.reactionUsed} />
       </div>
+      {movement && (
+        <p className="mt-2 rounded-lg bg-bg px-3 py-1.5 text-xs text-soft">
+          Movement: <b className="text-text">{movement.moved} / {movement.budget} ft</b>{movement.budget - movement.moved > 0 ? ` · ${movement.budget - movement.moved} ft left` : " · no movement left"}
+          {movement.dashes ? ` · Dash ×${movement.dashes} (uses your Action)` : ""}
+        </p>
+      )}
       {t.ongoing.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted">Still on:</span>

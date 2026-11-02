@@ -10,6 +10,10 @@ import {
   allOptions, damageExpression, lowestFreeSlot, optionButtonLabel, type Option, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import { rollQuick, type RollResponse, type SavedRoll } from "../../characters/[id]/actions";
+import { TurnPanel } from "../../characters/[id]/parts/table-card";
+import { reactionHints, type Incoming } from "@/lib/reactions";
+import { actionOf } from "@/lib/rules";
+import { actionSurge, attacksPerAction, NEW_FIGHT, nextTurn, spend, turnFinished, type Turn } from "@/lib/turn";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, DeathSavePanel, HpBar } from "./moderator";
@@ -17,9 +21,13 @@ import { healthOf } from "@/lib/moderator/hp";
 import { parseArea } from "@/lib/maps/area";
 import { useMapAim } from "./map-aim";
 
-export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative, isDm = false, deathSavesSecret = false }: {
+export function TurnCard({ character, library, canEdit, combatants, isTurn, inCombat, myInitiative, isDm = false, deathSavesSecret = false, movement = null, incoming = null }: {
   character: FullCharacter; library: SpellInfo[]; canEdit: boolean; combatants: Combatant[];
   isTurn: boolean; inCombat: boolean; myInitiative: number | null | undefined; isDm?: boolean; deathSavesSecret?: boolean;
+  /** this character's token on the battle map (movement this turn) */
+  movement?: { moved: number; budget: number; dashes: number } | null;
+  /** the newest roll at the table targets this character (a monster's attack): reactions that could help */
+  incoming?: Incoming | null;
 }) {
   const router = useRouter();
   const [spells, setSpells] = useState<SpellBook>(character.spells);
@@ -81,13 +89,28 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       for (const t of res.triggered ?? []) { await dice.show(asShown(t)); setAfter(res.roll.label); onDone(t); }
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
   }
-  function go(fn: () => ReturnType<typeof rollQuick>, onDone: (r: SavedRoll) => void) {
+  function go(fn: () => ReturnType<typeof rollQuick>, onDone: (r: SavedRoll) => void, use?: string) {
     setError(null);
     start(async () => {
       const res = await fn();
       if ("error" in res) return setError(res.error);
+      if (use) spendUse(use);
       await landed(res, onDone);
     });
+  }
+
+  // the turn tracker (lib/turn): Action and the attacks in it, Bonus Action, Reaction, Action Surge; a new one each turn
+  const perAction = attacksPerAction(character.class_levels, character.features);
+  const [turn, setTurn] = useState<Turn>(NEW_FIGHT);
+  const [turnWarn, setTurnWarn] = useState<string | null>(null);
+  const canSurge = character.features.some((f) => (typeof f === "string" ? f : f.name) === "Action Surge");
+  function spendUse(key: string) {
+    const o = options.find((x) => x.key === key);
+    if (!o || !isTurn) return;
+    const r = spend(turn, o, perAction);
+    const hasBonus = options.some((x) => actionOf(x) === "bonus" && !r.turn.ongoing.includes(x.name));
+    setTurn({ ...r.turn, over: r.turn.over || turnFinished(r.turn, hasBonus) });
+    setTurnWarn(r.warning);
   }
 
   // Picking a healing spell aims it at the most hurt friend; an attack at the first enemy still standing.
@@ -138,6 +161,30 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
         <HpBar hp={hp} max={character.hp_max} temp={meC?.temp ?? character.temp_hp ?? 0} health={healthOf(hp, character.hp_max)} />
       </div>
       {meC && <Conditions key={meC.conditions.join()} combatant={meC} canEdit={canEdit} />}
+      {inCombat && !isTurn && canEdit && incoming && (() => {
+        const hints = reactionHints(options, character.features, incoming, turn.reactionUsed);
+        if (!hints.length) return null;
+        return (
+          <div className="mt-2 rounded-xl border border-accent-line bg-accent-surface px-3 py-2" role="status">
+            <p className="text-sm font-semibold">⚡ {incoming.by} {incoming.kind === "spell" ? "casts at" : incoming.hit === false ? "missed" : "hits"} you{incoming.total != null && incoming.kind === "attack" ? ` (${incoming.total})` : ""}. Reaction?</p>
+            <ul className="mt-1 flex flex-col gap-1.5">
+              {hints.map((h) => (
+                <li key={h.name} className="flex items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1"><b>{h.name}</b> <span className="text-soft">· {h.why}</span></span>
+                  {h.key && <button type="button" disabled={pending} onClick={() => { setTurn((t) => ({ ...t, reactionUsed: true })); go(() => rollQuick(character.id, { kind: "use", key: h.key! }, "normal"), (r) => { setAttack(r); setDamage(null); }); }}
+                    className="h-9 shrink-0 rounded-lg bg-accent px-3 text-xs font-bold text-accent-text">Use</button>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+      {inCombat && isTurn && canEdit && (
+        <TurnPanel t={turn} perAction={perAction} canSurge={canSurge} warning={turnWarn}
+          onEnd={() => setTurn((t) => ({ ...t, over: true }))} onNext={() => { setTurn((t) => nextTurn(t)); setTurnWarn(null); }}
+          onSurge={() => setTurn((t) => actionSurge(t))} onDrop={(name) => setTurn((t) => ({ ...t, ongoing: t.ongoing.filter((x) => x !== name) }))}
+          movement={movement} />
+      )}
 
       {dying ? (
         <DeathSavePanel combatant={meC} characterId={character.id} name={short} canRoll={canEdit} isDm={isDm} secret={deathSavesSecret} />
@@ -194,7 +241,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
         </button>
       )}
       <button type="button" disabled={!canEdit || !selected || pending || !!(selected && left(selected))}
-        onClick={() => selected && (setAfter(null), go(() => rollQuick(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); }))}
+        onClick={() => selected && (setAfter(null), go(() => rollQuick(character.id, { kind: "use", key: selected.key }, adv, targetRef, moreRefs), (r) => { setAttack(r); setDamage(null); }, selected.key))}
         className={canAim ? "mt-2 h-11 w-full rounded-xl border border-line text-sm text-soft disabled:opacity-50" : "mt-3 h-16 w-full rounded-2xl bg-accent font-heading text-2xl font-bold text-accent-text disabled:opacity-50"}>
         {pending ? "Rolling…" : canAim ? `${bigLabel} without the map` : bigLabel}
       </button>
@@ -207,7 +254,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       )}
       {attack?.next && !damage && (
         <button type="button" disabled={pending || !canEdit}
-          onClick={() => { const next = attack.next!; setAfter(null); go(() => rollQuick(character.id, { kind: "use", key: next.key }, "normal", targetRef, next.many ? moreRefs : []), (r) => { setAttack(r); setDamage(null); }); }}
+          onClick={() => { const next = attack.next!; setAfter(null); go(() => rollQuick(character.id, { kind: "use", key: next.key }, "normal", targetRef, next.many ? moreRefs : []), (r) => { setAttack(r); setDamage(null); }, next.key); }}
           className="mt-2 h-12 w-full rounded-xl border border-danger-line bg-danger-bg px-2 text-sm font-bold text-danger">
           Roll {attack.next.label}{attack.next.many ? " · pick everyone it hits above" : ""}
         </button>

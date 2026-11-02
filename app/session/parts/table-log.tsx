@@ -38,6 +38,8 @@ export function TableLog({ rows, isDm = false }: { rows: LogRow[]; isDm?: boolea
                 <span className="font-bold">{r.actor.split(" ")[0]}</span>{" "}
                 <span className="text-soft">{r.masked ? "rolled" : r.source}{r.spell_slot ? ` (lvl ${r.spell_slot})` : ""}</span>
                 {r.target && !r.masked && <span className="text-soft"> → {r.target.split(" ")[0]}</span>}
+                {r.offline && <span className="ml-1 rounded bg-bg px-1 text-[11px] text-muted" title="Rolled without internet, sent later">offline</span>}
+                {r.physical && <span className="ml-1 rounded bg-bg px-1 text-[11px] text-muted" title="Real dice, typed in">real dice</span>}
                 {r.advantage !== "normal" && !r.masked && <span className="ml-1 text-xs text-muted">{r.advantage === "advantage" ? "adv" : "dis"}</span>}
               </p>
               <div className="flex shrink-0 items-center gap-2">

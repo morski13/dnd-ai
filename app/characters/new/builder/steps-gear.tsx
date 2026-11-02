@@ -2,9 +2,12 @@
 // Builder steps 6-8: the class's level-1 features and choices (subclass, fighting style, mastery…), spells, starting equipment.
 import { activeChoices } from "@/lib/levelup/engine";
 import type { Choice, Plan } from "@/lib/levelup/types";
-import { armorClass, extraSpells, finalScores, startingGear, weaponLines } from "@/lib/builder/engine";
+import { armorClass, baseCharacter, extraSpells, finalScores, startingGear, weaponLines } from "@/lib/builder/engine";
+import { suggestions } from "@/lib/levelup/recommend";
 import type { Draft, KitChoice, KitGroup } from "@/lib/builder/types";
+import { LevelCards, PickAllButton } from "../../[id]/level-up/level-cards";
 import { ChoiceSection, FeatureCard } from "../../[id]/level-up/wizard";
+import type { CardsProps } from "./steps-levels";
 import { Label, PickCard, StepTitle, sign } from "./ui";
 import type { StepProps } from "./steps-who";
 
@@ -19,40 +22,51 @@ function useToggle(d: Draft, set: StepProps["set"]) {
   };
 }
 
-export function FeaturesStep({ d, set, data, plan, error }: StepProps & { plan: Plan | null; error: string | null }) {
+export function FeaturesStep({ d, set, data, plan, error, onPickAll }: StepProps & { plan: Plan | null; error: string | null; onPickAll?: () => void }) {
   const toggle = useToggle(d, set);
   if (error) return <p className="rounded-xl border border-danger-line bg-danger-bg p-3 text-sm text-danger" role="alert">{error}</p>;
   if (!plan) return <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-label="Loading" />;
   const scores = finalScores(d, data);
   const choices = activeChoices(plan, d.level).filter((c) => !SPELL_KINDS.has(c.kind));
+  const sugg = suggestions(plan, d.level, baseCharacter(d, data));
   return (
     <div>
       <StepTitle title={`${d.cls} at level 1`} help={choices.length ? "What your class gives you, and the choices it asks for." : "What your class gives you. Nothing to choose here."} />
       {plan.gains.length > 0 && <ul className="mt-3 space-y-1 text-[15px] text-soft">{plan.gains.map((g) => <li key={g}>• {g}</li>)}</ul>}
       <ul className="mt-3 flex flex-col gap-2">{plan.auto.map((f) => <FeatureCard key={f.source + f.name} name={f.name} source={f.source} text={f.text} />)}</ul>
+      {choices.length > 0 && onPickAll && <PickAllButton onClick={onPickAll} label="Pick for me" />}
       {choices.map((c) => (
         <ChoiceSection key={c.key} c={c} picks={d.level.picks[c.key] ?? []} onToggle={(n) => toggle(c, n)}
           onCustom={(n) => set({ level: { ...d.level, picks: { ...d.level.picks, subclass: n ? [`custom:${n}`] : [] } } })}
-          asi={undefined} onAsi={() => {}} scores={scores} newScores={scores} />
+          asi={undefined} onAsi={() => {}} scores={scores} newScores={scores}
+          suggestion={sugg[c.key]} onUse={(sg) => set({ level: { ...d.level, picks: { ...d.level.picks, [c.key]: sg.names } } })} />
       ))}
     </div>
   );
 }
 
-export function SpellsStep({ d, set, data, plan }: StepProps & { plan: Plan | null }) {
+export function SpellsStep({ d, set, data, plan, onClass, onAnswers, onPick, onPickAll }: StepProps & CardsProps) {
   const toggle = useToggle(d, set);
   if (!plan) return <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-label="Loading" />;
   const scores = finalScores(d, data);
-  const choices = activeChoices(plan, d.level).filter((c) => SPELL_KINDS.has(c.kind));
+  const choices = activeChoices(plan.first, d.level).filter((c) => SPELL_KINDS.has(c.kind));
+  const sugg = suggestions(plan.first, d.level, baseCharacter(d, data));
   const extra = extraSpells(d, data).known;
+  const later = plan.steps.length > 0;
   return (
     <div>
-      <StepTitle title="Spells" help="Cantrips you can cast any time, and 1st-level spells that use your spell slots. Tap Info to read a spell." />
+      <StepTitle title="Spells" help={later
+        ? `Your spells for every level up to ${d.targetLevel}. Higher levels offer higher-level spells. Tap Info to read a spell.`
+        : "Cantrips you can cast any time, and 1st-level spells that use your spell slots. Tap Info to read a spell."} />
       {extra.length > 0 && <p className="mt-3 rounded-xl bg-surface px-3 py-2 text-sm text-soft">You also know: {extra.join(", ")} (from your species or feat).</p>}
+      <PickAllButton onClick={() => onPickAll("spells")} label={later ? "Pick spells for me on every level" : "Pick spells for me"} note="Popular, useful spells. Only what's still open; change anything after." />
+      {later && choices.length > 0 && <p className="mt-5 font-heading text-lg font-bold">Level 1 · {d.cls} 1</p>}
       {choices.map((c) => (
         <ChoiceSection key={c.key} c={c} picks={d.level.picks[c.key] ?? []} onToggle={(n) => toggle(c, n)} onCustom={() => {}}
-          asi={undefined} onAsi={() => {}} scores={scores} newScores={scores} />
+          asi={undefined} onAsi={() => {}} scores={scores} newScores={scores}
+          suggestion={sugg[c.key]} onUse={(sg) => set({ level: { ...d.level, picks: { ...d.level.picks, [c.key]: sg.names } } })} />
       ))}
+      {later && <LevelCards results={plan.steps} show="spells" onClass={onClass} onAnswers={onAnswers} onPick={(i) => onPick(i, "spells")} wide />}
     </div>
   );
 }
@@ -68,7 +82,7 @@ function KitGroups({ groups, choices, onChange, data, title }: { groups: KitGrou
         return (
           <div key={gi} className="mt-3">
             {g.options.length > 1 && <p className="text-sm text-soft">{g.desc.replace(/^Choose A or B:\s*/i, "")}</p>}
-            <ul className="mt-2 flex flex-col gap-2">
+            <ul className="mt-2 grid gap-2 md:grid-cols-2 [&>li>button]:h-full">
               {g.options.map((o, oi) => {
                 const on = ch?.option === oi;
                 const words = [...o.items.map((i) => `${i.qty > 1 ? `${i.qty} ` : ""}${i.name}`), ...o.picks.map((p) => p.label), ...(o.gp ? [`${o.gp} gp`] : [])];

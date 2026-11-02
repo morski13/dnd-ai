@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { activeChoices, checkAnswers, featAbilities } from "@/lib/levelup/engine";
+import { recommend, suggestions, type Suggestion } from "@/lib/levelup/recommend";
 import type { AsiAnswer, Answers, Choice, Opt, Plan, RulesData } from "@/lib/levelup/types";
 import { ABILITIES, type Ability } from "@/lib/rules";
 import { useDice } from "../../../components/dice/dice-provider";
@@ -14,8 +15,12 @@ const mod = (s: number) => Math.floor((s - 10) / 2);
 const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 const NO_DATA = { feats: [] } as unknown as RulesData; // feat text comes with the options
 
-export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goal }: {
+export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goal, extraHp = 0, header }: {
+  /** shown under the title (the "Level up to" picker) */
+  header?: React.ReactNode;
   characterId: string; plan: Plan; scores: Record<string, number>; hp: { max: number; cur: number }; multi: boolean; saved: SavedPlan | null;
+  /** Dwarven Toughness: +1 every level */
+  extraHp?: number;
   /** building a new character up to this level: after each level-up, offer the next one */
   goal?: number;
 }) {
@@ -42,6 +47,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goa
 
   const answers: Answers = { picks, asi: Object.fromEntries(Object.entries(asi).filter(([, v]) => v)) as Record<string, AsiAnswer>, hp: hpMode };
   const choices = activeChoices(plan, answers);
+  const sugg = useMemo(() => suggestions(plan, { picks: { subclass: picks.subclass ?? [] }, hp: "average" }, { ability_scores: scores } as never), [plan, picks.subclass, scores]);
   const missing = checkAnswers(plan, answers, { ability_scores: scores } as never, NO_DATA);
   const required = choices.filter((c) => !c.optional);
   const made = required.filter((c) => (c.kind === "asi" ? !!asi[c.key] : (picks[c.key]?.length ?? 0) >= c.choose)).length;
@@ -58,7 +64,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goa
     return s;
   }, [scores, asi]);
   const con = mod(newScores.CON ?? 10), oldCon = mod(scores.CON ?? 10);
-  const avgGain = Math.max(1, plan.average + con) + (con - oldCon) * (plan.totalLevel - 1);
+  const avgGain = Math.max(1, plan.average + con) + (con - oldCon) * (plan.totalLevel - 1) + extraHp;
 
   const toggle = (c: Choice, name: string) => {
     const cur = picks[c.key] ?? [];
@@ -126,6 +132,7 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goa
         {goal && goal >= plan.totalLevel && <p className="mt-1 rounded-xl bg-accent-surface px-3 py-2 text-sm text-soft">Building up to level {goal}: level {plan.totalLevel} now, one level at a time.</p>}
         {multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-block text-sm text-accent underline">Level a different class</Link>}
         {!multi && <Link href={`/characters/${characterId}/level-up?pick=1`} className="mt-1 inline-flex min-h-10 items-center text-sm text-muted underline">Start a new class instead</Link>}
+        {header}
       </header>
 
       {plan.warnings.map((w) => <p key={w} className="mt-3 rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm text-soft">⚠ {w}</p>)}
@@ -153,15 +160,23 @@ export function LevelUpWizard({ characterId, plan, scores, hp, multi, saved, goa
           </button>
           <button type="button" aria-pressed={hpMode === "roll"} onClick={() => setHpMode("roll")}
             className={`rounded-xl border px-3 py-3 text-left ${hpMode === "roll" ? "border-accent-strong bg-accent-surface" : "border-line"}`}>
-            <span className="block font-bold">Roll d{plan.hitDie}</span><span className="block text-sm text-muted">+{Math.max(1, 1 + con) + (con - oldCon) * (plan.totalLevel - 1)} to +{plan.hitDie + con + (con - oldCon) * (plan.totalLevel - 1)} HP</span>
+            <span className="block font-bold">Roll d{plan.hitDie}</span><span className="block text-sm text-muted">+{Math.max(1, 1 + con) + (con - oldCon) * (plan.totalLevel - 1) + extraHp} to +{plan.hitDie + con + (con - oldCon) * (plan.totalLevel - 1) + extraHp} HP</span>
           </button>
         </div>
         <p className="mt-2 text-sm text-soft">Max HP {hp.max} → {hpMode === "average" ? hp.max + avgGain : `${hp.max} + roll`}</p>
       </section>
 
+      {missing && required.length > 0 && (
+        <button type="button" onClick={() => {
+          const r = recommend(plan, answers, { ability_scores: scores } as never, NO_DATA);
+          setPicks(r.picks); setAsi(r.asi ?? {}); setPreview(null);
+        }} className="mt-6 flex h-11 items-center gap-1.5 rounded-xl border border-accent-line bg-accent-surface px-4 text-sm font-bold text-accent">
+          <span aria-hidden>✦</span> Pick for me</button>
+      )}
       {choices.map((c) => (
         <ChoiceSection key={c.key} c={c} picks={picks[c.key] ?? []} onToggle={(n) => toggle(c, n)} onCustom={(n) => { setPicks({ ...picks, subclass: n ? [`custom:${n}`] : [] }); setPreview(null); }}
-          asi={asi[c.key]} onAsi={(a) => { setAsi({ ...asi, [c.key]: a }); setPreview(null); }} scores={scores} newScores={newScores} />
+          asi={asi[c.key]} onAsi={(a) => { setAsi({ ...asi, [c.key]: a }); setPreview(null); }} scores={scores} newScores={newScores}
+          suggestion={sugg[c.key]} onUse={(sg) => { if (sg.asi) setAsi({ ...asi, [c.key]: sg.asi }); else setPicks({ ...picks, [c.key]: sg.names }); setPreview(null); }} />
       ))}
 
       <section className="mt-8 rounded-2xl border border-line bg-surface p-4" aria-label="Plan ahead">
@@ -212,12 +227,16 @@ export function FeatureCard({ name, source, text }: { name: string; source?: str
   );
 }
 
-export function ChoiceSection({ c, picks, onToggle, onCustom, asi, onAsi, scores, newScores }: {
+export function ChoiceSection({ c, picks, onToggle, onCustom, asi, onAsi, scores, newScores, suggestion, onUse }: {
   c: Choice; picks: string[]; onToggle: (n: string) => void; onCustom: (n: string) => void;
   asi: AsiAnswer | undefined; onAsi: (a: AsiAnswer | undefined) => void; scores: Record<string, number>; newScores: Record<string, number>;
+  /** what "Pick for me" would take here, and why; "Use it" takes it */
+  suggestion?: Suggestion; onUse?: (s: Suggestion) => void;
 }) {
   const count = c.kind === "asi" ? (asi ? 1 : 0) : picks.length;
   const full = c.kind === "asi" ? !!asi : count >= c.choose;
+  const same = !suggestion || (suggestion.asi ? JSON.stringify(suggestion.asi) === JSON.stringify(asi) : suggestion.names.every((n) => picks.includes(n)) && picks.length === suggestion.names.length);
+  const asiText = (a: AsiAnswer) => (a.mode === "plus2" ? `+2 ${a.a}` : a.mode === "split" ? `+1 ${a.a}, +1 ${a.b}` : a.feat);
   return (
     <section className="mt-6" aria-label={c.title}>
       <div className="flex items-baseline justify-between gap-2">
@@ -226,6 +245,14 @@ export function ChoiceSection({ c, picks, onToggle, onCustom, asi, onAsi, scores
           {full ? "✓ done" : `${count}/${c.choose}`}</span>}
       </div>
       <p className="text-sm text-muted">{c.help}</p>
+      {suggestion && onUse && (
+        <div className={`mt-2 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${same ? "border-success-line bg-success-bg" : "border-accent-line bg-accent-surface"}`}>
+          <span aria-hidden className="text-accent">✦</span>
+          <span className="min-w-0 flex-1"><b className="text-text">{same ? "Suggested (picked): " : "Suggested: "}{suggestion.asi ? asiText(suggestion.asi) : suggestion.names.join(", ")}</b>
+            <span className="block text-xs text-soft">{suggestion.why}</span></span>
+          {!same && <button type="button" onClick={() => onUse(suggestion)} className="h-9 shrink-0 rounded-lg border border-accent-line px-2.5 text-xs font-bold text-accent">Use it</button>}
+        </div>
+      )}
       {c.kind === "asi" ? <AsiPicker c={c} value={asi} onChange={onAsi} scores={scores} newScores={newScores} />
         : <OptionList c={c} picks={picks} onToggle={onToggle} />}
       {c.kind === "subclass" && <CustomSubclass value={picks[0]?.startsWith("custom:") ? picks[0].slice(7) : ""} onChange={onCustom} />}
@@ -310,7 +337,9 @@ export function OptionRow({ o, on, disabled, onClick }: { o: Opt; on: boolean; d
 function AsiPicker({ c, value, onChange, scores, newScores }: {
   c: Choice; value: AsiAnswer | undefined; onChange: (a: AsiAnswer | undefined) => void; scores: Record<string, number>; newScores: Record<string, number>;
 }) {
-  const [mode, setMode] = useState<"plus2" | "split" | "feat">(c.boon ? "feat" : value?.mode ?? "plus2");
+  const [modeState, setMode] = useState<"plus2" | "split" | "feat">(c.boon ? "feat" : value?.mode ?? "plus2");
+  // a choice made from outside ("Pick for me") shows its own mode
+  const mode = value ? value.mode : modeState;
   const [first, setFirst] = useState<Ability | null>(null);
   const featName = value?.mode === "feat" ? value.feat : null;
   const feat = c.options.find((o) => o.name === featName);

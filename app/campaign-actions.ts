@@ -71,3 +71,24 @@ export async function newInviteCode(campaignId: string): Promise<Fail | { code: 
   if (error) return { error: error.message };
   return { code: data as string };
 }
+
+/**
+ * DM: "the party levels up". Sets the party level and tells every player: their Home and sheet show
+ * "Level up to N" (with their saved plan filled in) until their character reaches it.
+ */
+export async function partyLevelUp(campaignId: string, to: number): Promise<Fail | { to: number }> {
+  refresh(); // other screens show this change at once, not after the 30 s client cache
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) return { error: "Log in first." };
+  const { data: me } = await supabase.from("campaign_members").select("role").eq("campaign_id", campaignId).eq("user_id", userId).maybeSingle();
+  if (me?.role !== "dm" && me?.role !== "co_dm") return { error: "Only the DM can level up the party." };
+  const level = Math.max(1, Math.min(20, Math.floor(Number(to)) || 1));
+  const { data: camp } = await supabase.from("campaigns").select("settings").eq("id", campaignId).maybeSingle();
+  const settings = (camp?.settings ?? {}) as Record<string, unknown>;
+  const { error } = await supabase.from("campaigns")
+    .update({ settings: { ...settings, party_level: level, level_up: { to: level, at: new Date().toISOString() } } }).eq("id", campaignId);
+  if (error) return { error: error.message };
+  return { to: level };
+}

@@ -2,12 +2,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { getHomeData } from "@/lib/home-data";
+import type { lastSessionStrip } from "@/lib/stats-data";
 import { logOut } from "./auth-actions";
 import { BottomNav } from "./components/bottom-nav";
 import { CubeIcon, DieIcon, MapIcon, PersonIcon, SparkIcon, StatsIcon, SwordsIcon } from "./components/icons";
 import { JoinForm } from "./join-form";
 import { Logo } from "./components/logo";
 import { StartSessionButton } from "./session/start-button";
+import { PartyLevelCard } from "./party-level";
+import { InstallApp } from "./components/install-app";
 
 export default function HomePage() {
   return (
@@ -65,7 +68,11 @@ async function Home() {
       : { Icon: SwordsIcon, title: "Practice fight", sub: "How would you do? Uses your real dice", href: "/practice" },
     ...(data.isDm ? [{ Icon: MapIcon, title: "Battle maps", sub: "DM · upload maps, fit the squares", href: "/maps" }] : []),
     { Icon: SparkIcon, title: "The Tavern", sub: "Ask the AI: rules, combos, lore", href: "/tavern" },
+    { Icon: SparkIcon, title: "Homebrew", sub: data.isDm ? "Monsters, spells, feats, subclasses" : "Ask your DM for a spell, feat or subclass", href: "/homebrew" },
   ];
+  // what each role reaches for first: players their characters, dice and the AI; the DM the fight planner and the campaign
+  const first = data.isDm ? ["Fight planner", campaign.name, "Battle maps"] : ["Your characters", "Dice", "The Tavern"];
+  tiles.sort((a, b) => (first.indexOf(a.title) + 1 || 99) - (first.indexOf(b.title) + 1 || 99));
 
   return (
     <>
@@ -118,6 +125,27 @@ async function Home() {
         </section>
       )}
       </div>
+
+      <InstallApp />
+      <LastSession strip={data.strip} />
+
+      {data.behind.length > 0 && (
+        <section className="mt-5 rounded-2xl border border-success-line bg-success-bg p-4" aria-label="Level up">
+          <p className="font-heading text-xl font-bold">Your DM says: level {campaign.levelUpTo}!</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {data.behind.map((c) => (
+              <li key={c.id}>
+                <Link href={`/characters/${c.id}/level-up${campaign.levelUpTo! > c.level + 1 ? `?to=${campaign.levelUpTo}` : ""}`}
+                  className="flex min-h-12 items-center gap-3 rounded-xl bg-bg px-3 py-2">
+                  <span className="min-w-0 flex-1"><span className="block font-semibold">{c.name}</span><span className="block text-sm text-muted">Level {c.level} → {campaign.levelUpTo}{" "}· your saved plan is used</span></span>
+                  <span className="shrink-0 font-bold text-accent">Level up ›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {data.isDm && <PartyLevelCard campaignId={campaign.id} level={campaign.partyLevel ?? null} target={campaign.levelUpTo} party={data.party} />}
 
       {/* Menu grid */}
       <section className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
@@ -189,5 +217,40 @@ function HomeSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** "Last session": the MVP, two awards, the biggest moment and the recap; or how to get stats at all. */
+function LastSession({ strip }: { strip: Awaited<ReturnType<typeof lastSessionStrip>> }) {
+  if (!strip) {
+    return (
+      <Link href="/characters" className="mt-5 flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-soft">
+        <span aria-hidden className="text-xl text-accent">✦</span>
+        <span className="min-w-0 flex-1">No session stats yet. Open a character and turn on <b className="text-text">Track game</b> at the table: every roll then turns into stats, awards and a recap.</span>
+      </Link>
+    );
+  }
+  return (
+    <section className="mt-5 rounded-2xl border border-line bg-surface-2 p-4 lg:p-6" aria-label="Last session">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs uppercase tracking-[0.12em] text-muted">Last session · Session {strip.number}{strip.title ? ` · ${strip.title}` : ""}</p>
+        <Link href={`/stats/recap?s=${strip.number}`} className="inline-flex min-h-10 shrink-0 items-center text-sm font-semibold text-accent underline">Read the recap</Link>
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-4">
+        {strip.mvp && (
+          <div className="rounded-xl border border-accent-line bg-accent-surface px-3 py-2">
+            <p className="text-xs text-muted">MVP</p>
+            <p className="font-heading text-xl font-bold">🏆 {strip.mvp}</p>
+          </div>
+        )}
+        {strip.awards.map((a) => (
+          <div key={a.id} className="rounded-xl bg-bg px-3 py-2">
+            <p className="text-xs text-muted">{a.emoji} {a.title}</p>
+            <p className="font-semibold">{a.winners.join(", ")} <span className="text-sm font-normal text-soft">· {a.value}</span></p>
+          </div>
+        ))}
+        {strip.moment && <p className="rounded-xl bg-bg px-3 py-2 text-sm text-soft md:col-span-1">{strip.moment}</p>}
+      </div>
+    </section>
   );
 }

@@ -1,11 +1,14 @@
 "use client";
-// Builder steps 9-10: name and personality (with the background's suggestions), then a summary before saving.
+// Builder steps: name and personality (with the background's suggestions), then a summary of the character at its level before saving.
+import { useRef, useState } from "react";
+import { squarePortrait } from "@/app/components/map/portrait";
 import { CLASSES } from "@/lib/classes";
 import { activeChoices } from "@/lib/levelup/engine";
-import type { Plan } from "@/lib/levelup/types";
 import { armorClass, backgroundOf, extraSpells, finalScores, givenSkills, speciesOf, startingGear, subOf, weaponLines } from "@/lib/builder/engine";
 import { ALIGNMENTS, givesFor } from "@/lib/builder/special";
-import { ABILITIES } from "@/lib/rules";
+import { finalAc, type BuildPlan } from "@/lib/builder/levels";
+import { classLine } from "@/lib/levelup/multi";
+import { ABILITIES, profBonus, type Ability } from "@/lib/rules";
 import { Chip, Label, StepTitle, mod, sign } from "./ui";
 import type { StepProps } from "./steps-who";
 
@@ -23,6 +26,7 @@ export function DetailsStep({ d, set, data, isDm }: StepProps & { isDm: boolean 
   return (
     <div>
       <StepTitle title="Who are they?" help="A name is all you need. The rest is for roleplay and can wait." />
+      <PortraitPick name={det.name} value={d.portrait ?? null} onChange={(v) => set({ portrait: v })} />
       <label className="mt-4 block text-sm text-soft">Character name
         <input value={det.name} onChange={(e) => setDet({ name: e.target.value.slice(0, 60) })} placeholder="Nella Quickfoot" className={`${field} h-12`} />
       </label>
@@ -37,14 +41,6 @@ export function DetailsStep({ d, set, data, isDm }: StepProps & { isDm: boolean 
           </label>
         </>
       )}
-
-      <Label>Start at level</Label>
-      <div className="mt-2 flex items-center gap-2">
-        <button type="button" onClick={() => set({ targetLevel: Math.max(1, d.targetLevel - 1) })} aria-label="Lower level" className="h-11 w-11 rounded-xl border border-line text-lg">−</button>
-        <span className="w-10 text-center font-heading text-2xl font-bold" aria-live="polite">{d.targetLevel}</span>
-        <button type="button" onClick={() => set({ targetLevel: Math.min(20, d.targetLevel + 1) })} aria-label="Raise level" className="h-11 w-11 rounded-xl border border-line text-lg">+</button>
-        <p className="min-w-0 flex-1 text-xs text-muted">{d.targetLevel > 1 ? `After saving, the app walks you through levels 2 to ${d.targetLevel} (hit points, new features, subclass, spells).` : "Most campaigns start at level 1."}</p>
-      </div>
 
       <Label>Alignment (optional)</Label>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -66,21 +62,32 @@ export function DetailsStep({ d, set, data, isDm }: StepProps & { isDm: boolean 
   );
 }
 
-export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan: Plan | null; problems: { step: string; label: string; text: string }[]; goTo: (s: string) => void }) {
+export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan: BuildPlan | null; problems: { step: string; label: string; text: string }[]; goTo: (s: string) => void }) {
   const sp = speciesOf(d, data), sub = subOf(d, data), bg = backgroundOf(d, data);
-  const scores = finalScores(d, data);
+  const first = plan?.first ?? null;
+  const fin = plan?.final ?? null;
+  const scores = (fin?.ability_scores ?? finalScores(d, data)) as Record<Ability, number>;
   const gives = sp ? givesFor(data.rules, sp, sub ?? null) : { hpPerLevel: 0, speed: undefined };
   const hitDie = CLASSES[d.cls]?.hitDie ?? 8;
-  const hp = Math.max(1, hitDie + mod(scores.CON) + (gives.hpPerLevel ?? 0));
+  const hp1 = Math.max(1, hitDie + mod(finalScores(d, data).CON) + (gives.hpPerLevel ?? 0));
+  const multi = d.targetLevel > 1 && !!fin;
+  const hp = !multi ? hp1 : d.upHp === "roll" ? `${hp1}+` : (fin!.hp_max ?? hp1);
   const gear = startingGear(d, data);
-  const ac = armorClass(gear.items, scores, d.cls, data.classes[d.cls]?.proficiencies ?? []);
-  const skills = [...new Set([...givenSkills(d, data).keys(), ...d.classSkills])];
-  const picks = plan ? activeChoices(plan, d.level).flatMap((c) => (d.level.picks[c.key] ?? []).map((n) => n.replace(/^custom:/, ""))) : [];
-  const spells = [...extraSpells(d, data).known, ...(d.level.picks.cantrips ?? []), ...(d.level.picks.spells ?? [])];
+  const ac = multi && sp && bg ? finalAc(d, data, fin!) : armorClass(gear.items, scores, d.cls, data.classes[d.cls]?.proficiencies ?? []);
+  const skills = [...new Set([...givenSkills(d, data).keys(), ...d.classSkills, ...(fin?.proficiencies.skills ?? [])])];
+  const picks = first ? activeChoices(first, d.level).flatMap((c) => (d.level.picks[c.key] ?? []).map((n) => n.replace(/^custom:/, ""))) : [];
+  const spells = multi ? [...new Set(fin!.spells.known ?? [])] : [...extraSpells(d, data).known, ...(d.level.picks.cantrips ?? []), ...(d.level.picks.spells ?? [])];
   const subclass = (d.level.picks.subclass?.[0] ?? "").replace(/^custom:/, "");
+  const classText = multi ? classLine(fin!) : `${d.cls} 1${subclass ? ` (${subclass})` : ""}`;
+  const featureNames = multi
+    ? fin!.features.map((f) => (typeof f === "string" ? f : f.name)).filter((n) => !["Languages", "Proficiencies", "Alignment"].includes(n))
+    : (first?.auto ?? []).map((f) => f.name).concat(sp?.traits.map((t) => t.name) ?? []);
+  const expertise = fin?.proficiencies.expertise ?? [];
   return (
     <div>
-      <StepTitle title={d.details.name || "Your character"} help={[sp?.name, sub && sp && sp.subs.length > 1 ? sub.name.replace(/^.*?:\s*/, "") : null, `${d.cls} 1${subclass ? ` (${subclass})` : ""}`, bg?.name].filter(Boolean).join(" · ")} />
+      {/* eslint-disable-next-line @next/next/no-img-element -- a picture made on this phone (data URL) */}
+      {d.portrait && <img src={d.portrait} alt="" className="mb-3 h-20 w-20 rounded-full border-2 border-accent-line object-cover" />}
+      <StepTitle title={d.details.name || "Your character"} help={[sp?.name, sub && sp && sp.subs.length > 1 ? sub.name.replace(/^.*?:\s*/, "") : null, classText, bg?.name].filter(Boolean).join(" · ")} />
       {problems.length > 0 && (
         <div className="mt-4 rounded-2xl border border-danger-line bg-danger-bg p-4 text-sm" role="alert">
           <p className="font-semibold text-danger">Still to do</p>
@@ -92,7 +99,7 @@ export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan
         </div>
       )}
       <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-        {[["HP", hp], ["AC", ac.ac], ["Speed", gives.speed ?? sp?.speed ?? 30], ["Prof.", "+2"]].map(([l, v]) => (
+        {[["HP", hp], ["AC", ac.ac], ["Speed", gives.speed ?? sp?.speed ?? 30], ["Prof.", `+${profBonus(d.targetLevel)}`]].map(([l, v]) => (
           <div key={l} className="rounded-xl border border-line bg-surface py-2"><p className="text-xs text-muted">{l}</p><p className="text-xl font-bold">{v}</p></div>
         ))}
       </div>
@@ -104,13 +111,14 @@ export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan
       <dl className="mt-4 space-y-2 text-sm">
         <Row k="Saving throws" v={(CLASSES[d.cls]?.saves ?? []).join(", ")} />
         <Row k="Skills" v={skills.join(", ")} />
+        {expertise.length > 0 && <Row k="Expertise" v={expertise.join(", ")} />}
         {picks.filter((p) => p !== subclass && !spells.includes(p)).length > 0 && <Row k="Choices" v={picks.filter((p) => p !== subclass && !spells.includes(p)).join(", ")} />}
         {spells.length > 0 && <Row k="Spells" v={spells.join(", ")} />}
-        <Row k="Features" v={(plan?.auto ?? []).map((f) => f.name).concat(sp?.traits.map((t) => t.name) ?? []).join(", ")} />
+        <Row k="Features" v={[...new Set(featureNames)].join(", ")} />
         <Row k="Equipment" v={gear.items.map((i) => `${i.qty > 1 ? `${i.qty} ` : ""}${i.name}`).join(", ")} />
-        <Row k="Weapons" v={weaponLines(gear.items, scores, 2).map((w) => `${w.name} ${sign(w.hit)} (${w.damage})`).join(", ")} />
+        <Row k="Weapons" v={weaponLines(gear.items, scores, profBonus(d.targetLevel)).map((w) => `${w.name} ${sign(w.hit)} (${w.damage})`).join(", ")} />
         <Row k="Gold" v={`${gear.gp} gp`} />
-        {d.targetLevel > 1 && <Row k="Then" v={`Level up to ${d.targetLevel}, one level at a time.`} />}
+        {multi && d.upHp === "roll" && <Row k="Hit points" v={`Level 1: ${hp1}. The app rolls your hit dice for levels 2–${d.targetLevel} when you save; each roll is in the level history on your sheet.`} />}
       </dl>
     </div>
   );
@@ -119,4 +127,42 @@ export function ReviewStep({ d, data, plan, problems, goTo }: StepProps & { plan
 function Row({ k, v }: { k: string; v: string }) {
   if (!v) return null;
   return <div className="rounded-xl bg-surface px-3 py-2"><dt className="text-xs uppercase tracking-[0.12em] text-muted">{k}</dt><dd className="mt-0.5 text-soft">{v}</dd></div>;
+}
+
+/** The character's picture (token on the battle map, top of the sheet). Kept on this phone until the character is made. */
+function PortraitPick({ name, value, onChange }: { name: string; value: string | null; onChange: (v: string | null) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const initials = (name.trim() || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <div className="mt-4 flex items-center gap-3">
+      <button type="button" onClick={() => input.current?.click()} aria-label="Choose a portrait"
+        className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent-line bg-accent-surface font-heading text-2xl font-bold text-accent">
+        {/* eslint-disable-next-line @next/next/no-img-element -- a picture made on this phone (data URL) */}
+        {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : initials}
+        <span className="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs text-accent-text" aria-hidden>✎</span>
+      </button>
+      <div className="min-w-0 flex-1 text-sm">
+        <p className="font-semibold text-soft">Portrait (optional)</p>
+        <p className="text-xs text-muted">Shown on your sheet and as your token on the battle map.</p>
+        <div className="mt-1 flex flex-wrap gap-x-3">
+          <button type="button" onClick={() => input.current?.click()} className="inline-flex min-h-10 items-center text-accent underline">{value ? "Change" : "Choose a picture"}</button>
+          {value && <button type="button" onClick={() => onChange(null)} className="inline-flex min-h-10 items-center text-muted underline">Remove</button>}
+        </div>
+        {error && <p className="text-xs text-danger" role="alert">{error}</p>}
+      </div>
+      <input ref={input} type="file" accept="image/*" className="hidden" aria-label="Portrait file"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          setError(null);
+          try {
+            const blob = await squarePortrait(f);
+            const url = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error("Couldn't read the picture.")); r.readAsDataURL(blob); });
+            onChange(url);
+          } catch (err) { setError((err as Error).message); }
+        }} />
+    </div>
+  );
 }

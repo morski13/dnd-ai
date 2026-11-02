@@ -4,13 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { signed, type Advantage } from "@/lib/dice";
+import { addQueued, offlineRoll, recorder, replayRng } from "@/lib/offline-rolls";
+import { diceSides, physicalValues, shapeOf, type RollShape } from "@/lib/physical";
+import { RealDicePad, useRealDice, type Typed } from "./parts/real-dice";
+import { toConfirm } from "@/lib/sheet-confirm";
+import { ConfirmNumbers } from "./parts/confirm-numbers";
 import type { Feature, FullCharacter, Resource } from "@/lib/character-data";
 import {
   ABILITIES, SKILLS, actionOf, allOptions, damageExpression, initiative, lowestFreeSlot, mods, optionButtonLabel, pb,
-  saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
+  planRoll, saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, practiceRoll, restoreAllSlots, rollQuick, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, practiceRoll, realDiceRoll, restoreAllSlots, rollQuick, undoRealDiceRoll, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
@@ -39,8 +44,10 @@ import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./par
 
 type Tab = "Attacks" | "Spells" | "Skills" | "Features" | "Gear";
 
-export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null, live: initialLive = null }: {
+export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null, live: initialLive = null, levelUpTo = null }: {
   character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear; levelPlan?: string | null; portrait?: string | null;
+  /** the DM said the party levels up to this level */
+  levelUpTo?: number | null;
   live?: TableSession;
 }) {
   const [live, setLive] = useState<TableSession>(initialLive);
@@ -101,7 +108,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     const request: RollRequest = asked.kind === "use" && targetAc != null && (atk?.kind === "weapon" || atk?.kind === "spell_attack") ? { ...asked, ac: targetAc } : asked;
     if (practice) {
       const crit = request.kind === "damage" && !!last?.practice && last.isCrit;
-      const res = await practiceRoll(character.id, request, adv, crit);
+      let res: Awaited<ReturnType<typeof practiceRoll>>;
+      try { res = await practiceRoll(character.id, request, adv, crit); } catch { setError("Practice rolls need the internet. Turn practice off to roll for real: those work offline."); return null; }
       if ("error" in res) { setError(res.error); return null; }
       await dice.show(asShown(res.roll));
       setLast(res.roll);
@@ -109,7 +117,17 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       await showTriggered(res.roll, res.triggered);
       return res.roll; // nothing was spent or saved, so the sheet stays as it is
     }
-    const res = await rollQuick(character.id, request, adv); // the dice land first, the page refreshes after
+    // Real dice: ask what they show (or let the app roll)
+    if (realDice) {
+      const typed = await askDice(request, adv);
+      if (typed === null) return null;
+      if (typed !== "app") return rollReal(request, adv, typed);
+    }
+    // No internet: roll here, keep it on the phone, send it later (OfflineSync). An already-offline phone doesn't wait for the network.
+    const offlineNow = typeof navigator !== "undefined" && navigator.onLine === false;
+    let res: Awaited<ReturnType<typeof rollQuick>> | null = null;
+    if (!offlineNow) { try { res = await rollQuick(character.id, request, adv); } catch { res = null; } } // the dice land first, the page refreshes after
+    if (!res) return rollOffline(request, adv);
     if ("error" in res) { setError(res.error); return null; }
     spendTurn(request);
     await dice.show(asShown(res.roll));
@@ -125,6 +143,80 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     setResources(res.resources);
     setTimeout(() => router.refresh(), 0); // other screens (stats, lists) see it now, without keeping the button busy
     return res.roll;
+  }
+
+  // ---- real dice: the number pad, then the usual roll with those dice
+  const [realDice, setRealDice] = useRealDice();
+  const [undoable, setUndoable] = useState<string | null>(null); // the real-dice roll that can still be taken back
+  const [pad, setPad] = useState<{ title: string; shape: RollShape; done: (t: Typed | "app" | null) => void } | null>(null);
+  const rollOpts = (request: RollRequest, adv: Advantage) => {
+    const plan = planRoll(c, request, library);
+    const critical = request.kind === "damage" && !!last?.isCrit && (last.id === request.parentRollId || !request.parentRollId);
+    return { plan, opts: { advantage: plan.d20 ? adv : "normal" as Advantage, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode } };
+  };
+  function askDice(request: RollRequest, adv: Advantage): Promise<Typed | "app" | null> {
+    let r;
+    try { r = rollOpts(request, adv); } catch { return Promise.resolve("app"); }
+    if (!r.plan.expression) return Promise.resolve("app"); // nothing to roll (a save spell, a use)
+    const shape = shapeOf(r.plan.expression, r.opts);
+    if (!shape.d20s && !shape.others.length) return Promise.resolve("app");
+    const label = options.find((o) => "key" in request && o.key === request.key)?.name ?? r.plan.source;
+    return new Promise((resolve) => setPad({ title: `${label}${r.plan.rollType === "damage" ? " damage" : r.plan.rollType === "heal" ? " healing" : ""}`, shape, done: (t) => { setPad(null); resolve(t); } }));
+  }
+  async function rollReal(request: RollRequest, adv: Advantage, typed: Typed): Promise<SavedRoll | null> {
+    const { plan, opts } = rollOpts(request, adv);
+    const v = physicalValues(diceSides(plan.expression!, opts), typed);
+    if ("error" in v) { setError(v.error); return null; }
+    const offlineNow = typeof navigator !== "undefined" && navigator.onLine === false;
+    let res: Awaited<ReturnType<typeof realDiceRoll>> | null = null;
+    if (!offlineNow) { try { res = await realDiceRoll(character.id, request, adv, v.values); } catch { res = null; } }
+    if (!res) {
+      const r = offlineRoll(c, library, request, adv, opts.critical, replayRng(v.values));
+      if ("error" in r) { setError(r.error); return null; }
+      addQueued({ id: r.id, characterId: character.id, request, advantage: adv, values: v.values, at: new Date().toISOString(), label: r.label, total: r.total, physical: true });
+      spendTurn(request); setLast({ ...r, physical: true }); giveAdvantage(request);
+      return r;
+    }
+    if ("error" in res) { setError(res.error); return null; }
+    spendTurn(request);
+    setLast({ ...res.roll, physical: true });
+    setUndoable(res.roll.id);
+    setTimeout(() => setUndoable((id) => (id === res.roll.id ? null : id)), 2 * 60_000);
+    applySelf(res.roll);
+    giveAdvantage(request);
+    await showTriggered(res.roll, res.triggered);
+    if (res.concentration !== undefined) setConc(res.concentration);
+    setSpells(res.spells);
+    setResources(res.resources);
+    setTimeout(() => router.refresh(), 0);
+    return res.roll;
+  }
+  /** Typed a wrong number: take the roll back (2 minutes) and type it again. */
+  function undoReal() {
+    const r = last;
+    if (!r?.physical) return;
+    setError(null);
+    startTransition(async () => {
+      const u = await undoRealDiceRoll(character.id, r.id);
+      if ("error" in u) { setError(u.error); return; }
+      setLast(null);
+      router.refresh();
+      await rollNow(r.request, advantage);
+    });
+  }
+
+  /** A roll without internet: the same rules, dice from this phone, sent when it's back online. Slots and uses are spent then. */
+  async function rollOffline(request: RollRequest, adv: Advantage): Promise<SavedRoll | null> {
+    const rec = recorder();
+    const crit = request.kind === "damage" && !!last?.offline && last.isCrit;
+    const r = offlineRoll(c, library, request, adv, crit, rec.rng);
+    if ("error" in r) { setError(r.error); return null; }
+    addQueued({ id: r.id, characterId: character.id, request, advantage: adv, values: rec.values, at: new Date().toISOString(), label: r.label, total: r.total });
+    spendTurn(request);
+    await dice.show(asShown(r));
+    setLast(r);
+    giveAdvantage(request);
+    return r;
   }
 
   function doRoll(request: RollRequest) {
@@ -246,12 +338,22 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         </div>
       </header>
 
+      {canEdit && levelUpTo && levelUpTo > totalLevel(c.class_levels) && (
+        <Link href={`/characters/${character.id}/level-up${levelUpTo > totalLevel(c.class_levels) + 1 ? `?to=${levelUpTo}` : ""}`}
+          className="mt-3 flex min-h-12 items-center gap-3 rounded-xl border border-success-line bg-success-bg px-3 py-2 text-sm">
+          <span aria-hidden className="text-lg">▲</span>
+          <span className="min-w-0 flex-1"><b className="text-text">Your DM says: level {levelUpTo}!</b> <span className="text-soft">{levelPlan ? "Your plan is ready." : "Tap to level up."}</span></span>
+          <span className="shrink-0 font-bold text-success">Level up ›</span>
+        </Link>
+      )}
       <Link href={`/tavern?c=${character.id}&mode=character`}
         className="mt-3 flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm text-soft">
         <span aria-hidden className="text-accent">✦</span>
         <span className="min-w-0 flex-1 truncate">Ask the Tavern about {character.name}: combos, rules, features</span>
         <span aria-hidden className="text-accent">→</span>
       </Link>
+
+      {canEdit && <ConfirmNumbers characterId={character.id} rows={toConfirm(character)} />}
 
       <HpCard cur={hp.cur} temp={hp.temp} max={character.hp_max ?? 0} canEdit={canEdit} pending={pending}
         onChange={(kind, n) => run(() => changeHp(character.id, kind, n), (r) => {
@@ -290,8 +392,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         warning={inFight ? turnWarning : null} />
 
       <section className="mt-3 grid grid-cols-4 gap-2">
-        <StatBox label="AC" value={character.ac ?? "–"} sheet={character.sheet_values.ac !== undefined && character.sheet_values.ac !== character.ac ? character.sheet_values.ac : undefined} />
-        <StatBox label="Speed" value={character.speed ?? "–"} sheet={character.sheet_values.speed !== undefined && character.sheet_values.speed !== character.speed ? character.sheet_values.speed : undefined} />
+        <StatBox label="AC" value={character.ac ?? "–"} />
+        <StatBox label="Speed" value={character.speed ?? "–"} />
         <StatBox label="Init" value={signed(initiative(c))} sub={hand.init ? "✎ set by hand" : canEdit ? "tap to roll" : undefined} onClick={canEdit ? () => doRoll({ kind: "initiative" }) : undefined} />
         <StatBox label="Prof." value={signed(pb(c))} sub={hand.prof ? "✎ set by hand" : `lvl ${totalLevel(c.class_levels)}`} />
       </section>
@@ -458,7 +560,9 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     </div>
 
       {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp}
-        practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }} />}
+        practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }}
+        realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined} />}
+      {pad && <RealDicePad title={pad.title} shape={pad.shape} onDone={pad.done} />}
     </>
   );
 }

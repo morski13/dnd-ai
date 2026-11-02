@@ -41,6 +41,7 @@ async function Stats({ searchParams }: { searchParams: SP }) {
       <header>
         <p className="text-xs uppercase tracking-[0.12em] text-muted">{d.campaignName}</p>
         <h1 className="mt-1 font-heading text-3xl font-bold">Statistics</h1>
+        <Link href="/stats/wrapped" className="mt-2 inline-flex h-10 items-center gap-2 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">🎁 Campaign Wrapped</Link>
       </header>
 
       {!d.sessions.length ? (

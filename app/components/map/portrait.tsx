@@ -4,21 +4,29 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { load } from "@/app/campaign/parts/upload";
 
-export async function uploadPortrait(kind: "character" | "monster", id: string, file: File): Promise<number> {
+/** A square crop from the middle of a picture, 384 px WEBP: plenty for a token. */
+export async function squarePortrait(file: File): Promise<Blob> {
   if (!/^image\//.test(file.type)) throw new Error("Choose a picture (PNG, JPG or WEBP).");
   const img = await load(file);
-  // a square crop from the middle, 384 px: plenty for a token
   const side = Math.min(img.naturalWidth, img.naturalHeight);
   const c = document.createElement("canvas");
   c.width = c.height = Math.min(384, side);
   c.getContext("2d")!.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, c.width, c.height);
-  const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Couldn't convert the picture."))), "image/webp", 0.86));
+  return new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Couldn't convert the picture."))), "image/webp", 0.86));
+}
+
+/** Upload a prepared picture as a character's or monster's token picture. */
+export async function sendPortrait(kind: "character" | "monster", id: string, blob: Blob): Promise<number> {
   const form = new FormData();
   form.set("file", blob, "portrait.webp");
   const r = await fetch(`/api/portrait/${kind}/${id}`, { method: "POST", body: form });
   const data = await r.json().catch(() => ({ error: "Upload failed." }));
   if (!r.ok || data.error) throw new Error(data.error ?? "Upload failed.");
   return data.portrait as number;
+}
+
+export async function uploadPortrait(kind: "character" | "monster", id: string, file: File): Promise<number> {
+  return sendPortrait(kind, id, await squarePortrait(file));
 }
 
 export function PortraitButton({ kind, id, name, src, canEdit, size = 56 }: {

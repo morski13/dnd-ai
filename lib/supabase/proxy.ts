@@ -28,6 +28,7 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const loggedIn = !!data?.claims?.sub;
   const onLoginPage = request.nextUrl.pathname.startsWith("/login");
+  if (request.nextUrl.pathname === "/offline") return response; // the installed app's offline page needs no login
 
   if (!loggedIn && !onLoginPage) {
     const url = request.nextUrl.clone();

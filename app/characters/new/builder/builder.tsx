@@ -2,34 +2,47 @@
 // The character builder: one step at a time, everything offered from the rules, nothing to look up elsewhere.
 // The draft is kept on this phone (so a reload or a phone call doesn't lose it) until the character is made.
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { CLASSES } from "@/lib/classes";
+import { useRouter } from "next/navigation";
+import { sendPortrait } from "@/app/components/map/portrait";
+import { randomDraft } from "@/lib/builder/random";
+import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import type { ClassCard } from "@/lib/builder/data";
+import { featTextFor } from "@/lib/builder/data";
 import {
-  backgroundProblems, baseCharacter, blankDraft, checkBase, givenSkills, kitProblems, skillProblems, speciesProblems, suggestedArray,
+  backgroundProblems, blankDraft, checkBase, givenSkills, kitProblems, skillProblems, speciesProblems, suggestedArray,
 } from "@/lib/builder/engine";
+import { planBuild } from "@/lib/builder/levels";
 import type { BuilderData, Draft, Rules, ScoreMethod } from "@/lib/builder/types";
-import { activeChoices } from "@/lib/levelup/engine";
-import type { Plan } from "@/lib/levelup/types";
+import { baseCharacter } from "@/lib/builder/engine";
+import { cleanFor, recommendSteps, resizeSteps } from "@/lib/levelup/multi";
+import { recommend } from "@/lib/levelup/recommend";
+import type { RulesData, SpellLite } from "@/lib/levelup/types";
 import { ABILITIES } from "@/lib/rules";
-import { createFromBuilder, planFirstLevel } from "../builder-actions";
+import { stepMissing } from "../../[id]/level-up/level-cards";
+import { builderRules, createFromBuilder } from "../builder-actions";
 import { DetailsStep, ReviewStep } from "./steps-end";
-import { EquipmentStep, FeaturesStep, SPELL_KINDS, SpellsStep } from "./steps-gear";
+import { EquipmentStep, FeaturesStep, SpellsStep } from "./steps-gear";
+import { LevelsStep } from "./steps-levels";
 import { AbilityScores, SkillsStep } from "./steps-stats";
 import { BackgroundStep, ClassStep, SpeciesStep } from "./steps-who";
 
-type StepId = "class" | "species" | "background" | "abilities" | "skills" | "features" | "spells" | "equipment" | "details" | "review";
+type StepId = "class" | "species" | "background" | "abilities" | "skills" | "features" | "levels" | "spells" | "equipment" | "details" | "review";
 const LABEL: Record<StepId, string> = {
-  class: "Class", species: "Species", background: "Background", abilities: "Abilities", skills: "Skills", features: "Features",
-  spells: "Spells", equipment: "Gear", details: "Details", review: "Review",
+  class: "Class & level", species: "Species", background: "Background", abilities: "Abilities", skills: "Skills", features: "Features",
+  levels: "Levels", spells: "Spells", equipment: "Gear", details: "Details", review: "Review",
 };
 const KEY = "builder-draft-v1";
 type Saved = { d: Draft; step: StepId; rolled: number[] };
+type LevelRules = { levelData: RulesData; spells: SpellLite[] };
+const PLAN_DETAILS: Draft["details"] = { ...blankDraft("2024").details, name: "x" };
 
 function loadSaved(rules: Rules[]): Saved | null {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? "null") as Saved | null;
-    return s && rules.includes(s.d?.rules) ? s : null;
+    if (!s || !rules.includes(s.d?.rules)) return null;
+    // drafts saved before levels 2+ were planned in the builder
+    const d = { ...s.d, ups: s.d.ups ?? [], upHp: s.d.upHp ?? "average" };
+    return { ...s, d: { ...d, ups: resizeSteps(d.ups, Math.max(0, d.targetLevel - 1), d.cls) } };
   } catch { return null; }
 }
 
@@ -39,14 +52,16 @@ function tidy(d: Draft, data: BuilderData): Draft {
   return { ...d, classSkills: d.classSkills.filter((s) => !given.has(s)) };
 }
 
-export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMethod }: {
+export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMethod, multiclass, rollHp, partyLevel }: {
   isDm: boolean; campaignRules: string; datas: Partial<Record<Rules, BuilderData>>; cards: Partial<Record<Rules, ClassCard[]>>;
   feats: Partial<Record<Rules, Record<string, string>>>; defaultMethod: ScoreMethod;
+  /** the campaign's house rules: multiclassing allowed, HP on level up rolled, the party's level */
+  multiclass: boolean; rollHp: boolean; partyLevel: number | null;
 }) {
   const rulesOptions: Rules[] = campaignRules === "mixed" ? ["2024", "2014"] : [campaignRules === "2014" ? "2014" : "2024"];
   const fresh = (rules: Rules): Saved => {
     const d = blankDraft(rules);
-    return { d: { ...d, method: defaultMethod, base: defaultMethod === "standard" ? suggestedArray([...ABILITIES]) : d.base, forMe: !isDm }, step: "class", rolled: [] };
+    return { d: { ...d, method: defaultMethod, base: defaultMethod === "standard" ? suggestedArray([...ABILITIES]) : d.base, forMe: !isDm, upHp: rollHp ? "roll" : "average" }, step: "class", rolled: [] };
   };
   // rendered in the browser only (see ClientOnly), so the saved draft can be read right away
   const [state, setState] = useState<Saved>(() => loadSaved(rulesOptions) ?? fresh(rulesOptions[0]));
@@ -57,60 +72,45 @@ export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMetho
   const set = (p: Partial<Draft>) => setState((s) => ({ ...s, d: tidy({ ...s.d, ...p }, datas[(p.rules ?? s.d.rules) as Rules]!) }));
   const go = (step: StepId) => { setState((s) => ({ ...s, step })); if (typeof window !== "undefined") window.scrollTo({ top: 0 }); };
 
-  // ---- the class's level-1 plan comes from the server (it needs the rules data and the spell library)
-  const [plan, setPlan] = useState<Plan | null>(null);
-  const [planErr, setPlanErr] = useState<string | null>(null);
-  const planKey = useMemo(() => {
-    if (!d.cls) return "";
-    const b = baseCharacter(d, data);
-    return JSON.stringify([d.rules, d.cls, b.ability_scores, b.proficiencies.skills, b.spells.known]);
-  }, [d, data]);
-  const asked = useRef("");
-  const stepIndexOfFeatures = 5;
-  const order0: StepId[] = ["class", "species", "background", "abilities", "skills", "features", "spells", "equipment", "details", "review"];
-  const needPlan = !!d.cls && order0.indexOf(state.step) >= stepIndexOfFeatures - 1;
+  // ---- the class levels, feats and spells (loaded once per rule set), then every level is planned right here
+  const [rulesBy, setRulesBy] = useState<Partial<Record<Rules, LevelRules>>>({});
+  const [rulesErr, setRulesErr] = useState<string | null>(null);
+  const lr = rulesBy[d.rules];
   useEffect(() => {
-    if (!needPlan || !planKey || asked.current === planKey) return;
-    asked.current = planKey;
-    setPlanErr(null);
-    planFirstLevel(d).then((r) => {
-      if (asked.current !== planKey) return;
-      if ("error" in r) { setPlanErr(r.error); return; }
-      setPlan(r.plan);
-      // keep only picks that are still offered
-      setState((s) => {
-        const picks: Draft["level"]["picks"] = {};
-        for (const c of r.plan.choices) {
-          const got = (s.d.level.picks[c.key] ?? []).filter((n) => c.options.some((o) => o.name === n) || (c.kind === "subclass" && n.startsWith("custom:")));
-          if (got.length) picks[c.key] = got.slice(0, Math.max(1, c.choose));
-        }
-        return { ...s, d: { ...s.d, level: { ...s.d.level, picks } } };
-      });
-    }).catch(() => setPlanErr("Couldn't load your class's choices. Check your connection and go back and forth once."));
-  }, [needPlan, planKey, d]);
-  const planFits = plan && plan.className === d.cls;
+    if (rulesBy[d.rules]) return;
+    let live = true;
+    builderRules(d.rules).then((r) => {
+      if (!live) return;
+      if ("error" in r) setRulesErr(r.error); else { setRulesErr(null); setRulesBy((m) => ({ ...m, [d.rules]: r })); }
+    }).catch(() => { if (live) setRulesErr("Couldn't load your class's choices. Check your connection and go back and forth once."); });
+    return () => { live = false; };
+  }, [d.rules, rulesBy]);
+  // typing a name or backstory doesn't change any level, so it doesn't plan everything again
+  const planKey = JSON.stringify({ ...d, details: PLAN_DETAILS, forMe: true });
+  const bp = useMemo(() => {
+    const draft = JSON.parse(planKey) as Draft;
+    if (!lr || !draft.cls || !lr.levelData.classes[draft.cls]) return null;
+    try { return planBuild(draft, data, lr.levelData, lr.spells, { multiclass, featText: (n) => featTextFor(draft.rules, n, lr.levelData) }); }
+    catch { return null; }
+  }, [planKey, lr, data, multiclass]);
 
-  const isCaster = planFits ? plan!.choices.some((c) => SPELL_KINDS.has(c.kind)) : !!CLASSES[d.cls]?.spell;
-  const steps: StepId[] = order0.filter((s) => s !== "spells" || isCaster);
+  const order0: StepId[] = ["class", "species", "background", "abilities", "skills", "features", "levels", "spells", "equipment", "details", "review"];
+  const isCaster = bp ? [bp.first, ...bp.steps.map((r) => r.plan)].some((p) => p?.choices.some((c) => c.kind === "cantrips" || c.kind === "spells"))
+    : !!cards[d.rules]?.find((c) => c.name === d.cls)?.spell;
+  const steps: StepId[] = order0.filter((s) => (s !== "spells" || isCaster) && (s !== "levels" || d.targetLevel > 1));
 
   // ---- what's missing, per step
-  const choiceProblems = (kinds: (k: string) => boolean): string[] => {
-    if (!d.cls) return ["Pick a class first."];
-    if (!planFits) return [planErr ?? "Loading your class's choices…"];
-    return activeChoices(plan!, d.level).filter((c) => kinds(c.kind) && !c.optional).flatMap((c) => {
-      const got = d.level.picks[c.key] ?? [];
-      if (c.kind === "subclass") return got[0]?.replace(/^custom:/, "").trim() ? [] : [`${c.title}: pick one.`];
-      return got.length === c.choose ? [] : [`${c.title}: pick ${c.choose} (${got.length} picked).`];
-    });
-  };
+  const waiting = !d.cls ? ["Pick a class first."] : !bp ? [rulesErr ?? "Loading your class's choices…"] : null;
+  const firstMissing = (spell: boolean) => waiting ?? bp!.firstMissing.filter((m) => m.spell === spell).map((m) => (d.targetLevel > 1 ? `Level 1: ${m.text}` : m.text));
   const problems: Record<StepId, string[]> = {
     class: d.cls ? [] : ["Pick a class."],
     species: speciesProblems(d, data),
     background: backgroundProblems(d, data),
     abilities: d.method === "roll" && state.rolled.length < 6 ? ["Roll your scores first."] : [checkBase(d.method, d.base)].filter(Boolean) as string[],
     skills: d.cls ? skillProblems(d, data) : ["Pick a class first."],
-    features: choiceProblems((k) => !SPELL_KINDS.has(k)),
-    spells: choiceProblems((k) => SPELL_KINDS.has(k)),
+    features: firstMissing(false),
+    levels: waiting ?? bp!.steps.flatMap((r) => stepMissing(r, "features")),
+    spells: [...firstMissing(true), ...(bp?.steps.flatMap((r) => stepMissing(r, "spells")) ?? [])],
     equipment: d.cls ? kitProblems(d, data) : ["Pick a class first."],
     details: d.details.name.trim() ? [] : ["Give your character a name."],
     review: [],
@@ -119,19 +119,56 @@ export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMetho
   const idx = Math.max(0, steps.indexOf(state.step));
   const step = steps[idx];
   const here = problems[step];
+  const setUp = (i: number, p: Partial<Draft["ups"][number]>) => set({ ups: d.ups.map((u, j) => (j === i ? { ...u, ...p } : u)) });
 
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [saveErr, setSaveErr] = useState<string | null>(null);
   function save() {
     setSaveErr(null);
     start(async () => {
-      const r = await createFromBuilder(d);
-      if (r?.error) setSaveErr(r.error);
-      else { try { localStorage.removeItem(KEY); } catch { /* fine */ } }
+      // only the picks that are still offered go to the server (it checks everything again)
+      const clean: Draft = bp ? { ...d, level: cleanFor(bp.first, d.level), ups: bp.steps.map((r) => ({ cls: r.cls, answers: r.answers })) } : d;
+      const r = await createFromBuilder({ ...clean, portrait: null });
+      if ("error" in r) { setSaveErr(r.error); return; }
+      // the picture goes up once the character exists (a failed upload doesn't stop anything: it can be added on the sheet)
+      if (d.portrait) { try { await sendPortrait("character", r.id, await (await fetch(d.portrait)).blob()); } catch { /* added later on the sheet */ } }
+      try { localStorage.removeItem(KEY); } catch { /* fine */ }
+      router.push(`/characters/${r.id}`);
     });
   }
 
   const props = { d, set, data, cards: cards[d.rules] ?? [], feats: feats[d.rules] ?? {} };
+  // "Pick for me": one level, or level 1 and then every level in order
+  const pickLevel = (i: number, only?: "spells" | "features") => {
+    const r = bp?.steps[i];
+    if (!lr || !r?.plan) return;
+    setUp(i, { answers: recommend(r.plan, r.answers, r.before, lr.levelData, only) });
+  };
+  const pickFirst = (only?: "spells" | "features") => {
+    if (lr && bp) set({ level: recommend(bp.first, cleanFor(bp.first, d.level), baseCharacter(d, data), lr.levelData, only) });
+  };
+  const pickAll = (only?: "spells" | "features") => {
+    if (!lr || !bp) return;
+    const featText = (n: string) => featTextFor(d.rules, n, lr.levelData);
+    const level = recommend(bp.first, cleanFor(bp.first, d.level), baseCharacter(d, data), lr.levelData, only);
+    const next = planBuild({ ...d, level, details: PLAN_DETAILS }, data, lr.levelData, lr.spells, { multiclass, featText });
+    const start = next.steps[0]?.before;
+    const ups = start ? recommendSteps(start, next.steps.map((r) => ({ cls: r.cls, answers: r.answers })), lr.levelData, lr.spells, { multiclass },
+      (plan, a, c) => recommend(plan, a, c, lr.levelData, only)) : d.ups;
+    set({ level, ups });
+  };
+  /** "Random character": everything filled in (the class you picked, or any), then the review. */
+  const randomize = (keepClass: boolean, keepPicks = false) => {
+    if (!lr) return;
+    const next = randomDraft(d, data, lr.levelData, lr.spells, { multiclass, keepClass, keepPicks, featText: (n) => featTextFor(d.rules, n, lr.levelData) });
+    setState((s) => ({ ...s, d: { ...next, portrait: s.d.portrait ?? null }, step: "review" }));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  };
+  const cardsProps = {
+    plan: bp, onClass: (i: number, cls: string) => setUp(i, { cls, answers: { picks: {}, hp: "average" } }), onAnswers: (i: number, a: Draft["ups"][number]["answers"]) => setUp(i, { answers: a }),
+    onPick: pickLevel, onPickAll: pickAll,
+  };
   return (
     <div className="mt-4">
       {rulesOptions.length > 1 && state.step === "class" && (
@@ -159,17 +196,24 @@ export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMetho
         </ol>
       </nav>
 
+      {d.cls && lr && step !== "review" && all.length > 0 && (
+        <button type="button" onClick={() => randomize(true, true)}
+          className="mt-3 flex min-h-10 items-center gap-1.5 text-sm font-semibold text-accent underline">
+          <span aria-hidden>✦</span> Pick everything still open for me ({all.length} left)
+        </button>
+      )}
       <div className="mt-4">
-        {step === "class" && <ClassStep {...props} />}
+        {step === "class" && <ClassStep {...props} partyLevel={partyLevel} onRandom={lr ? randomize : undefined} />}
         {step === "species" && <SpeciesStep {...props} />}
         {step === "background" && <BackgroundStep {...props} />}
         {step === "abilities" && <AbilityScores {...props} rolled={state.rolled} setRolled={(r) => setState((s) => ({ ...s, rolled: r }))} />}
         {step === "skills" && <SkillsStep {...props} />}
-        {step === "features" && <FeaturesStep {...props} plan={planFits ? plan : null} error={planErr} />}
-        {step === "spells" && <SpellsStep {...props} plan={planFits ? plan : null} />}
+        {step === "features" && <FeaturesStep {...props} plan={bp?.first ?? null} error={bp ? null : rulesErr} onPickAll={() => pickFirst("features")} />}
+        {step === "levels" && <LevelsStep {...props} {...cardsProps} />}
+        {step === "spells" && <SpellsStep {...props} {...cardsProps} />}
         {step === "equipment" && <EquipmentStep {...props} />}
         {step === "details" && <DetailsStep {...props} isDm={isDm} />}
-        {step === "review" && <ReviewStep {...props} plan={planFits ? plan : null} problems={all} goTo={(s) => go(s as StepId)} />}
+        {step === "review" && <ReviewStep {...props} plan={bp} problems={all} goTo={(s) => go(s as StepId)} />}
       </div>
 
       <p className="mt-8 text-center text-xs text-muted">
@@ -187,7 +231,7 @@ export function Builder({ isDm, campaignRules, datas, cards, feats, defaultMetho
               className="h-12 rounded-xl border border-line px-4 font-semibold text-soft disabled:opacity-40">Back</button>
             {step === "review" ? (
               <button type="button" onClick={save} disabled={pending || all.length > 0}
-                className="h-12 flex-1 rounded-xl bg-accent font-bold text-accent-text disabled:opacity-40">{pending ? "Making…" : d.targetLevel > 1 ? `Make character, then level up to ${d.targetLevel}` : "Make character"}</button>
+                className="h-12 flex-1 rounded-xl bg-accent font-bold text-accent-text disabled:opacity-40">{pending ? "Making…" : d.targetLevel > 1 ? `Make my level ${d.targetLevel} character` : "Make character"}</button>
             ) : (
               <button type="button" onClick={() => go(steps[idx + 1])} disabled={here.length > 0}
                 className="h-12 flex-1 rounded-xl bg-accent font-bold text-accent-text disabled:opacity-40">Next: {LABEL[steps[idx + 1]]}</button>

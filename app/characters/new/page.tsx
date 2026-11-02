@@ -53,13 +53,16 @@ async function Content({ searchParams }: { searchParams: SP }) {
   }
 
   const rules: Rules[] = campaignRules === "mixed" ? ["2024", "2014"] : [campaignRules === "2014" ? "2014" : "2024"];
-  const house = ((data?.settings as { house_rules?: { ability_scores?: string } } | null)?.house_rules?.ability_scores ?? "") as string;
+  const settings = (data?.settings ?? null) as { party_level?: number; house_rules?: { ability_scores?: string; multiclassing?: boolean; hp_on_level_up?: string } } | null;
+  const house = (settings?.house_rules?.ability_scores ?? "") as string;
+  const partyLevel = Number(settings?.party_level) >= 1 ? Math.min(20, Math.floor(Number(settings!.party_level))) : null;
   // the SRD plus any books added to the database (lib/books)
-  const books = await Promise.all(rules.map(async (r) => ({ builder: await builderDataFor(r), level: await rulesDataFor(r) })));
+  const books = await Promise.all(rules.map(async (r) => ({ builder: await builderDataFor(r), level: await rulesDataFor(r, campaignId) })));
   const defaultMethod: ScoreMethod = /4d6|roll/i.test(house) ? "roll" : /point/i.test(house) ? "pointbuy" : "standard";
   return (
     <ClientOnly fallback={<div className="mt-5 h-96 animate-pulse rounded-2xl bg-surface" />}>
-      <Builder isDm={isDm} campaignRules={campaignRules} defaultMethod={defaultMethod}
+      <Builder isDm={isDm} campaignRules={campaignRules} defaultMethod={defaultMethod} partyLevel={partyLevel}
+        multiclass={settings?.house_rules?.multiclassing !== false} rollHp={settings?.house_rules?.hp_on_level_up === "roll"}
         datas={Object.fromEntries(rules.map((r, i) => [r, books[i].builder]))}
         cards={Object.fromEntries(rules.map((r, i) => [r, classCards(r, books[i].level)]))}
         feats={Object.fromEntries(rules.map((r, i) => [r, originFeatTexts(r, books[i].level)]))} />

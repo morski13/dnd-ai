@@ -1,4 +1,6 @@
 // Loads one character for the character sheet, as the logged-in user.
+import { homebrewSpells } from "./books/server";
+import { toSpellInfo } from "./campaign-homebrew";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -82,7 +84,12 @@ export async function loadCharacter(id: string) {
 
   const [{ data: spells }, { data: member }, { gear, lib }] = await Promise.all([
     character.spells.known.length
-      ? spellsNamed(character.spells.known).then((data) => ({ data }))
+      ? Promise.all([spellsNamed(character.spells.known), homebrewSpells(character.campaign_id)]).then(([srd, home]) => {
+        // the campaign's homebrew spells this character knows roll like any other
+        const want = new Set((character.spells.known ?? []).map((n) => n.toLowerCase()));
+        const have = new Set(srd.map((x) => String(x.name).toLowerCase()));
+        return { data: [...srd, ...home.filter((h) => want.has(h.name.toLowerCase()) && !have.has(h.name.toLowerCase())).map(toSpellInfo)] };
+      })
       : Promise.resolve({ data: [] }),
     supabase.from("campaign_members").select("role")
       .eq("campaign_id", character.campaign_id).eq("user_id", userId).maybeSingle(),
@@ -141,7 +148,11 @@ export async function getCharacterSheet(id: string) {
   const gear = await getGear(supabase, character.id, userId, canEdit);
   // a saved level-up plan (needs 21-level-plans.sql; without it there's simply no plan)
   const { data: planRow } = canEdit ? await supabase.from("characters").select("level_plan").eq("id", id).maybeSingle() : { data: null };
-  const levelPlan = ((planRow as { level_plan?: { className: string } | null } | null)?.level_plan?.className) ?? null;
+  const savedPlan = (planRow as { level_plan?: { className?: string; kind?: string; to?: number } | null } | null)?.level_plan ?? null;
+  const levelPlan = savedPlan?.className ?? (savedPlan?.kind === "multi" ? `up to level ${savedPlan.to}` : null);
+  // the DM's "the party levels up" (campaign settings): the sheet offers the level-up until you get there
+  const { data: camp } = canEdit ? await supabase.from("campaigns").select("settings").eq("id", character.campaign_id).maybeSingle() : { data: null };
+  const levelUpTo = Number((camp?.settings as { level_up?: { to?: number } } | null)?.level_up?.to) || null;
 
   // the sheet's own look (needs 22-sheet-style.sql; without it the sheet keeps the usual look)
   const { data: styleRow } = await supabase.from("characters").select("sheet_style").eq("id", id).maybeSingle();
@@ -153,7 +164,7 @@ export async function getCharacterSheet(id: string) {
   const portrait = portraitStamp ? `/api/portrait/character/${id}?v=${portraitStamp}` : null;
 
   const live = await runningSession(supabase, character.campaign_id, userId);
-  return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live };
+  return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live, levelUpTo };
 }
 
 /** The campaign's running session for the sheet's "Track this game" card (a stale player session counts as ended). */

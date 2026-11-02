@@ -11,6 +11,7 @@ import { shortRest, type RestState } from "@/lib/rests";
 import { createClient } from "@/lib/supabase/server";
 import { liveState, touchCombat } from "@/lib/roll-service";
 import { isThemeId } from "@/lib/themes";
+import { planQuick, type QuickLine, type Who } from "@/lib/quick-log";
 
 type Fail = { error: string };
 
@@ -187,4 +188,67 @@ export async function setSessionTheme(theme: string): Promise<{ error: string } 
   const { data } = await admin.from("campaigns").select("settings").eq("id", campaignId).single();
   await admin.from("campaigns").update({ settings: { ...((data?.settings ?? {}) as object), session_theme: theme } }).eq("id", campaignId);
   // players pick it up on their next refresh (every few seconds)
+}
+
+/**
+ * DM quick log: one line for a table that rolls without phones. Saves the same roll events and HP change as a
+ * normal roll (through applyHp), so the recap and stats count it. Returns what to take back with "Undo".
+ */
+export async function quickLog(line: QuickLine): Promise<Fail | { rollIds: string[]; effectIds: string[]; text: string; applied: Applied | null }> {
+  refresh();
+  const { userId, campaignId, isDm } = await me();
+  if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
+  const plan = planQuick(line);
+  if ("error" in plan) return plan;
+  const admin = createAdminClient();
+  // everyone named must be in this campaign
+  const ids = [line.who, line.target].filter(Boolean) as Who[];
+  for (const w of ids) {
+    if (!w.characterId && !w.monsterId) continue;
+    const table = w.characterId ? "characters" : "monsters";
+    const { data } = await admin.from(table).select("campaign_id").eq("id", (w.characterId ?? w.monsterId)!).maybeSingle();
+    if (data?.campaign_id !== campaignId) return { error: "Not in this campaign." };
+  }
+  const { session, combat } = await liveState(admin, campaignId);
+  const base = { campaign_id: campaignId, session_id: session?.id ?? null, combat_id: combat?.id ?? null, round: combat?.round ?? null, rolled_by: userId,
+    character_id: line.who.characterId ?? null, monster_id: line.who.characterId ? null : line.who.monsterId ?? null };
+  const rollIds: string[] = [];
+  let parent: string | null = null;
+  for (const r of plan.rolls) {
+    const row: Record<string, unknown> = { ...base, roll_type: r.roll_type, source: r.source, expression: "typed", dice: [], total: r.total, success: r.success,
+      parent_roll_id: r.parent ? parent : null, target_character_id: r.target?.characterId ?? null, target_monster_id: r.target?.monsterId ?? null };
+    let res: { data: { id: string } | null; error: { message: string } | null } = await admin.from("roll_events").insert({ ...row, physical: true }).select("id").single();
+    if (res.error && /physical/.test(res.error.message)) res = await admin.from("roll_events").insert(row).select("id").single();
+    if (res.error || !res.data) return { error: res.error?.message ?? "Couldn't save." };
+    rollIds.push(res.data.id);
+    if (r.roll_type === "attack") parent = res.data.id;
+  }
+  let applied: Applied | null = null;
+  const effectIds: string[] = [];
+  if (plan.hp) {
+    applied = await applyHp(admin, {
+      campaignId, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null,
+      kind: plan.hp.kind, total: plan.hp.amount, target: plan.hp.target, createdBy: userId,
+      rollId: rollIds[rollIds.length - 1] ?? null, actor: line.kind === "took" ? null : line.who,
+    });
+    if (applied?.effectId) effectIds.push(applied.effectId);
+  }
+  const text = [plan.rolls.map((r) => `${r.roll_type} ${r.total}${r.success === true ? " hit" : r.success === false ? " miss" : ""}`).join(", "),
+    plan.hp ? `${plan.hp.kind === "heal" ? "+" : "−"}${plan.hp.amount} HP${applied ? ` ${applied.target.name}` : ""}` : ""].filter(Boolean).join(" · ");
+  return { rollIds, effectIds, text, applied: applied ? maskFor(applied, true) : null };
+}
+
+/** Undo the newest quick-log line: its HP change goes back and its rolls are removed. */
+export async function undoQuickLog(rollIds: string[], effectIds: string[]): Promise<Fail | { ok: true }> {
+  refresh();
+  const { userId, campaignId, isDm } = await me();
+  if (!userId || !campaignId || !isDm) return { error: "Only the DM can do that." };
+  const admin = createAdminClient();
+  for (const id of (effectIds ?? []).slice(0, 5)) {
+    const u = await adjustHp(admin, id, "undo", userId);
+    if ("error" in u && !/Already undone/.test(u.error)) return u;
+  }
+  const ids = (rollIds ?? []).slice(0, 5);
+  if (ids.length) await admin.from("roll_events").delete().in("id", ids).eq("campaign_id", campaignId).eq("rolled_by", userId);
+  return { ok: true };
 }

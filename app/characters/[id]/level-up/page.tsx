@@ -5,11 +5,13 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { loadCharacter } from "@/lib/character-data";
 import { levelChoices, planLevelUp, type LevelChar } from "@/lib/levelup/engine";
+import { isMulti, toughness } from "@/lib/levelup/multi";
 import { loadSpellLite } from "@/lib/levelup/server";
 import { totalLevel } from "@/lib/rules";
 import { BottomNav } from "../../../components/bottom-nav";
 import type { SavedPlan } from "./actions";
 import { LevelHistory, type HistoryEntry } from "./history";
+import { LevelsPlanner, TargetLevel } from "./levels-plan";
 import { LevelUpWizard } from "./wizard";
 import { rulesDataFor } from "@/lib/books/server";
 
@@ -36,13 +38,16 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
   if (!canEdit) redirect(`/characters/${id}`);
 
   const c = character as unknown as LevelChar;
-  const data = await rulesDataFor(character.rule_set);
+  const data = await rulesDataFor(character.rule_set, character.campaign_id);
   const choice = levelChoices(c, data);
   // the history and a saved plan (each needs its SQL file; the page works without them)
   const { data: logRow } = await supabase.from("characters").select("level_log").eq("id", id).maybeSingle();
   const { data: planRow } = await supabase.from("characters").select("level_plan").eq("id", id).maybeSingle();
   const entries = ((logRow?.level_log as HistoryEntry[] | null) ?? []).map(({ className, level, kind, at, summary }) => ({ className, level, kind, at, summary }));
-  const saved = (planRow?.level_plan as SavedPlan | null) ?? null;
+  const savedAny = (planRow?.level_plan as unknown) ?? null;
+  const multiPlan = isMulti(savedAny) ? savedAny : null;
+  const saved = !multiPlan && savedAny && typeof (savedAny as SavedPlan).className === "string" ? savedAny as SavedPlan : null;
+  const total = totalLevel(character.class_levels);
   const history = <LevelHistory characterId={id} entries={entries} total={totalLevel(character.class_levels)}
     classes={character.class_levels.map((l) => ({ className: l.class, level: l.level }))} />;
   const wanted = typeof sp.class === "string" ? sp.class : null;
@@ -52,6 +57,33 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
     return <>{back}<h1 className="mt-2 font-heading text-3xl font-bold">Level 20</h1><p className="mt-3 text-soft">{character.name} is already at the highest level.</p>
       {history}</>;
   }
+
+  // "Level up to N": several levels at once (or a saved plan for them)
+  const to = typeof sp.to === "string" ? Math.min(20, Math.floor(Number(sp.to))) : NaN;
+  if (to > total + 1) {
+    const { data: camp } = await supabase.from("campaigns").select("settings").eq("id", character.campaign_id).maybeSingle();
+    const house = (camp?.settings as { house_rules?: { multiclassing?: boolean; hp_on_level_up?: string } } | null)?.house_rules ?? {};
+    const start: LevelChar = {
+      class_levels: c.class_levels, ability_scores: c.ability_scores, proficiencies: c.proficiencies ?? {}, features: c.features ?? [],
+      spells: c.spells ?? {}, resources: c.resources ?? [], hp_max: c.hp_max, hp_current: c.hp_current, rule_set: c.rule_set,
+    };
+    return (
+      <>
+        {back}
+        <LevelsPlanner characterId={id} name={character.name} start={start} data={data} spells={await loadSpellLite(supabase, character.campaign_id)} to={to}
+          multiclass={house.multiclassing !== false} defaultHp={house.hp_on_level_up === "roll" ? "roll" : "average"}
+          saved={multiPlan ?? (saved && data.classes[saved.className]
+            ? { kind: "multi", to, hp: saved.hp, savedAt: saved.savedAt, ups: [{ cls: saved.className, answers: { picks: saved.picks, asi: saved.asi, hp: saved.hp } }] }
+            : null)} />
+        {history}
+      </>
+    );
+  }
+  const planLink = multiPlan && multiPlan.to > total + 1 && (
+    <Link href={`/characters/${id}/level-up?to=${multiPlan.to}`} className="mt-3 block rounded-xl border border-success-line bg-success-bg px-3 py-2 text-sm text-success">
+      Your saved plan: up to level {multiPlan.to}. Open it ›
+    </Link>
+  );
 
   // Multiclassed (or asked to): first say which class goes up.
   const className = wanted && data.classes[wanted] ? wanted
@@ -63,7 +95,9 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
       <>
         {back}
         <h1 className="mt-2 font-heading text-3xl font-bold">Level up</h1>
-        <p className="mt-1 text-soft">{character.name} is level {totalLevel(character.class_levels)}. Which class goes up a level?</p>
+        <p className="mt-1 text-soft">{character.name} is level {total}. Which class goes up a level?</p>
+        <TargetLevel characterId={id} current={total} to={total + 1} />
+        {planLink}
         {saved && data.classes[saved.className] && (
           <Link href={`/characters/${id}/level-up?class=${encodeURIComponent(saved.className)}`} className="mt-3 block rounded-xl border border-success-line bg-success-bg px-3 py-2 text-sm text-success">
             Your saved plan: {saved.className}. Open it ›
@@ -106,14 +140,13 @@ async function LevelUp({ params, searchParams }: { params: Promise<{ id: string 
     );
   }
 
-  const plan = planLevelUp(c, className, data, await loadSpellLite(supabase));
+  const plan = planLevelUp(c, className, data, await loadSpellLite(supabase, character.campaign_id));
   return (
     <>
       {back}
-      <LevelUpWizard characterId={id} plan={plan} scores={character.ability_scores as Record<string, number>}
+      <LevelUpWizard header={<><TargetLevel characterId={id} current={total} to={total + 1} />{planLink}</>} characterId={id} plan={plan} scores={character.ability_scores as Record<string, number>}
         hp={{ max: character.hp_max ?? 0, cur: character.hp_current ?? 0 }} multi={character.class_levels.length > 1 || plan.isNew}
-        saved={saved && saved.className === className ? saved : null}
-        goal={typeof sp.to === "string" && Number(sp.to) >= 2 ? Math.min(20, Math.floor(Number(sp.to))) : undefined} />
+        saved={saved && saved.className === className ? saved : null} extraHp={toughness(c)} />
       {history}
     </>
   );

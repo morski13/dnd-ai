@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { loadCharacter } from "@/lib/character-data";
 import { roll } from "@/lib/dice";
 import { applyLevelUp, checkAnswers, levelDown, planLevelUp, type LevelChar } from "@/lib/levelup/engine";
+import { classOptions, toughness, type LevelStep, type SavedMulti } from "@/lib/levelup/multi";
 import { loadSpellLite } from "@/lib/levelup/server";
 import type { Answers } from "@/lib/levelup/types";
 import { totalLevel } from "@/lib/rules";
@@ -13,6 +14,7 @@ import { totalLevel } from "@/lib/rules";
 type Fail = { error: string };
 export type LogEntry = { at: string; className: string; level: number; kind?: "up" | "down"; summary: string[]; before: Record<string, unknown> };
 export type SavedPlan = Answers & { className: string; savedAt: string };
+
 const SNAP = ["class_levels", "ability_scores", "hp_max", "hp_current", "proficiencies", "features", "spells", "resources"] as const;
 const sqlHint = (m?: string) => /level_log/.test(m ?? "") ? "Run supabase/20-level-up.sql in Supabase first."
   : /level_plan/.test(m ?? "") ? "Run supabase/21-level-plans.sql in Supabase first." : m ?? "Couldn't save.";
@@ -33,10 +35,10 @@ async function planFor(characterId: string, className: string) {
   const r = await editable(characterId);
   if (!r) return { error: "You can only level up your own character." } as Fail;
   if (totalLevel(r.character.class_levels) >= 20) return { error: "Level 20 is the highest level." } as Fail;
-  const data = await rulesDataFor(r.character.rule_set);
+  const data = await rulesDataFor(r.character.rule_set, r.character.campaign_id);
   if (!data.classes[className]) return { error: "Pick a class." } as Fail;
   const c = r.character as unknown as LevelChar;
-  return { ...r, c, data, plan: planLevelUp(c, className, data, await loadSpellLite(r.supabase)) };
+  return { ...r, c, data, plan: planLevelUp(c, className, data, await loadSpellLite(r.supabase, r.character.campaign_id)) };
 }
 
 export async function confirmLevelUp(characterId: string, className: string, answers: Answers): Promise<Fail | { summary: string[]; hpRoll: { die: number; value: number } | null }> {
@@ -47,6 +49,7 @@ export async function confirmLevelUp(characterId: string, className: string, ans
   if (problem) return { error: problem };
   const hpRoll = clean.hp === "roll" ? roll(`1d${p.plan.hitDie}`).total : null;
   const { patch, summary } = applyLevelUp(p.c, p.plan, clean, hpRoll, p.data);
+  if (toughness(p.c)) { patch.hp_max += 1; patch.hp_current += 1; summary.push("Dwarven Toughness: +1 hit point."); }
   const { log } = await readLog(p.supabase, characterId);
   const entry: LogEntry = { at: new Date().toISOString(), className, level: p.plan.toLevel, kind: "up", summary, before: snapshot(p.character) };
   const { error } = await p.supabase.from("characters").update({ ...patch, level_log: [...log, entry].slice(-10) }).eq("id", characterId);
@@ -66,6 +69,7 @@ export async function previewLevelUp(characterId: string, className: string, ans
   const problem = checkAnswers(p.plan, clean, p.c, p.data);
   if (problem) return { error: problem };
   const { patch, summary } = applyLevelUp(p.c, p.plan, clean, null, p.data);
+  if (toughness(p.c)) patch.hp_max += 1;
   const c = p.c;
   const classLine = (ls: { class: string; level: number; subclass?: string }[]) => ls.map((l) => `${l.class} ${l.level}${l.subclass ? ` (${l.subclass})` : ""}`).join(" / ");
   const slotLine = (s: Record<string, number> | undefined) => Object.entries(s ?? {}).filter(([, n]) => n > 0).map(([k, n]) => `${n}×L${k}`).join(" ") || "none";
@@ -85,7 +89,7 @@ export async function previewLevelUp(characterId: string, className: string, ans
 export async function saveLevelPlan(characterId: string, className: string, answers: Answers): Promise<Fail | { savedAt: string }> {
   const r = await editable(characterId);
   if (!r) return { error: "You can only plan for your own character." };
-  if (!(await rulesDataFor(r.character.rule_set)).classes[className]) return { error: "Pick a class." };
+  if (!(await rulesDataFor(r.character.rule_set, r.character.campaign_id)).classes[className]) return { error: "Pick a class." };
   const savedAt = new Date().toISOString();
   const plan: SavedPlan = { ...cleanAnswers(answers), className, savedAt };
   const { error } = await r.supabase.from("characters").update({ level_plan: plan }).eq("id", characterId);
@@ -130,7 +134,7 @@ export async function undoLevelUp(characterId: string): Promise<Fail | { undone:
 export async function levelDownClass(characterId: string, className: string): Promise<Fail | { notes: string[] }> {
   const r = await editable(characterId);
   if (!r) return { error: "You can only change your own character." };
-  const data = await rulesDataFor(r.character.rule_set);
+  const data = await rulesDataFor(r.character.rule_set, r.character.campaign_id);
   let res;
   try { res = levelDown(r.character as unknown as LevelChar, className, data); } catch (e) { return { error: (e as Error).message }; }
   const { log } = await readLog(r.supabase, characterId);
@@ -140,4 +144,71 @@ export async function levelDownClass(characterId: string, className: string): Pr
   if (error) return { error: sqlHint(error.message) };
   revalidatePath(`/characters/${characterId}`);
   return { notes: res.notes };
+}
+
+async function multiclassAllowed(supabase: Awaited<ReturnType<typeof loadCharacter>>["supabase"], campaignId: string | null | undefined) {
+  if (!campaignId) return true;
+  const { data } = await supabase.from("campaigns").select("settings").eq("id", campaignId).maybeSingle();
+  return (data?.settings as { house_rules?: { multiclassing?: boolean } } | null)?.house_rules?.multiclassing !== false;
+}
+
+/**
+ * Several levels at once ("Level up to N"): every level is checked and applied in order, each with its own
+ * history entry, so "Undo" still takes one level off at a time.
+ */
+export async function confirmLevels(characterId: string, steps: LevelStep[], hp: "average" | "roll"): Promise<Fail | {
+  levels: { className: string; level: number; total: number; summary: string[] }[]; rolls: { die: number; value: number }[];
+}> {
+  const r = await editable(characterId);
+  if (!r) return { error: "You can only level up your own character." };
+  if (!Array.isArray(steps) || !steps.length) return { error: "Pick at least one level." };
+  const data = await rulesDataFor(r.character.rule_set, r.character.campaign_id);
+  const spells = await loadSpellLite(r.supabase, r.character.campaign_id);
+  const multiclass = await multiclassAllowed(r.supabase, (r.character as { campaign_id?: string | null }).campaign_id);
+  let row: Record<string, unknown> = { ...r.character };
+  const { log, error: logErr } = await readLog(r.supabase, characterId);
+  if (logErr) return { error: sqlHint(logErr.message) };
+  const entries: LogEntry[] = [];
+  const levels: { className: string; level: number; total: number; summary: string[] }[] = [];
+  const rolls: { die: number; value: number }[] = [];
+  for (const step of steps.slice(0, 19)) {
+    const c = row as unknown as LevelChar;
+    const total = totalLevel(c.class_levels);
+    if (total >= 20) return { error: "Level 20 is the highest level." };
+    const opt = classOptions(c, data, multiclass).find((o) => o.name === step?.cls);
+    if (!opt || !data.classes[step.cls]) return { error: `Level ${total + 1}: pick a class.` };
+    if (!opt.ok) return { error: `Level ${total + 1}: ${step.cls}: ${opt.why}` };
+    const plan = planLevelUp(c, step.cls, data, spells);
+    const answers = { ...cleanAnswers(step.answers), hp };
+    const problem = checkAnswers(plan, answers, c, data);
+    if (problem) return { error: `Level ${total + 1} (${step.cls}): ${problem}` };
+    const hpRoll = hp === "roll" ? roll(`1d${plan.hitDie}`).total : null;
+    if (hpRoll != null) rolls.push({ die: plan.hitDie, value: hpRoll });
+    const { patch, summary } = applyLevelUp(c, plan, answers, hpRoll, data);
+    if (toughness(c)) { patch.hp_max += 1; patch.hp_current += 1; summary.push("Dwarven Toughness: +1 hit point."); }
+    entries.push({ at: new Date().toISOString(), className: step.cls, level: plan.toLevel, kind: "up", summary, before: snapshot(row) });
+    levels.push({ className: step.cls, level: plan.toLevel, total: total + 1, summary });
+    row = { ...row, ...patch };
+  }
+  const patch = Object.fromEntries(SNAP.map((k) => [k, row[k]]));
+  const { error } = await r.supabase.from("characters").update({ ...patch, level_log: [...log, ...entries].slice(-10) }).eq("id", characterId);
+  if (error) return { error: sqlHint(error.message) };
+  await r.supabase.from("characters").update({ level_plan: null }).eq("id", characterId);
+  revalidatePath(`/characters/${characterId}`);
+  return { levels, rolls };
+}
+
+/** Save the choices for several levels now and level up later. */
+export async function saveLevelsPlan(characterId: string, to: number, ups: LevelStep[], hp: "average" | "roll"): Promise<Fail | { savedAt: string }> {
+  const r = await editable(characterId);
+  if (!r) return { error: "You can only plan for your own character." };
+  const savedAt = new Date().toISOString();
+  const plan: SavedMulti = {
+    kind: "multi", to: Math.max(2, Math.min(20, Math.floor(to) || 2)), hp: hp === "roll" ? "roll" : "average", savedAt,
+    ups: (Array.isArray(ups) ? ups : []).slice(0, 19).map((u) => ({ cls: String(u?.cls ?? "").slice(0, 40), answers: cleanAnswers(u?.answers) })),
+  };
+  const { error } = await r.supabase.from("characters").update({ level_plan: plan }).eq("id", characterId);
+  if (error) return { error: sqlHint(error.message) };
+  revalidatePath(`/characters/${characterId}`);
+  return { savedAt };
 }

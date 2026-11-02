@@ -397,3 +397,46 @@ export async function startSavedFight(sessionId: string, encounterId: string): P
   ];
   if (rows.length) await supabase.from("combatants").insert(rows);
 }
+
+/**
+ * Player fight mode at the table: join the session's running fight, or start one ("Table fight") when there's none,
+ * so this character's rolls carry the fight (combat_id) and the recap shows it.
+ */
+export async function joinTableFight(characterId: string): Promise<Fail | { combatId: string; started: boolean }> {
+  refresh();
+  const { userId, campaignId, isDm } = await me();
+  if (!userId || !campaignId) return { error: "Join a campaign first." };
+  const admin = createAdminClient();
+  const { data: ch } = await admin.from("characters").select("id, name, campaign_id, owner_user_id, ability_scores").eq("id", characterId).maybeSingle();
+  if (!ch || ch.campaign_id !== campaignId || (!isDm && ch.owner_user_id !== userId)) return { error: "That isn't your character." };
+  const { session, combat } = await liveState(admin, campaignId);
+  if (!session) return { error: "Start Track game first: a fight belongs to a session." };
+  let combatId = combat?.id ?? null;
+  let started = false;
+  if (!combatId) {
+    const { data: c, error } = await admin.from("combats").insert({ campaign_id: campaignId, session_id: session.id, name: "Table fight", round: 1, turn_index: 0 }).select("id").single();
+    if (error || !c) return { error: error?.message ?? "Couldn't start the fight." };
+    combatId = c.id as string; started = true;
+  }
+  const { data: there } = await admin.from("combatants").select("id").eq("combat_id", combatId).eq("character_id", characterId).maybeSingle();
+  if (!there) await admin.from("combatants").insert({ combat_id: combatId, campaign_id: campaignId, character_id: characterId, name: ch.name,
+    dex_mod: Math.floor((((ch.ability_scores as Record<string, number> | null)?.DEX ?? 10) - 10) / 2) });
+  return { combatId, started };
+}
+
+/** Player turns fight mode off: a "Table fight" (one players started) ends once nobody has rolled in it for 10 minutes or everyone's left. */
+export async function leaveTableFight(characterId: string): Promise<Fail | { ended: boolean }> {
+  refresh();
+  const { userId, campaignId } = await me();
+  if (!userId || !campaignId) return { error: "Join a campaign first." };
+  const admin = createAdminClient();
+  const { combat } = await liveState(admin, campaignId);
+  if (!combat) return { ended: false };
+  const { data: c } = await admin.from("combats").select("id, name").eq("id", combat.id).maybeSingle();
+  if (c?.name !== "Table fight") return { ended: false }; // the DM's fights are the DM's to end
+  const since = new Date(Date.now() - 10 * 60_000).toISOString();
+  const { count } = await admin.from("roll_events").select("id", { count: "exact", head: true }).eq("combat_id", combat.id).neq("character_id", characterId).gt("created_at", since);
+  if (count) return { ended: false };
+  await admin.from("combats").update({ ended_at: new Date().toISOString() }).eq("id", combat.id);
+  return { ended: true };
+}

@@ -8,6 +8,7 @@ import { rulesData } from "../levelup/data";
 import type { BuilderData, Rules } from "../builder/types";
 import type { RulesData } from "../levelup/types";
 import { mergeBuilder, mergeRules, type BookRow, type BookSpell } from "./merge";
+import { toBookRows, type HomebrewRow, type SpellForm } from "../campaign-homebrew";
 
 /** Every added row (subclasses, species, backgrounds, feats) and the book spells' class lists. Empty when no book is added yet. */
 export async function bookContent(): Promise<{ rows: BookRow[]; spells: BookSpell[] }> {
@@ -35,11 +36,24 @@ export function rulesWith(rules: string | null | undefined, book: { rows: BookRo
   return mergeRules(rulesData(rules === "2014" ? "2014" : "2024"), book.rows, book.spells);
 }
 
-/** Level-up rules data for a rule set, with the books' subclasses and feats. */
-export async function rulesDataFor(rules: string | null | undefined): Promise<RulesData> {
+/** Level-up rules data for a rule set, with the books' subclasses and feats (and the campaign's approved homebrew). */
+export async function rulesDataFor(rules: string | null | undefined, campaignId?: string | null): Promise<RulesData> {
   const base = rulesData(rules === "2014" ? "2014" : "2024");
-  const { rows, spells } = await bookContent();
-  return mergeRules(base, rows, spells);
+  const [{ rows, spells }, home] = await Promise.all([bookContent(), campaignId ? campaignHomebrew(campaignId) : Promise.resolve([])]);
+  return mergeRules(base, [...rows, ...toBookRows(home)], spells);
+}
+
+/** The campaign's approved homebrew made in the app (31-campaign-homebrew.sql; nothing before it's run). */
+export async function campaignHomebrew(campaignId: string): Promise<HomebrewRow[]> {
+  const { data, error } = await createAdminClient().from("campaign_homebrew")
+    .select("id, kind, rules, parent, name, data, status, requested_by, dm_note").eq("campaign_id", campaignId).eq("status", "approved");
+  return error ? [] : ((data ?? []) as HomebrewRow[]);
+}
+
+/** Approved homebrew spells, for the spell lists (SpellLite) and the sheet (SpellInfo). */
+export async function homebrewSpells(campaignId: string | null | undefined): Promise<SpellForm[]> {
+  if (!campaignId) return [];
+  return (await campaignHomebrew(campaignId)).filter((r) => r.kind === "spell").map((r) => r.data as SpellForm);
 }
 
 /** Builder data for a rule set, with the books' species and backgrounds. */

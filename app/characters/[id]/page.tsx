@@ -19,12 +19,12 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
 
 async function Sheet({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live } = await getCharacterSheet(id);
+  const { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live, levelUpTo } = await getCharacterSheet(id);
   return (
     <LookProvider characterId={character.id} initial={sheetStyle}>
       <main className="mx-auto w-full max-w-md md:max-w-3xl md:px-8 lg:max-w-6xl lg:px-10 flex-1 px-5 pt-8 pb-60">
         <Zoomed>
-          <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} levelPlan={levelPlan} portrait={portrait} live={live} />
+          <CharacterSheet character={character} canEdit={canEdit} library={library} featText={featText} gear={gear} levelPlan={levelPlan} portrait={portrait} live={live} levelUpTo={levelUpTo} />
         </Zoomed>
       </main>
       <BottomNav active="characters" />

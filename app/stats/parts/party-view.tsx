@@ -57,7 +57,7 @@ export function PartyView({ d }: { d: StatsView }) {
           </div>
 
           <Section title="Awards" sub={d.scope === "session" ? `Session ${d.session?.number}` : "Whole campaign"}>
-            <Awards awards={d.awards} colorOf={colorOf} />
+            <Awards awards={d.awards} colorOf={colorOf} campaign={d.campaignName} />
           </Section>
 
           <Section title="Side by side">

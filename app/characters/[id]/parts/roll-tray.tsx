@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { signed, type Advantage } from "@/lib/dice";
 import type { SavedRoll } from "../actions";
 
-export function RollTray({ last, error, pending, advantage, setAdvantage, damage, practice = false, setPractice }: {
+export function RollTray({ last, error, pending, advantage, setAdvantage, damage, practice = false, setPractice, realDice = false, setRealDice, onUndoReal }: {
   last: (SavedRoll & { after?: string | null }) | null;
   error: string | null;
   pending: boolean;
@@ -13,6 +13,9 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
   damage: { label: string; onClick: () => void } | null;
   practice?: boolean;                    // practice rolls: worked out, never saved
   setPractice?: (on: boolean) => void;
+  realDice?: boolean;                    // "I use real dice": every roll button asks what your dice show
+  setRealDice?: (on: boolean) => void;
+  onUndoReal?: () => void;               // typed a wrong number: take the last real-dice roll back (2 minutes)
 }) {
   // Hide / show: remembered on this device. A roll that needs a next step (damage, a Wild Surge effect) opens it again.
   const hidden = useSyncExternalStore(subscribe, () => readHidden(), () => false);
@@ -64,6 +67,18 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
             </span>
           </button>
         )}
+        {setRealDice && !practice && (
+          <button type="button" role="switch" aria-checked={realDice} disabled={pending} onClick={() => setRealDice(!realDice)}
+            className="mb-2 flex w-full items-center justify-between gap-3 text-left">
+            <span className="min-w-0">
+              <span className={`block text-sm font-semibold ${realDice ? "text-accent" : ""}`}>I use real dice</span>
+              <span className="block truncate text-xs text-muted">{realDice ? "Tap a roll, type what your dice show. It counts like any roll." : "Off: the app rolls"}</span>
+            </span>
+            <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${realDice ? "bg-accent" : "bg-line"}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${realDice ? "left-6" : "left-1"}`} />
+            </span>
+          </button>
+        )}
         {error && <p className="mb-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
 
         <div className="flex items-center gap-3">
@@ -74,7 +89,7 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
               <>
                 {last.after && <p className="truncate text-xs text-accent">After {last.after}:</p>}
                 <p className="truncate text-xs uppercase tracking-[0.12em] text-muted">
-                  {last.label}{last.practice ? " · practice, not saved" : last.inSession ? " · saved to session" : " · saved"}
+                  {last.label}{last.physical ? " · real dice" : ""}{last.practice ? " · practice, not saved" : last.offline ? " · offline, sent later" : last.inSession ? " · saved to session" : " · saved"}
                 </p>
                 <p className="truncate text-sm text-soft">{breakdown(last)}</p>
               </>
@@ -109,6 +124,9 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
         )}
         {last && !pending && last.self && <p className="mt-2 text-sm text-soft">{last.self.note}</p>}
 
+        {last?.physical && !last.offline && !pending && onUndoReal && (
+          <button type="button" onClick={onUndoReal} className="mt-2 inline-flex min-h-10 items-center text-sm text-muted underline">Typo? Take it back and type again</button>
+        )}
         {damage && !pending && (
           <button type="button" onClick={damage.onClick} className="mt-2 h-11 w-full rounded-xl border border-danger-line bg-danger-bg text-sm font-bold text-danger">
             {damage.label}

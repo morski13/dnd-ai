@@ -1,6 +1,7 @@
 // Small building blocks shared by the stats views.
 import type { Award } from "@/lib/stats/compute";
 import { CountUp } from "../../components/count-up";
+import { ShareButton } from "../../components/share-card";
 
 export const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 export const avg = (x: number | null) => (x === null ? "—" : x.toFixed(1));
@@ -29,7 +30,7 @@ export function Tiles({ items }: { items: { label: string; value: string | numbe
   );
 }
 
-export function Awards({ awards, colorOf }: { awards: Award[]; colorOf: (name: string) => string | undefined }) {
+export function Awards({ awards, colorOf, campaign = "" }: { awards: Award[]; colorOf: (name: string) => string | undefined; campaign?: string }) {
   if (!awards.length) return <p className="text-sm text-muted">No awards yet. Roll some dice!</p>;
   return (
     <ul className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
@@ -47,6 +48,7 @@ export function Awards({ awards, colorOf }: { awards: Award[]; colorOf: (name: s
             ))}
           </p>
           <p className="text-xs text-soft">{a.value}</p>
+          <div className="mt-2"><ShareButton card={{ kicker: a.blurb, big: a.value.split(" ")[0], emoji: a.emoji, title: a.title, sub: a.value, name: a.winners.join(" & "), campaign }} /></div>
         </li>
       ))}
     </ul>

@@ -75,7 +75,7 @@ export function CharacterView({ d }: { d: StatsView }) {
 
           {won.length > 0 && (
             <Section title="Awards won">
-              <Awards awards={won} colorOf={() => c.color} />
+              <Awards awards={won} colorOf={() => c.color} campaign={d.campaignName} />
             </Section>
           )}
         </>

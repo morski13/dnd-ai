@@ -1,4 +1,5 @@
 // Loads the characters in your campaign, as the logged-in user.
+import { toConfirm } from "./sheet-confirm";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,8 @@ export type CharacterCard = {
   playerName: string | null;
   ownerId: string | null;
   ownerName: string | null;
+  /** numbers from the paper sheet still to confirm ("2 to confirm") */
+  toConfirm: number;
 };
 
 export async function getCharactersData() {
@@ -38,7 +41,7 @@ export async function getCharactersData() {
 
   const { data: rows } = await supabase
     .from("characters")
-    .select("id, name, species, class_levels, hp_max, ac, speed, player_name, owner_user_id, owner:profiles(display_name)")
+    .select("id, name, species, class_levels, hp_max, ac, speed, sheet_values, player_name, owner_user_id, owner:profiles(display_name)")
     .eq("campaign_id", membership.campaign_id)
     .order("name");
 
@@ -53,6 +56,7 @@ export async function getCharactersData() {
     playerName: r.player_name,
     ownerId: r.owner_user_id,
     ownerName: (r.owner as unknown as { display_name: string } | null)?.display_name ?? null,
+    toConfirm: toConfirm({ ac: r.ac, speed: r.speed, hp_max: r.hp_max, sheet_values: r.sheet_values as Record<string, number> | null }).length,
   }));
 
   return {
