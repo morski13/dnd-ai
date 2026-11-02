@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { STYLES, styleOf } from "@/lib/assistant/styles";
+import { styleOf } from "@/lib/assistant/styles";
 import type { Mode } from "@/lib/assistant/prompt";
 import type { TavernChar } from "@/lib/tavern-data";
 import { LockIcon } from "../components/icons";
-import { askTavern, rateAnswer, setAssistantStyle, type ChatMessageView } from "./actions";
+import { askTavern, rateAnswer, type ChatMessageView } from "./actions";
 
 const MODE_LABEL: Record<Mode, string> = { rules: "Rules & combos", character: "My character", session: "This turn", lore: "Campaign lore" };
 const EXAMPLES: Record<Mode, string[]> = {
@@ -31,15 +31,13 @@ export function TavernChat(p: {
   const [messages, setMessages] = useState(p.messages);
   const [mode, setMode] = useState<Mode>(p.mode);
   const [charId, setCharId] = useState<string | null>(p.characterId ?? p.characters.find((c) => c.mine)?.id ?? null);
-  const [style, setStyle] = useState(p.style);
   const [secrets, setSecrets] = useState(false);
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [pickStyle, setPickStyle] = useState(false);
   const [pending, start] = useTransition();
   const end = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
-  const me = styleOf(style);
+  const me = styleOf();
   const modes = p.allowModes ?? (["rules", "character", "lore"] as Mode[]);
   const needsChar = mode === "character" || mode === "session";
 
@@ -82,22 +80,7 @@ export function TavernChat(p: {
           <p className="font-bold leading-tight">{me.name}</p>
           <p className="truncate text-xs text-muted">{me.who}</p>
         </div>
-        <button type="button" onClick={() => setPickStyle(!pickStyle)} aria-expanded={pickStyle} className="h-9 shrink-0 rounded-lg border border-accent-line px-3 text-sm font-bold text-accent">
-          {pickStyle ? "Done" : "Change voice"}
-        </button>
       </div>
-      {pickStyle && (
-        <div className="animate-rise mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="How the assistant talks">
-          {STYLES.map((s) => (
-            <button key={s.id} type="button" role="radio" aria-checked={s.id === style}
-              onClick={() => { setStyle(s.id); void setAssistantStyle(s.id); }}
-              className={`rounded-xl border p-2.5 text-left ${s.id === style ? "border-accent bg-accent-surface" : "border-line bg-surface"}`}>
-              <span className="block text-sm font-bold">{s.name}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-muted">“{s.sample}”</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* what it's about */}
       {modes.length > 1 && (
@@ -129,7 +112,7 @@ export function TavernChat(p: {
       <div className="mt-4 space-y-3" aria-live="polite">
         {messages.length === 0 && !pending && (
           <div className="rounded-2xl border border-line bg-surface p-4">
-            <p className="text-sm text-soft">“{me.sample}” Ask me anything about the rules, your character{p.compact ? "" : " or the campaign"}.</p>
+            <p className="text-sm text-soft">Ask anything about the rules, your character{p.compact ? "" : " or the campaign"}.</p>
             <div className="mt-3 flex flex-col gap-1.5">
               {EXAMPLES[mode].map((e) => (
                 <button key={e} type="button" onClick={() => send(e)} className="rounded-lg border border-line px-3 py-2 text-left text-sm text-soft">{e}</button>

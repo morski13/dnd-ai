@@ -59,15 +59,15 @@ afterEach(() => vi.unstubAllGlobals());
 const base = { supabase: fakeDb() as never, userId: "u1", campaign: { id: "camp", name: "The Ashen Crown" }, isDm: false };
 
 describe("Tavern engine", () => {
-  it("a combo question about a character: sheet, house rules, app checks, sources, style", async () => {
+  it("a combo question about a character: sheet, house rules, app checks, sources, plain style (old voice id ignored)", async () => {
     const r = await answer({ ...base, mode: "character", characterId: "c1", styleId: "dwarf", question: "Can I cast Misty Step and Fireball in the same turn?" });
-    expect(r).toMatchObject({ verdict: "no", answer: "Nae, lad: one slot per turn.", style: "dwarf", by: "fake · m", hasSecrets: false });
+    expect(r).toMatchObject({ verdict: "no", answer: "Nae, lad: one slot per turn.", style: "plain", by: "fake · m", hasSecrets: false });
     expect(r.checks.join("\n")).toMatch(/only one spell slot/);
     expect(r.sourcesUsed.map((s) => s.title)).toEqual(expect.arrayContaining(["Spell: Fireball", "Spell: Misty Step"]));
     expect(r.sourcesAll.some((s) => /Gaining and Casting Spells/.test(s.title))).toBe(true);
     const user = sent[0].messages.at(-1)!.content;
-    expect(sent[0].messages[0].content).toMatch(/Durgan/);
-    expect((sent[0] as unknown as { temperature: number }).temperature).toBe(0.7);
+    expect(sent[0].messages[0].content).toMatch(/neutral rules helper/);
+    expect((sent[0] as unknown as { temperature: number }).temperature).toBe(0.2);
     expect(user).toMatch(/CHARACTER SHEET:\nOrrin: Human Wizard 5/);
     expect(user).toMatch(/level 2: Misty Step; level 3: Fireball/);
     expect(user).toMatch(/Spell slots left: L1 4\/4, L2 3\/3, L3 1\/2/);

@@ -15,11 +15,41 @@ export type HomebrewToggle = {
   damage_type?: string;    // "fire"
 };
 
+/**
+ * Numbers set by hand ("Edit numbers" on the sheet): a magic item, a feat or a homebrew rule the app
+ * doesn't know. Extras are added on top of what the app works out; `prof` replaces the proficiency bonus.
+ */
+export type Bonuses = {
+  prof?: number | null;                        // null / missing = from the level
+  init?: number;                               // extra on initiative
+  saves?: Partial<Record<Ability, number>>;    // extra per saving throw (Cloak of Protection: +1 on all)
+  skills?: Record<string, number>;             // extra per skill
+  spell_dc?: number;                           // extra on the spell save DC
+  spell_attack?: number;                       // extra on spell attacks
+};
+
 export type Homebrew = {
   crit_range?: number | null;       // null / missing = worked out from the classes
   extra_crit_dice?: number | null;  // null / missing = worked out from the classes
   toggles?: HomebrewToggle[];
+  bonuses?: Bonuses;
 };
+
+const ABILITY_KEYS: Ability[] = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+
+/** Cleans hand-set numbers: whole numbers, small ranges, zeros dropped. `skillNames` = the skills that exist. */
+export function cleanBonuses(input: unknown, skillNames: string[]): Bonuses {
+  const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const n = (v: unknown, lo: number, hi: number) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? 0 : Math.max(lo, Math.min(hi, Math.round(Number(v)))));
+  const out: Bonuses = {};
+  if (o.prof !== null && o.prof !== undefined && o.prof !== "") { const p = n(o.prof, 0, 12); out.prof = p; }
+  for (const k of ["init", "spell_dc", "spell_attack"] as const) { const v = n(o[k], -10, 10); if (v) out[k] = v; }
+  const saves = (o.saves && typeof o.saves === "object" ? o.saves : {}) as Record<string, unknown>;
+  for (const a of ABILITY_KEYS) { const v = n(saves[a], -10, 10); if (v) (out.saves ??= {})[a] = v; }
+  const skills = (o.skills && typeof o.skills === "object" ? o.skills : {}) as Record<string, unknown>;
+  for (const sk of skillNames) { const v = n(skills[sk], -10, 10); if (v) (out.skills ??= {})[sk] = v; }
+  return out;
+}
 
 export const DAMAGE_TYPES = ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"];
 const DICE = /^\s*\d{1,2}d(4|6|8|10|12|20)(\s*\+\s*\d{1,2}d(4|6|8|10|12|20))*(\s*[+-]\s*\d{1,2})?\s*$/i;
@@ -73,7 +103,10 @@ export function cleanHomebrew(input: unknown): Homebrew {
       ...(DAMAGE_TYPES.includes(type) ? { damage_type: type } : {}),
     }];
   });
-  return { crit_range: int(o.crit_range, 15, 20), extra_crit_dice: int(o.extra_crit_dice, 0, 6), toggles };
+  return {
+    crit_range: int(o.crit_range, 15, 20), extra_crit_dice: int(o.extra_crit_dice, 0, 6), toggles,
+    ...(o.bonuses && typeof o.bonuses === "object" ? { bonuses: o.bonuses as Bonuses } : {}), // cleaned by cleanBonuses where it's saved
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ The Tavern assistant has two parts:
 2. **The model that words the answer.** Today that's whichever AI is in `.env.local` (Groq…). Once we train
    our own, it plugs in the same way and the free-tier limits are gone.
 
-Training teaches the model our format, our voices (tavern keeper, dwarf, lord…) and how our table answers.
+Training teaches the model our format, the plain answer style and how our table answers.
 The rules accuracy still comes from part 1, so even a small model gives exact answers.
 
 ## 1. Collect examples (just use the app)

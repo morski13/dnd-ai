@@ -165,6 +165,27 @@ export class DiceStage {
     await this.mats.load();
   }
 
+  /**
+   * Get the first throw ready while nobody is looking: paints the d20 and d6 faces of the current
+   * skin and draws them once off screen, so the shaders (and the shadow pass) are compiled now
+   * instead of on the first real roll. Call after useSkin().
+   */
+  warm() {
+    if (!this.mats) return;
+    const temp: THREE.Mesh[] = [];
+    for (const type of ["d20", "d6"] as DieType[]) {
+      const mesh = new THREE.Mesh(geometry(type), this.mats.forShape(makeShape(type)));
+      mesh.castShadow = true;
+      mesh.position.set(temp.length * 2, 1, 0);
+      this.scene.add(mesh);
+      temp.push(mesh);
+    }
+    this.resize();
+    this.renderer.render(this.scene, this.camera);
+    for (const m of temp) this.scene.remove(m);
+    this.renderer.render(this.scene, this.camera); // leave the (hidden) canvas empty
+  }
+
   private clear() {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];

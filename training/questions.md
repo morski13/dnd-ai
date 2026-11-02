@@ -1,7 +1,7 @@
 # Tavern training questions
 
-Ask these in the Tavern, switch the voice every few questions, and tap 👍 on answers that are right
-and sound like the character. 👎 + write the right answer when something is wrong.
+Ask these in the Tavern and tap 👍 on answers that are right
+and easy to read. 👎 + write the right answer when something is wrong.
 Tips: ask some in **My character** mode (pick a character) and some in **Rules & combos**; ask follow-ups
 ("and what if I'm prone?"); retype questions in your own words, typos included, the way players really ask.
 

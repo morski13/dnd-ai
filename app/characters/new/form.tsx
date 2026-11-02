@@ -5,6 +5,7 @@ import { averageHp, CLASS_NAMES, CLASSES, classResources, SPECIES, spellSlots, S
 import { ABILITIES, SKILLS, type Ability } from "@/lib/rules";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 import { ImportedParts, type Extras } from "../import/parts";
+import { checkNumbers, type CheckRow } from "@/lib/sheet-import/check";
 import { createCharacter } from "./actions";
 
 const field = "h-12 w-full rounded-xl border border-line bg-bg px-3 text-[15px] outline-none focus:border-accent";
@@ -138,6 +139,18 @@ export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean
         </div>
       </section>
 
+      {imported && (
+        <NumberCheck
+          rows={checkNumbers({
+            rules, species, classes, scores,
+            equipment: (extras?.equipment ?? []).map((e) => e.name), features: (extras?.features ?? []).map((f) => f.name),
+            sheet: { hp: imported.hp, ac: imported.ac, speed: imported.speed, prof: imported.profBonus },
+          })}
+          now={{ hp: hp ? Number(hp) : null, ac: ac ? Number(ac) : null, speed: speed ? Number(speed) : null }}
+          pick={(key, v) => { const t = String(v); if (key === "hp") setHp(t); else if (key === "ac") setAc(t); else if (key === "speed") setSpeed(t); }}
+        />
+      )}
+
       <section aria-label="Hit points and armor" className="grid grid-cols-3 gap-2">
         <label className="text-sm text-soft">HP<input value={hp} onChange={(e) => setHp(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={String(autoHp)} className={`${field} mt-1 text-center`} /></label>
         <label className="text-sm text-soft">AC<input value={ac} onChange={(e) => setAc(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={String(10 + mod(scores.DEX))} className={`${field} mt-1 text-center`} /></label>
@@ -157,5 +170,58 @@ export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean
       {error && <p className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">{error}</p>}
       <button disabled={pending} className="h-12 rounded-xl bg-accent text-[15px] font-bold text-accent-text">{pending ? "Making…" : "Make character"}</button>
     </form>
+  );
+}
+
+/**
+ * "Check your numbers" (imports only): the sheet's number next to the one the app works out.
+ * Different numbers are highlighted; the player keeps either, or types their own in the boxes below.
+ */
+function NumberCheck({ rows, now, pick }: {
+  rows: CheckRow[]; now: { hp: number | null; ac: number | null; speed: number | null };
+  pick: (key: "hp" | "ac" | "speed", v: number) => void;
+}) {
+  const off = rows.filter((r) => r.differs).length;
+  return (
+    <section aria-label="Check your numbers" className={`rounded-2xl border p-4 ${off ? "border-accent-line bg-accent-surface" : "border-line bg-surface"}`}>
+      <p className="text-xs uppercase tracking-[0.12em] text-muted">Check your numbers</p>
+      <p className="mt-1 text-sm text-soft">
+        {off ? `${off} ${off === 1 ? "number differs" : "numbers differ"} from what the app works out. Keep the sheet's if a magic item, feat or homebrew rule explains it.`
+          : "The sheet's numbers match what the app works out."}
+      </p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {rows.map((r) => {
+          const editable = r.key !== "prof";
+          const cur = editable ? now[r.key as "hp" | "ac" | "speed"] : null;
+          return (
+            <li key={r.key} className={`rounded-xl border px-3 py-2.5 ${r.differs ? "border-accent bg-surface" : "border-line bg-surface"}`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold">{r.label}</span>
+                <span className={`text-xs font-bold ${r.differs ? "text-accent" : r.app == null || r.sheet == null ? "text-muted" : "text-success"}`}>
+                  {r.differs ? "Differs" : r.app == null ? "Not checked" : r.sheet == null ? "Not on the sheet" : "✓ Matches"}
+                </span>
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-2 text-sm">
+                <Choice label="Sheet" value={r.sheet} active={editable && r.sheet != null && cur === r.sheet} disabled={!editable || r.sheet == null}
+                  onClick={() => r.sheet != null && pick(r.key as "hp" | "ac" | "speed", r.sheet)} />
+                <Choice label="App" value={r.app} active={editable && r.app != null && cur === r.app && cur !== r.sheet} disabled={!editable || r.app == null}
+                  onClick={() => r.app != null && pick(r.key as "hp" | "ac" | "speed", r.app)} />
+              </div>
+              <p className="mt-1.5 text-xs text-muted">App: {r.how}.{r.hint ? ` ${r.hint}` : ""}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function Choice({ label, value, active, disabled, onClick }: { label: string; value: number | null; active: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={active}
+      className={`flex min-h-11 items-center justify-between rounded-lg border px-3 ${active ? "border-accent bg-accent-surface font-bold text-accent" : "border-line"} disabled:opacity-70`}>
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-base font-bold">{value ?? "–"}</span>
+    </button>
   );
 }

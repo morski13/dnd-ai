@@ -28,6 +28,8 @@ type Ctx = {
   skin: DiceSkin;
   setSkin: (s: DiceSkin) => void; // after saving in the workshop
   loadStage: () => Promise<typeof import("@/lib/dice3d/stage")>;
+  /** Load the 3D dice, your dice skin and compile the shaders ahead of time (see useWarmRolls). */
+  prepare: () => Promise<void>;
 };
 
 const DiceContext = createContext<Ctx | null>(null);
@@ -82,6 +84,8 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setSettings = useCallback((s: DiceSettings) => writeSettings(s), []);
+  const skinRef = useRef(skin);
+  useEffect(() => { skinRef.current = skin; }, [skin]);
 
   // Your active dice, loaded the first time you roll.
   const ensureSkin = useCallback(async () => {
@@ -94,12 +98,30 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
       if (!uid) return;
       const { data } = await supabase.from("dice_skins").select("data").eq("user_id", uid).eq("is_active", true).maybeSingle();
       const s = sanitizeSkin(data?.data);
-      if (s) setSkin(s);
+      if (s) { skinRef.current = s; setSkin(s); }
     } catch { /* keep the default dice */ }
   }, []);
 
-  const skinRef = useRef(skin);
-  useEffect(() => { skinRef.current = skin; }, [skin]);
+  // Everything the first throw needs, done once: the 3D code, your skin, the stage, painted faces
+  // and compiled shaders. Without this the first roll of the day waited for all of it (~1–3 s on a phone).
+  const prepared = useRef<Promise<void> | null>(null);
+  const prepare = useCallback((): Promise<void> => {
+    if (typeof window === "undefined" || !settings.enabled) return Promise.resolve();
+    prepared.current ??= (async () => {
+      try {
+        const [mod] = await Promise.all([loadStage(), ensureSkin()]);
+        if (!stage.current && host.current) stage.current = new mod.DiceStage(host.current);
+        const st = stage.current;
+        if (!st) { prepared.current = null; return; }
+        await st.useSkin(skinRef.current);
+        st.warm();
+      } catch (e) {
+        console.warn("3D dice unavailable", e);
+        prepared.current = null;
+      }
+    })();
+    return prepared.current;
+  }, [settings.enabled, ensureSkin]);
 
   const finish = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -115,8 +137,7 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
     if (opts?.quiet && (!settings.others || close.current)) return; // your own roll is on screen: don't cut it off
     if (close.current) finish(); // a roll is still on screen: end it first
     try {
-      await ensureSkin();
-      const mod = await loadStage();
+      const [mod] = await Promise.all([loadStage(), ensureSkin()]);
       if (!stage.current && host.current) stage.current = new mod.DiceStage(host.current);
       const st = stage.current;
       if (!st) return;
@@ -171,8 +192,8 @@ export function DiceProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(() => ({
     show, settings, setSettings, skin,
     setSkin: (s) => { skinLoaded.current = true; setSkin(s); },
-    loadStage,
-  }), [show, settings, setSettings, skin]);
+    loadStage, prepare,
+  }), [show, settings, setSettings, skin, prepare]);
 
   const visible = phase !== "idle";
   const kind = roll?.isCrit ? "crit" : roll?.isFumble ? "fumble" : roll?.tone === "heal" ? "heal" : "plain";

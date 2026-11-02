@@ -16,6 +16,7 @@ import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
 import { PortraitButton } from "../../components/map/portrait";
 import { asShown, useDice } from "../../components/dice/dice-provider";
+import { useWarmRolls } from "../../components/dice/use-warm-rolls";
 import { BestMoves } from "./parts/best-moves";
 import { FeaturesTab } from "./parts/features-tab";
 import { GearTab } from "./parts/gear-tab";
@@ -24,6 +25,7 @@ import { HpCard } from "./parts/hp-card";
 import { RestPanel } from "./parts/rest-panel";
 import { DeleteCharacter } from "./parts/delete-character";
 import { HomebrewPanel } from "./parts/homebrew-panel";
+import { EditNumbers, handSet } from "./parts/edit-numbers";
 import { critRules, type Homebrew } from "@/lib/homebrew";
 import { RollTray } from "./parts/roll-tray";
 import { SpellsTab } from "./parts/spells-tab";
@@ -51,11 +53,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const dice = useDice();
+  useWarmRolls({ server: canEdit });
   const router = useRouter();
 
   // The character as it is right now (slots and spell list change while you play).
   const c: SheetCharacter & { features: (string | Feature)[] } = useMemo(() => ({ ...character, spells, homebrew }), [character, spells, homebrew]);
   const crit = critRules(c);
+  const hand = handSet(homebrew.bonuses);
   const options = useMemo(() => allOptions(c, library), [c, library]);
   const m = mods(c);
   const classes = c.class_levels.map((cl) => cl.class);
@@ -219,8 +223,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       <section className="mt-3 grid grid-cols-4 gap-2">
         <StatBox label="AC" value={character.ac ?? "–"} sheet={character.sheet_values.ac !== undefined && character.sheet_values.ac !== character.ac ? character.sheet_values.ac : undefined} />
         <StatBox label="Speed" value={character.speed ?? "–"} sheet={character.sheet_values.speed !== undefined && character.sheet_values.speed !== character.speed ? character.sheet_values.speed : undefined} />
-        <StatBox label="Init" value={signed(initiative(c))} sub={canEdit ? "tap to roll" : undefined} onClick={canEdit ? () => doRoll({ kind: "initiative" }) : undefined} />
-        <StatBox label="Prof." value={signed(pb(c))} sub={`lvl ${totalLevel(c.class_levels)}`} />
+        <StatBox label="Init" value={signed(initiative(c))} sub={hand.init ? "✎ set by hand" : canEdit ? "tap to roll" : undefined} onClick={canEdit ? () => doRoll({ kind: "initiative" }) : undefined} />
+        <StatBox label="Prof." value={signed(pb(c))} sub={hand.prof ? "✎ set by hand" : `lvl ${totalLevel(c.class_levels)}`} />
       </section>
 
       <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">Ability checks</p>
@@ -243,12 +247,14 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
             <button key={a} type="button" disabled={!canEdit} onClick={() => doRoll({ kind: "save", ability: a })}
               aria-label={`${a} saving throw ${signed(saveBonus(c, a))}`}
               className={`flex min-h-14 flex-col items-center justify-center rounded-xl border py-1.5 active:border-accent ${prof ? "border-accent-line bg-accent-surface" : "border-line bg-surface"}`}>
-              <span className="text-[11px] text-muted">{a}{prof ? " ●" : ""}</span>
+              <span className="text-[11px] text-muted">{a}{prof ? " ●" : ""}{hand.saves[a] ? " ✎" : ""}</span>
               <span className="text-base font-bold">{signed(saveBonus(c, a))}</span>
             </button>
           );
         })}
       </section>
+
+      {canEdit && <EditNumbers character={character} homebrew={homebrew} onSaved={(h) => { setHomebrew(h); router.refresh(); }} />}
 
     </div>
 
@@ -325,7 +331,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
             <p className="mt-5 text-xs uppercase tracking-[0.12em] text-muted">Skills</p>
             <div className="mt-2 flex flex-col gap-1.5">
               {Object.entries(SKILLS).map(([skill, ability]) => (
-                <RowButton key={skill} label={skill} hint={ability as Ability} bonus={skillBonus(c, skill)}
+                <RowButton key={skill} label={hand.skills[skill] ? `${skill} ✎` : skill} hint={ability as Ability} bonus={skillBonus(c, skill)}
                   proficient={!!c.proficiencies.skills?.includes(skill)} expertise={!!c.proficiencies.expertise?.includes(skill)}
                   disabled={!canEdit} onClick={() => doRoll({ kind: "skill", skill })} />
               ))}

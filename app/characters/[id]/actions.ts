@@ -5,11 +5,12 @@ import { refresh } from "next/cache";
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
 import { roll, type Advantage } from "@/lib/dice";
-import { allOptions, planRoll, rowKey, tableRow, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
+import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
-import { cleanCustomAction, cleanHomebrew, type Homebrew } from "@/lib/homebrew";
+import { cleanBonuses, cleanCustomAction, cleanHomebrew, type Bonuses, type Homebrew } from "@/lib/homebrew";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
 import type { ConcentrationCheck } from "@/lib/moderator/concentration";
 import { maskSaves, rollTargetSaves, type TargetSave } from "@/lib/moderator/saves";
@@ -50,6 +51,20 @@ export type RollResponse = {
 };
 
 type Fail = { error: string };
+
+/**
+ * Wake-up call, sent when a rolling screen opens (sheet, Session, roller), so the first real roll
+ * doesn't pay for a cold start: it loads this file's code on the server (rules, roll service,
+ * moderator), checks the login and opens the connection to the database. Writes nothing.
+ */
+export async function warmUp(): Promise<{ ok: true }> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getClaims();
+    if (data?.claims?.sub) await supabase.from("characters").select("id").limit(1);
+  } catch { /* only a warm-up: never fails the page */ }
+  return { ok: true };
+}
 
 /**
  * The same roll, but the answer comes back without a fresh copy of the page.
@@ -643,9 +658,53 @@ export async function saveHomebrew(characterId: string, input: Homebrew): Promis
   if (!character) return { error: "Character not found." };
   if (!canEdit) return { error: "You can only change your own character." };
   const homebrew = cleanHomebrew(input);
+  // hand-set numbers ("Edit numbers") are kept unless this save brings its own
+  const bonuses = input && typeof input === "object" && "bonuses" in input ? cleanBonuses(input.bonuses, Object.keys(SKILLS)) : character.homebrew?.bonuses;
+  if (bonuses && Object.keys(bonuses).length) homebrew.bonuses = bonuses; else delete homebrew.bonuses;
   const { error } = await supabase.from("characters").update({ homebrew }).eq("id", characterId);
   if (error) return { error: error.message };
   return { homebrew };
+}
+
+export type NumbersInput = {
+  hp_max: number; ac: number; speed: number;
+  scores: Record<Ability, number>;
+  saves: Ability[]; skills: string[]; expertise: string[];
+  bonuses: Bonuses;
+};
+
+/**
+ * "Edit numbers": every number on the sheet, set by hand (homebrew, magic items, a sheet that was wrong).
+ * HP max, AC, speed and ability scores are stored as they are; save and skill proficiencies too;
+ * extras on top (initiative, saves, skills, spell DC / attack) and a fixed proficiency bonus go in homebrew.bonuses.
+ */
+export async function saveNumbers(characterId: string, input: NumbersInput): Promise<{ ok: true; homebrew: Homebrew } | Fail> {
+  refresh();
+  const { supabase, character, canEdit } = await loadCharacter(characterId);
+  if (!character) return { error: "Character not found." };
+  if (!canEdit) return { error: "You can only change your own character." };
+  const int = (v: unknown, lo: number, hi: number, dflt: number) => (Number.isFinite(Number(v)) && v !== "" && v !== null ? Math.max(lo, Math.min(hi, Math.round(Number(v)))) : dflt);
+  const hpMax = int(input?.hp_max, 1, 999, character.hp_max ?? 1);
+  const oldMax = character.hp_max ?? hpMax;
+  const cur = character.hp_current ?? oldMax;
+  // raising max HP while unhurt keeps you unhurt; lowering it never leaves you above the new max
+  const hpCurrent = Math.min(hpMax, cur >= oldMax ? hpMax : cur);
+  const scores = Object.fromEntries(ABILITIES.map((a) => [a, int(input?.scores?.[a], 1, 30, character.ability_scores[a] ?? 10)])) as Record<Ability, number>;
+  const skillNames = Object.keys(SKILLS);
+  const saves = ABILITIES.filter((a) => (input?.saves ?? []).includes(a));
+  const skills = skillNames.filter((x) => (input?.skills ?? []).includes(x));
+  const expertise = skills.filter((x) => (input?.expertise ?? []).includes(x));
+  const { data: row } = await supabase.from("characters").select("proficiencies, homebrew").eq("id", characterId).maybeSingle();
+  const proficiencies = { ...((row?.proficiencies as Record<string, unknown>) ?? {}), saves, skills, expertise };
+  const homebrew = cleanHomebrew(row?.homebrew ?? {});
+  const bonuses = cleanBonuses(input?.bonuses, skillNames);
+  if (Object.keys(bonuses).length) homebrew.bonuses = bonuses; else delete homebrew.bonuses;
+  const { error } = await supabase.from("characters").update({
+    hp_max: hpMax, hp_current: hpCurrent, ac: int(input?.ac, 0, 40, character.ac ?? 10), speed: int(input?.speed, 0, 200, character.speed ?? 30),
+    ability_scores: scores, proficiencies, homebrew,
+  }).eq("id", characterId);
+  if (error) return { error: error.message };
+  return { ok: true, homebrew };
 }
 
 /** Add or change one of the character's own actions (`oldName` = the one being edited). */

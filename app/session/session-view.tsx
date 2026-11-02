@@ -12,6 +12,7 @@ import { TableDice } from "./parts/table-dice";
 import { TableLog } from "./parts/table-log";
 import { TurnCard } from "./parts/turn-card";
 import { useLive } from "./use-live";
+import { useWarmRolls } from "../components/dice/use-warm-rolls";
 import { BattleMap, type Teleport } from "./parts/battle-map";
 import { MapAimProvider } from "./parts/map-aim";
 import { allOptions } from "@/lib/rules";
@@ -21,6 +22,7 @@ import { TavernButton } from "../tavern/panel";
 
 export function SessionView({ data, shops = [] }: { data: SessionData; shops?: { id: string; name: string }[] }) {
   useLive(data.campaign.id, data.session?.id ?? null, data.userId ?? null);
+  useWarmRolls({ server: !!data.session });
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);

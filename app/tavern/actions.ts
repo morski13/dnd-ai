@@ -3,7 +3,6 @@
 import { AiError } from "@/lib/ai/client";
 import { answer } from "@/lib/assistant/engine";
 import type { Mode } from "@/lib/assistant/prompt";
-import { STYLES } from "@/lib/assistant/styles";
 import { vaultContext } from "@/lib/vault-data";
 
 export type ChatSource = { id: string; kind: string; title: string; text: string; secret: boolean };
@@ -30,7 +29,7 @@ export async function askTavern(input: {
   const ctx = await vaultContext();
   const { supabase, userId, campaign, isDm } = ctx;
 
-  const { data: prof } = await supabase.from("profiles").select("display_name, assistant_style").eq("id", userId).maybeSingle();
+  const { data: prof } = await supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle();
   // the chat: an existing one of yours, or a new one
   let chatId = input.chatId ?? null;
   let history: { role: "user" | "assistant"; content: string }[] = [];
@@ -48,7 +47,6 @@ export async function askTavern(input: {
     reply = await answer({
       supabase, userId, campaign, isDm, mode, question, history,
       characterId: input.characterId || null,
-      styleId: input.styleId && STYLES.some((x) => x.id === input.styleId) ? input.styleId : (prof as { assistant_style?: string } | null)?.assistant_style,
       withSecrets: !!input.withSecrets, askerName: (prof as { display_name?: string } | null)?.display_name,
     });
   } catch (e) {
@@ -90,13 +88,6 @@ export async function rateAnswer(messageId: string, rating: -1 | 0 | 1, correcti
   if (correction !== undefined) patch.correction = correction.trim().slice(0, 2000) || null;
   const { error } = await supabase.from("assistant_messages").update(patch).eq("id", messageId).eq("role", "assistant");
   return error ? { error: error.message } : { ok: true };
-}
-
-export async function setAssistantStyle(style: string): Promise<Fail | { ok: true }> {
-  if (!STYLES.some((s) => s.id === style)) return { error: "Unknown style." };
-  const { supabase, userId } = await vaultContext();
-  const { error } = await supabase.from("profiles").update({ assistant_style: style }).eq("id", userId);
-  return error ? { error: /assistant_style/.test(error.message) ? "Run supabase/25-tavern-assistant.sql first." : error.message } : { ok: true };
 }
 
 export async function deleteChat(chatId: string): Promise<Fail | { ok: true }> {

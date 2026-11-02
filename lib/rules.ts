@@ -119,17 +119,19 @@ export const totalLevel = (cls: ClassLevel[]) => cls.reduce((s, c) => s + (c.lev
 export function mods(c: SheetCharacter): Record<Ability, number> {
   return Object.fromEntries(ABILITIES.map((a) => [a, abilityMod(c.ability_scores[a] ?? 10)])) as Record<Ability, number>;
 }
-export const pb = (c: SheetCharacter) => profBonus(totalLevel(c.class_levels));
-export const saveBonus = (c: SheetCharacter, a: Ability) => mods(c)[a] + (c.proficiencies.saves?.includes(a) ? pb(c) : 0);
+/** Numbers set by hand on the sheet ("Edit numbers"), added on top of the worked-out ones. */
+const hand = (c: SheetCharacter) => c.homebrew?.bonuses ?? {};
+export const pb = (c: SheetCharacter) => hand(c).prof ?? profBonus(totalLevel(c.class_levels));
+export const saveBonus = (c: SheetCharacter, a: Ability) => mods(c)[a] + (c.proficiencies.saves?.includes(a) ? pb(c) : 0) + (hand(c).saves?.[a] ?? 0);
 export function skillBonus(c: SheetCharacter, skill: string) {
   const prof = c.proficiencies.skills?.includes(skill) ? pb(c) : 0;
   const exp = c.proficiencies.expertise?.includes(skill) ? pb(c) : 0;
-  return mods(c)[SKILLS[skill]] + prof + exp;
+  return mods(c)[SKILLS[skill]] + prof + exp + (hand(c).skills?.[skill] ?? 0);
 }
-export const initiative = (c: SheetCharacter) => mods(c).DEX;
+export const initiative = (c: SheetCharacter) => mods(c).DEX + (hand(c).init ?? 0);
 export const spellAbility = (c: SheetCharacter): Ability => c.spells?.ability ?? "INT";
-export const spellSaveDC = (c: SheetCharacter) => 8 + mods(c)[spellAbility(c)] + pb(c);
-export const spellAttackBonus = (c: SheetCharacter) => mods(c)[spellAbility(c)] + pb(c);
+export const spellSaveDC = (c: SheetCharacter) => 8 + mods(c)[spellAbility(c)] + pb(c) + (hand(c).spell_dc ?? 0);
+export const spellAttackBonus = (c: SheetCharacter) => mods(c)[spellAbility(c)] + pb(c) + (hand(c).spell_attack ?? 0);
 
 // ---------------------------------------------------------------------------
 // Options: everything on the Attacks tab, in one list.

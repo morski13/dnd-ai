@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { freeRoll, type QuickRoll } from "../session/actions";
 import { useDice } from "../components/dice/dice-provider";
+import { useWarmRolls } from "../components/dice/use-warm-rolls";
 
 const SIDES = [4, 6, 8, 10, 12, 20, 100] as const;
 const QUICK: [string, string][] = [["1d20", "d20"], ["1d20 adv", "d20 advantage"], ["1d20 dis", "d20 disadvantage"], ["2d6", "2d6"], ["4d6kh3", "Ability score (4d6, best 3)"], ["1d100", "Percent"]];
@@ -22,6 +23,7 @@ function DieShape({ sides, className = "" }: { sides: number; className?: string
 
 export function DiceRoller({ characters, isDm, live }: { characters: { id: string; name: string }[]; isDm: boolean; live: { session: number | null; combat: boolean } }) {
   const dice = useDice();
+  useWarmRolls();
   const [pool, setPool] = useState<Record<number, number>>({ 20: 1 });
   const [modifier, setModifier] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
