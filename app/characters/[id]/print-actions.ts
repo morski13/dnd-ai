@@ -55,6 +55,9 @@ export async function printSheet(characterId: string): Promise<{ data: PrintData
     saveTotals: Object.fromEntries(ABILITIES.map((a) => [a, saveBonus(c, a)])) as Record<Ability, number>,
     skillTotals: Object.fromEntries(Object.keys(SKILLS).map((s) => [s, skillBonus(c, s)])),
     attacks,
+    casters: casters(c),
+    slotsBy: Object.fromEntries(Object.entries(c.spells?.slots ?? {}).map(([l, n]) => [Number(l), n]).filter(([, n]) => (n as number) > 0)),
+    pact: pact.pact_slots ? `${pact.pact_slots}× level ${pact.pact_level}` : "",
     spellAbility: caster ? c.spells.ability ?? "INT" : null,
     spellDc: caster ? spellSaveDC(c) : null, spellAttack: caster ? spellAttackBonus(c) : null, slots: slots.join(" · "),
     spells: (c.spells?.known ?? []).map((name) => ({ name, level: spellLevel.get(name) ?? 1 })),
@@ -64,4 +67,22 @@ export async function printSheet(characterId: string): Promise<{ data: PrintData
     features: features.filter((f) => !/^alignment$/i.test(f.name)),
   };
   return { data };
+}
+
+/**
+ * Spellcasting per class: a multiclassed caster gets a row for each of their casting classes (main one first),
+ * each with its own ability, save DC and attack bonus.
+ */
+function casters(c: Parameters<typeof spellSaveDC>[0]) {
+  const main = c.spells?.ability;
+  const rows: { class: string; ability: Ability; dc: number; attack: number }[] = [];
+  for (const cl of c.class_levels) {
+    const ab = CLASSES[cl.class]?.spell;
+    if (!ab) continue;
+    const at = { ...c, spells: { ...c.spells, ability: ab } };
+    rows.push({ class: cl.class, ability: ab, dc: spellSaveDC(at), attack: spellAttackBonus(at) });
+  }
+  rows.sort((a, b) => (a.ability === main ? -1 : 0) - (b.ability === main ? -1 : 0));
+  if (!rows.length && main && (c.spells?.known?.length ?? 0) > 0) rows.push({ class: "", ability: main, dc: spellSaveDC(c), attack: spellAttackBonus(c) });
+  return rows;
 }

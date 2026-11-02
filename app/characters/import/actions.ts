@@ -4,7 +4,10 @@
 import { aiProviders, AiError, chatWith, parseJson } from "@/lib/ai/client";
 import { who } from "@/lib/items/server";
 import { MAX_SHEET_TEXT, sheetPrompt } from "@/lib/sheet-import/ai-prompt";
-import { cleanAiSheet, stripControl } from "@/lib/sheet-import/clean";
+import { cleanAiSheet, cleanSheet, stripControl } from "@/lib/sheet-import/clean";
+import { rulesReport, type ReportItem } from "@/lib/sheet-import/rules-report";
+import { rulesData } from "@/lib/levelup/data";
+import { builderData } from "@/lib/builder/data";
 import { libraryCheck } from "@/lib/sheet-import/server";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 
@@ -33,4 +36,17 @@ export async function checkLibrary(rules: string, spells: string[], items: strin
   if (!userId) return { spells: [], items: [] };
   const r = rules === "2014" ? "2014" : "2024";
   return libraryCheck(supabase, r, (spells ?? []).map(String), (items ?? []).map(String));
+}
+
+/** "Not in the rules": what about this character the app doesn't know from the free rules (see lib/sheet-import/rules-report.ts). */
+export async function checkRules(rules: string, sheet: unknown): Promise<ReportItem[]> {
+  const { supabase, userId } = await who();
+  if (!userId) return [];
+  const r = rules === "2014" ? "2014" : "2024";
+  const s = cleanSheet(sheet, "form");
+  const lib = await libraryCheck(supabase, r, s.spells, s.equipment.map((e) => e.name));
+  return rulesReport(s, {
+    rules: r, data: rulesData(r), other: rulesData(r === "2024" ? "2014" : "2024"), builder: builderData(r),
+    unknownSpells: lib.spells.filter((x) => !x.found).map((x) => x.name), unknownItems: lib.items.filter((x) => !x.found).map((x) => x.name),
+  });
 }

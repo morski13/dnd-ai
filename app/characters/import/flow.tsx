@@ -9,6 +9,7 @@ import { CharacterForm } from "../new/form";
 import { sheetTarget } from "../new/actions";
 import { readSheetWithAi } from "./actions";
 import { PrintButton } from "../[id]/parts/print-button";
+import { RulesCard } from "./rules-card";
 
 type Step =
   | { at: "pick"; error?: string }
@@ -84,6 +85,7 @@ export function ImportFlow({ isDm, campaignRules, aiReady }: { isDm: boolean; ca
           )}
           <button type="button" onClick={again} className="mt-2 inline-flex min-h-10 items-center text-sm text-accent underline">Pick a different file</button>
         </div>
+        <RulesCard sheet={s} rules={campaignRules === "2014" ? "2014" : "2024"} />
         {step.target && (
           <div className="mt-3 rounded-2xl border border-accent-line bg-accent-surface p-4 text-sm" role="radiogroup" aria-label="What to do with this sheet">
             <p className="font-semibold">This sheet was printed from {step.target.name}.</p>

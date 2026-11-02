@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { readPdfFields } from "../sheet-import/read-pdf";
 import { fieldsToSheet, sheetScore } from "../sheet-import/parse";
-import { BLANK, FIELD, spellsText, type PrintData } from "./fields";
+import { BLANK, FIELD, readClass, spellLines, spellsText, SPELL_LINES, type PrintData } from "./fields";
 import { makeSheetPdf } from "./make-pdf";
 
 const font = (n: string) => readFileSync(join(__dirname, "../../public/fonts", n));
@@ -73,7 +73,7 @@ describe("our own sheet", () => {
     });
     expect(s.scores.STR).toBe(20);
     expect(s.expertise).toEqual(["Athletics"]);
-    expect(s.spells).toEqual(["Fire Bolt", "Shield", "Magic Missile"]);
+    expect(s.spells).toEqual(["Fire Bolt", "Magic Missile", "Shield"]); // a line per spell, by level
     expect(s.bonuses).toEqual({ init: 3, saves: { WIS: 1 }, skills: { Athletics: 1 } });
     expect(s.equipment).toEqual([{ name: "Morningstar", qty: 1 }, { name: "Potion of Healing", qty: 2 }, { name: "Rope", qty: 1 }]);
   });
@@ -82,9 +82,9 @@ describe("our own sheet", () => {
     const s = await roundTrip(BLANK, (doc) => {
       const f = doc.getForm();
       f.getTextField(FIELD.name).setText("Nella");
-      f.getTextField(FIELD.cls(0)).setText("rogue");
+      f.getDropdown(FIELD.cls(0)).select("rogue");
       f.getTextField(FIELD.lvl(0)).setText("3");
-      f.getTextField(FIELD.cls(1)).setText("Blood Hunter");
+      f.getDropdown(FIELD.cls(1)).select("Blood Hunter");
       f.getTextField(FIELD.score("DEX")).setText("17");
       f.getCheckBox(FIELD.skill("Stealth")).check();
       f.getTextField(FIELD.atk(0, "bonus")).setText("+5");
@@ -94,6 +94,33 @@ describe("our own sheet", () => {
     expect(s).toMatchObject({ name: "Nella", classes: [{ class: "Rogue", level: 3 }], scores: { DEX: 17 }, skills: ["Stealth"], characterId: null, bonuses: {} });
     expect(s.unknownClasses).toEqual(["Blood Hunter 1"]);
     expect(s.attacks[0]).toMatchObject({ name: "Shortsword", bonus: 5, damage: "1d6+3", damageType: "" });
+  });
+
+  it("multiclass: classes written in any way players write them", () => {
+    expect(readClass("Barbarian", "", "9")).toEqual({ cls: "Barbarian", sub: "", lvl: 9 });
+    expect(readClass("barbarian 9", "", "")).toEqual({ cls: "Barbarian", sub: "", lvl: 9 });
+    expect(readClass("Fighter (Champion)", "", "3")).toEqual({ cls: "Fighter", sub: "Champion", lvl: 3 });
+    expect(readClass("Fighter / Battle Master", "", "")).toEqual({ cls: "Fighter", sub: "Battle Master", lvl: null });
+    expect(readClass("Blood Hunter", "", "2").cls).toBeNull();
+  });
+
+  it("the spell page: a line per spell, prepared boxes, more spells, written by hand too", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ level: 1, name: `Spell ${String.fromCharCode(65 + i)}` }));
+    const { lines, more } = spellLines(many);
+    expect(lines[1]).toHaveLength(SPELL_LINES[1]);
+    expect(more.map((x) => x.name)).toEqual(["Spell K", "Spell L"]);
+    const s = await roundTrip({ ...KAZAR, spells: many, casters: [{ class: "Sorcerer", ability: "CHA", dc: 13, attack: 5 }], spellAbility: "CHA", spellDc: 13, spellAttack: 5 }, (doc) => {
+      const f = doc.getForm();
+      f.getTextField(FIELD.spell(3, 0)).setText("Fireball (C)");
+      f.getCheckBox(FIELD.prep(3, 0)).check();
+      f.getDropdown(FIELD.cls(1)).select("Sorcerer");
+      f.getTextField(FIELD.lvl(1)).setText("2");
+    });
+    expect(s.spells).toHaveLength(13);
+    expect(s.spells).toContain("Spell L");
+    expect(s.spells).toContain("Fireball");
+    expect(s.spellAbility).toBe("CHA");
+    expect(s.classes.map((c) => `${c.class} ${c.level}`)).toEqual(["Barbarian 9", "Sorcerer 2"]);
   });
 
   it("spells text: one line per level", () => {

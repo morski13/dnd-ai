@@ -8,10 +8,15 @@
 // cloak or a homebrew bonus written on the sheet survives the round trip.
 import { cleanBonuses, type Bonuses } from "../homebrew";
 import { ABILITIES, abilityMod, profBonus, SKILLS, type Ability } from "../rules";
-import { CLASS_NAMES } from "../classes";
+import { CLASS_NAMES, CLASSES } from "../classes";
+
+const HIT_DIE: Record<string, number> = Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [k, v.hitDie]));
 import { emptySheet, type ImportedSheet, type PdfField, type SheetAttack } from "../sheet-import/types";
 
-export const SHEET_KIND = "lth-sheet-1";
+export const SHEET_KIND = "lth-sheet-2"; // 1: two pages, spells as one text box; 2: a spell page with a line per spell
+/** Lines on the spell page for each spell level (0 = cantrips); more go in "More spells". */
+export const SPELL_LINES: Record<number, number> = { 0: 8, 1: 10, 2: 8, 3: 8, 4: 6, 5: 6, 6: 4, 7: 4, 8: 3, 9: 3 };
+export const CAST_ROWS = 2;
 export const ATTACK_ROWS = 8;
 export const CLASS_ROWS = 3;
 export const COIN_KEYS = ["pp", "gp", "ep", "sp", "cp"] as const;
@@ -27,6 +32,10 @@ export type PrintData = {
   saveTotals: Partial<Record<Ability, number>>; skillTotals: Record<string, number>;
   attacks: { name: string; bonus: string; damage: string; notes: string }[];
   spellAbility: Ability | null; spellDc: number | null; spellAttack: number | null; slots: string;
+  /** spellcasting per class (a multiclassed caster has one row each); the first row is the main one */
+  casters: { class: string; ability: Ability; dc: number; attack: number }[];
+  slotsBy: Record<number, number>;         // spell slots per level (1–9)
+  pact: string;                            // "2× level 3" (warlock pact magic)
   spells: { level: number; name: string }[];
   equipment: { name: string; qty: number; equipped: boolean }[];
   coins: Record<(typeof COIN_KEYS)[number], number>;
@@ -39,7 +48,7 @@ export const BLANK: PrintData = {
   id: null, name: "", player: "", species: "", background: "", alignment: "", rules: "",
   classes: [], scores: {}, saves: [], skills: [], expertise: [],
   hpMax: null, ac: null, speed: null, prof: null, init: null, passive: null, hitDice: "",
-  saveTotals: {}, skillTotals: {}, attacks: [], spellAbility: null, spellDc: null, spellAttack: null, slots: "",
+  saveTotals: {}, skillTotals: {}, attacks: [], spellAbility: null, spellDc: null, spellAttack: null, slots: "", casters: [], slotsBy: {}, pact: "",
   spells: [], equipment: [], coins: { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 }, uses: [], features: [], notes: "",
 };
 
@@ -58,7 +67,27 @@ export const FIELD = {
   atk: (i: number, part: "name" | "bonus" | "damage" | "notes") => `LTH_atk${i + 1}_${part}`,
   spellAbility: "LTH_spell_ability", spellDc: "LTH_spell_dc", spellAttack: "LTH_spell_attack", slots: "LTH_spell_slots", spells: "LTH_spells",
   equipment: "LTH_equipment", coin: (c: string) => `LTH_${c}`, uses: "LTH_uses", features: "LTH_features", notes: "LTH_notes",
+  // sheet 2: hit die per class row, a second spellcasting class, slots per level, a line per spell
+  hd: (i: number) => `LTH_hd${i + 1}`,
+  castClass: (i: number) => `LTH_cast${i + 1}_class`,
+  castAbility: (i: number) => (i === 0 ? "LTH_spell_ability" : `LTH_cast${i + 1}_ability`),
+  castDc: (i: number) => (i === 0 ? "LTH_spell_dc" : `LTH_cast${i + 1}_dc`),
+  castAttack: (i: number) => (i === 0 ? "LTH_spell_attack" : `LTH_cast${i + 1}_attack`),
+  slotTotal: (l: number) => `LTH_slots${l}`, slotUsed: (l: number) => `LTH_slots${l}_used`, pact: "LTH_pact",
+  spell: (l: number, i: number) => `LTH_spell${l}_${i + 1}`, prep: (l: number, i: number) => `LTH_prep${l}_${i + 1}`,
 } as const;
+
+/** Which spells go on which line of the spell page; the rest go to "More spells". */
+export function spellLines(spells: PrintData["spells"]) {
+  const lines: Record<number, string[]> = {};
+  const more: PrintData["spells"] = [];
+  for (const sp of [...spells].sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))) {
+    const l = Math.max(0, Math.min(9, sp.level));
+    const list = (lines[l] ??= []);
+    if (list.length < SPELL_LINES[l]) list.push(sp.name); else more.push(sp);
+  }
+  return { lines, more };
+}
 
 const signed = (n: number | null | undefined) => (n == null ? "" : n >= 0 ? `+${n}` : `${n}`);
 const plain = (n: number | null | undefined) => (n == null ? "" : String(n));
@@ -104,12 +133,25 @@ export function toFields(d: PrintData): Record<string, string | boolean> {
     [FIELD.hp]: plain(d.hpMax), [FIELD.ac]: plain(d.ac), [FIELD.speed]: plain(d.speed), [FIELD.prof]: signed(d.prof),
     [FIELD.init]: signed(d.init), [FIELD.passive]: plain(d.passive), [FIELD.hitDice]: d.hitDice,
     [FIELD.spellAbility]: d.spellAbility ?? "", [FIELD.spellDc]: plain(d.spellDc), [FIELD.spellAttack]: signed(d.spellAttack), [FIELD.slots]: d.slots,
-    [FIELD.spells]: spellsText(d.spells), [FIELD.equipment]: equipmentText(d.equipment), [FIELD.uses]: d.uses.join("\n"),
+    [FIELD.spells]: spellsText(spellLines(d.spells).more), [FIELD.equipment]: equipmentText(d.equipment), [FIELD.uses]: d.uses.join("\n"),
+    [FIELD.pact]: d.pact,
     [FIELD.features]: featuresText(d.features), [FIELD.notes]: d.notes,
   };
   for (let i = 0; i < CLASS_ROWS; i++) {
     const c = d.classes[i];
     out[FIELD.cls(i)] = c?.class ?? ""; out[FIELD.sub(i)] = c?.subclass ?? ""; out[FIELD.lvl(i)] = c ? String(c.level) : "";
+    out[FIELD.hd(i)] = c && HIT_DIE[c.class] ? `d${HIT_DIE[c.class]}` : "";
+  }
+  // spellcasting: the first row is the sheet's main one (same fields as sheet 1)
+  for (let i = 0; i < CAST_ROWS; i++) {
+    const cst = d.casters[i];
+    out[FIELD.castClass(i)] = cst?.class ?? "";
+    if (i > 0) { out[FIELD.castAbility(i)] = cst?.ability ?? ""; out[FIELD.castDc(i)] = plain(cst?.dc); out[FIELD.castAttack(i)] = signed(cst?.attack); }
+  }
+  for (let l = 1; l <= 9; l++) { out[FIELD.slotTotal(l)] = d.slotsBy[l] ? String(d.slotsBy[l]) : ""; out[FIELD.slotUsed(l)] = ""; }
+  const { lines } = spellLines(d.spells);
+  for (const [l, n] of Object.entries(SPELL_LINES)) {
+    for (let i = 0; i < n; i++) { out[FIELD.spell(Number(l), i)] = lines[Number(l)]?.[i] ?? ""; out[FIELD.prep(Number(l), i)] = false; }
   }
   for (const a of ABILITIES) {
     const sc = d.scores[a];
@@ -161,12 +203,15 @@ export function fromFields(fields: PdfField[]): OwnSheet {
   s.characterId = /^[0-9a-f-]{36}$/.test(get(FIELD.id)) ? get(FIELD.id) : null;
 
   for (let i = 0; i < CLASS_ROWS; i++) {
-    const raw = get(FIELD.cls(i));
-    if (!raw) continue;
-    const cls = CLASS_NAMES.find((c) => c.toLowerCase() === raw.toLowerCase());
-    const level = Math.max(1, Math.min(20, int(get(FIELD.lvl(i))) ?? 1));
-    if (cls) { if (!s.classes.some((x) => x.class === cls)) s.classes.push({ class: cls, subclass: get(FIELD.sub(i)).slice(0, 40), level }); }
-    else s.unknownClasses.push(`${raw}${get(FIELD.sub(i)) ? ` (${get(FIELD.sub(i))})` : ""} ${level}`.slice(0, 40));
+    const raw = get(FIELD.cls(i)).split(/,\s*/).filter(Boolean).pop() ?? ""; // a list box can hold more than one pick: the last one counts
+    if (!raw || /^(other|—|-)/i.test(raw) && !get(FIELD.sub(i))) continue;
+    const { cls, sub, lvl } = readClass(raw, get(FIELD.sub(i)), get(FIELD.lvl(i)));
+    const level = Math.max(1, Math.min(20, lvl ?? 1));
+    if (cls) {
+      const same = s.classes.find((x) => x.class === cls);
+      if (same) same.level = Math.min(20, same.level + level); // the same class twice: add the levels up
+      else s.classes.push({ class: cls, subclass: sub.slice(0, 40), level });
+    } else s.unknownClasses.push(`${raw.replace(/\s*\d+\s*$/, "")}${sub ? ` (${sub})` : ""} ${level}`.slice(0, 40));
   }
   if (s.unknownClasses.length) s.warnings.push(`The app doesn't have ${s.unknownClasses.join(", ")} yet (only the 12 classes from the free rules). Pick the closest one, or keep it as a note.`);
 
@@ -199,10 +244,13 @@ export function fromFields(fields: PdfField[]): OwnSheet {
 
   const abil = get(FIELD.spellAbility).toUpperCase().slice(0, 3);
   s.spellAbility = (ABILITIES as readonly string[]).includes(abil) ? (abil as Ability) : null;
-  s.spells = [...new Set(get(FIELD.spells).split(/\n+/)
+  // sheet 2: a line per spell (cantrips to level 9), then "More spells"; sheet 1 only has the text box
+  const lined: string[] = [];
+  for (const [l, n] of Object.entries(SPELL_LINES)) for (let i = 0; i < n; i++) { const v = get(FIELD.spell(Number(l), i)); if (v) lined.push(v); }
+  s.spells = [...new Set([...lined, ...get(FIELD.spells).split(/\n+/)
     .map((l) => l.replace(/^\s*(cantrips?|level\s*\d+|\d+(st|nd|rd|th)?(\s*level)?)\s*[:.\-–]\s*/i, ""))
     .flatMap((l) => l.split(/,|;/)).map((x) => x.replace(/\s*\((?:ritual|r|c|concentration)\)\s*$/i, "").trim())
-    .filter((x) => /[a-z]/i.test(x)))].slice(0, 120);
+    .filter((x) => /[a-z]/i.test(x))].map((x) => x.replace(/\s*\((?:ritual|r|c|concentration)\)\s*$/i, "").trim()))].slice(0, 120);
 
   for (const line of get(FIELD.equipment).split(/\n+/)) {
     const t = line.replace(/\s*\((?:equipped|e)\)\s*$/i, "").replace(/^[\s•*\-–]+/, "").trim();
@@ -286,4 +334,21 @@ export function bonusesFrom(s: ImportedSheet, t: {
     if (t.spellAttack != null) out.spell_attack = t.spellAttack - (mod(s.spellAbility) + pb);
   }
   return cleanBonuses(out, Object.keys(SKILLS));
+}
+
+/**
+ * A class row as players write it: "barbarian", "Barbarian 9", "Barbarian (Wild Soul)", "Fighter / Champion".
+ * Returns the app's class name (or null), the subclass and the level, from whichever box they're in.
+ */
+export function readClass(raw: string, subBox: string, levelBox: string): { cls: string | null; sub: string; lvl: number | null } {
+  let text = raw.trim();
+  let lvl = int(levelBox);
+  const tailNum = text.match(/\s+(\d{1,2})\s*$/);
+  if (tailNum) { lvl ??= Number(tailNum[1]); text = text.slice(0, tailNum.index).trim(); }
+  let sub = subBox.trim();
+  const paren = text.match(/^(.*?)\s*[(/]\s*([^)]*?)\s*\)?\s*$/);
+  if (paren && paren[2]) { text = paren[1].trim(); sub ||= paren[2].trim(); }
+  const low = text.toLowerCase();
+  const cls = CLASS_NAMES.find((c) => c.toLowerCase() === low) ?? CLASS_NAMES.find((c) => low.startsWith(c.toLowerCase())) ?? null;
+  return { cls, sub, lvl };
 }
