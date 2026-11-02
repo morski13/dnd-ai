@@ -247,7 +247,7 @@ export type RollRequest =
   | { kind: "save"; ability: Ability }
   | { kind: "skill"; skill: string }
   | { kind: "initiative" }
-  | { kind: "use"; key: string; slot?: number }                               // tap the option's main button
+  | { kind: "use"; key: string; slot?: number; ac?: number }                  // tap the option's main button (ac: the target's AC typed on the sheet)
   | { kind: "damage"; key: string; slot?: number; parentRollId?: string };   // follow-up damage
 
 export type RollPlan = {
@@ -262,7 +262,8 @@ export type RollPlan = {
   resource?: string;    // resource spent
   followUp?: boolean;   // offer a damage roll next
   critOn?: number;      // attack: lowest natural d20 that crits (Improved Critical: 19)
-  critExtra?: string;   // damage: extra dice on a critical hit, not doubled (Brutal Critical: "1d8")
+  critExtra?: string;   // damage: extra dice on a critical hit (Brutal Critical: "1d8")
+  critMode?: "dice" | "double"; // damage: how a crit works for this character (the rules, or double what the dice rolled)
 };
 
 export function planRoll(c: SheetCharacter, req: RollRequest, library: SpellInfo[] = []): RollPlan {
@@ -295,13 +296,14 @@ export function planRoll(c: SheetCharacter, req: RollRequest, library: SpellInfo
       if (req.kind === "damage" || isHeal || o.kind === "damage_only" || (o.kind === "boost" && o.damage)) {
         if (!o.damage) throw new Error(`${o.name} has no damage to roll`);
         // Brutal Critical: extra weapon dice on a melee weapon crit (the first die of the weapon's damage)
-        const brutal = critRules(c).extra;
+        const cr = critRules(c);
+        const brutal = cr.extra;
         const die = o.damage.match(/d(\d+)/)?.[1];
         const critExtra = brutal > 0 && o.kind === "weapon" && !o.ranged && die ? `${brutal}d${die}` : undefined;
         const types = [o.damage_type, ...activeToggles(c.homebrew, o).map((t) => t.damage_type)].filter((t, i, a) => t && a.indexOf(t) === i);
         return {
           rollType: isHeal ? "heal" : "damage", source: o.name, expression: damageExpression(c, o, slot),
-          d20: false, damageType: types.join(" + ") || undefined, critExtra,
+          d20: false, damageType: types.join(" + ") || undefined, critExtra, critMode: cr.mode,
           ...spend, ...(req.kind === "damage" ? { resource: undefined } : {}),
         };
       }

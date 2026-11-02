@@ -28,7 +28,11 @@ export type Bonuses = {
   spell_attack?: number;                       // extra on spell attacks
 };
 
+/** "dice" = the rules (roll the damage dice twice). "double" = house rule: roll once, double what the dice rolled. */
+export type CritMode = "dice" | "double";
+
 export type Homebrew = {
+  crit_mode?: CritMode;             // missing = the rules
   crit_range?: number | null;       // null / missing = worked out from the classes
   extra_crit_dice?: number | null;  // null / missing = worked out from the classes
   toggles?: HomebrewToggle[];
@@ -58,26 +62,31 @@ export const isDice = (s: string) => DICE.test(s);
 type Classes = { class: string; level: number; subclass?: string }[];
 
 /** What the classes give on their own (shown as "Auto" in the editor). */
-export function autoCrit(classes: Classes, ruleSet?: string | null) {
+export function autoCrit(classes: Classes, ruleSet?: string | null, features: (string | { name: string })[] = []) {
   let range = 20;
   for (const c of classes) {
     if (/^fighter$/i.test(c.class) && /champion/i.test(c.subclass ?? "")) range = Math.min(range, c.level >= 15 ? 18 : c.level >= 3 ? 19 : 20);
   }
+  // Brutal Critical: the 2014 Barbarian's, or the character has it on their sheet (an imported or older sheet in a 2024 game)
+  const names = features.map((f) => (typeof f === "string" ? f : f?.name ?? "").toLowerCase());
+  const hasBrutal = names.some((n) => n.includes("brutal critical"));
   let extra = 0;
-  if (ruleSet !== "2024") {
-    const barb = classes.find((c) => /^barbarian$/i.test(c.class));
+  const barb = classes.find((c) => /^barbarian$/i.test(c.class));
+  if (ruleSet !== "2024" || hasBrutal) {
     if (barb) extra = barb.level >= 17 ? 3 : barb.level >= 13 ? 2 : barb.level >= 9 ? 1 : 0;
+    if (hasBrutal && !extra) extra = 1;
   }
   return { range, extra };
 }
 
 /** The crit range and extra crit dice that count: the character's own setting, else what the classes give. */
-export function critRules(c: { class_levels: Classes; homebrew?: Homebrew | null; rule_set?: string | null }) {
-  const auto = autoCrit(c.class_levels ?? [], c.rule_set);
+export function critRules(c: { class_levels: Classes; homebrew?: Homebrew | null; rule_set?: string | null; features?: (string | { name: string })[] }) {
+  const auto = autoCrit(c.class_levels ?? [], c.rule_set, c.features ?? []);
   const hb = c.homebrew ?? {};
   return {
     range: hb.crit_range != null ? hb.crit_range : auto.range,
     extra: hb.extra_crit_dice != null ? hb.extra_crit_dice : auto.extra,
+    mode: (hb.crit_mode === "double" ? "double" : "dice") as CritMode,
     auto,
   };
 }
@@ -105,6 +114,7 @@ export function cleanHomebrew(input: unknown): Homebrew {
   });
   return {
     crit_range: int(o.crit_range, 15, 20), extra_crit_dice: int(o.extra_crit_dice, 0, 6), toggles,
+    ...(o.crit_mode === "double" ? { crit_mode: "double" as CritMode } : {}),
     ...(o.bonuses && typeof o.bonuses === "object" ? { bonuses: o.bonuses as Bonuses } : {}), // cleaned by cleanBonuses where it's saved
   };
 }

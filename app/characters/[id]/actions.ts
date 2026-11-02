@@ -34,6 +34,7 @@ export type SavedRoll = {
   request: RollRequest;
   followUp?: { key: string; slot?: number }; // offer this damage roll next
   success?: boolean | null;                  // attack: hit (true) / miss (false)
+  vsAc?: number | null;                      // the AC it was rolled against (a target's, or one typed on the sheet)
   target?: string | null;                    // "Ogre"
   applied?: Applied | null;                  // what the fight moderator did with it (HP change)
   missed?: boolean;                          // damage after a missed attack: not applied
@@ -51,6 +52,9 @@ export type RollResponse = {
 };
 
 type Fail = { error: string };
+
+/** The target AC typed on the sheet (only on an attack's "use" roll), or null. */
+const typedAc = (r: RollRequest) => (r.kind === "use" && Number.isFinite(r.ac) ? Math.max(1, Math.min(40, Math.round(r.ac!))) : null);
 
 /**
  * Wake-up call, sent when a rolling screen opens (sheet, Session, roller), so the first real roll
@@ -143,11 +147,13 @@ export async function rollForCharacter(
       parentTarget = { characterId: parent.target_character_id, monsterId: parent.target_monster_id };
     }
   }
+  // a missed attack (only attacks have hit / miss) has no damage to roll
+  if (parentMissed) return { error: "That attack missed, so there's no damage to roll." };
 
   let result: ReturnType<typeof roll> | null = null;
   try {
     const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
-    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra }) : null;
+    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
   }
@@ -187,8 +193,10 @@ export async function rollForCharacter(
     campaignAutoApply(admin, c.campaign_id),
   ]);
   if (saveError) return { error: "Couldn't save the spell slot / resource. " + saveError.message };
+  // against the target's AC, or the AC typed on the sheet when there's no target
+  const vsAc = plan.rollType === "attack" ? tgt?.ac ?? typedAc(request) : null;
   const success = plan.rollType === "attack" && result
-    ? hitOrMiss(result.total, tgt?.ac, result.isCrit, result.isFumble)
+    ? hitOrMiss(result.total, vsAc, result.isCrit, result.isFumble)
     : null;
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
   const { data: saved, error } = await admin
@@ -306,7 +314,7 @@ export async function rollForCharacter(
 
   const label =
     plan.rollType === "attack" ? `${plan.source} attack`
-    : plan.rollType === "damage" ? `${plan.source} damage${critical ? " (crit!)" : ""}`
+    : plan.rollType === "damage" ? `${plan.source} damage${critical ? (result?.doubled ? " (crit! dice ×2)" : " (crit!)") : ""}`
     : plan.rollType === "heal" ? `${plan.source} healing`
     : plan.rollType === "other" ? (row ? `${plan.source}: ${result?.total} · ${row.name}` : result ? plan.source : `${plan.source}: used`)
     : plan.source;
@@ -342,6 +350,7 @@ export async function rollForCharacter(
       request,
       followUp: plan.followUp && request.kind === "use" ? { key: request.key, slot: plan.spellSlot } : undefined,
       success,
+      vsAc,
       target: tgt?.name ?? null,
       applied,
       missed: parentMissed && plan.rollType === "damage",
@@ -388,7 +397,7 @@ export async function practiceRoll(
   let result: ReturnType<typeof roll> | null = null;
   try {
     const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
-    result = plan.expression ? roll(plan.expression, { advantage: adv, critical: crit, critOn: plan.critOn, critExtra: plan.critExtra }) : null;
+    result = plan.expression ? roll(plan.expression, { advantage: adv, critical: crit, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
   }
@@ -398,7 +407,7 @@ export async function practiceRoll(
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
   const label =
     plan.rollType === "attack" ? `${plan.source} attack`
-    : plan.rollType === "damage" ? `${plan.source} damage${crit ? " (crit!)" : ""}`
+    : plan.rollType === "damage" ? `${plan.source} damage${crit ? (result?.doubled ? " (crit! dice ×2)" : " (crit!)") : ""}`
     : plan.rollType === "heal" ? `${plan.source} healing`
     : plan.rollType === "other" ? (row ? `${plan.source}: ${result?.total} · ${row.name}` : result ? plan.source : `${plan.source}: used`)
     : plan.source;
@@ -436,7 +445,8 @@ export async function practiceRoll(
       practice: true,
       request,
       followUp: plan.followUp && req.kind === "use" ? { key: req.key, slot: plan.spellSlot } : undefined,
-      success: null,
+      success: plan.rollType === "attack" && result ? hitOrMiss(result.total, typedAc(req), result.isCrit, result.isFumble) : null,
+      vsAc: plan.rollType === "attack" ? typedAc(req) : null,
       target: null,
       applied: null,
       ...(row ? { table: { row: row.name, text: row.text }, next: row.effect ? { key: rowKey(opt!.name, row.min), label: `${row.name}${row.effect.damage ? ` (${row.effect.damage}${row.effect.damage_type ? ` ${row.effect.damage_type}` : ""})` : ""}`, many: !!row.effect.many } : undefined } : {}),

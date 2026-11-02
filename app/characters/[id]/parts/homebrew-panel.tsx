@@ -15,10 +15,10 @@ import { ACTION_LABEL } from "./ui";
 const field = "h-11 w-full rounded-xl border border-line bg-bg px-3 text-[15px] outline-none focus:border-accent";
 const label = "block text-sm text-soft";
 
-export function HomebrewPanel({ characterId, name, homebrew, setHomebrew, attacks, resources, setResources, classLevels, ruleSet }: {
+export function HomebrewPanel({ characterId, name, homebrew, setHomebrew, attacks, resources, setResources, classLevels, ruleSet, features = [] }: {
   characterId: string; name: string; homebrew: Homebrew; setHomebrew: (h: Homebrew) => void;
   attacks: Attack[]; resources: Resource[]; setResources: (r: Resource[]) => void;
-  classLevels: ClassLevel[]; ruleSet?: string | null;
+  classLevels: ClassLevel[]; ruleSet?: string | null; features?: (string | { name: string })[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -26,7 +26,7 @@ export function HomebrewPanel({ characterId, name, homebrew, setHomebrew, attack
   const [editing, setEditing] = useState<Attack | "new" | null>(null);
   const [toggle, setToggle] = useState<HomebrewToggle | "new" | null>(null);
   const [addUses, setAddUses] = useState(false);
-  const auto = autoCrit(classLevels, ruleSet);
+  const auto = autoCrit(classLevels, ruleSet, features);
   const custom = attacks.filter((a) => a.custom);
   const customUses = resources.filter((r) => (r as Resource & { custom?: boolean }).custom);
   const wildSoul = classLevels.find((x) => /^barbarian$/i.test(x.class) && isWildSoul(x.subclass));

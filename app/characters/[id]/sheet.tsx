@@ -46,6 +46,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const [live, setLive] = useState<TableSession>(initialLive);
   const [fight, setFight] = useFight(character.id);
   const [turnWarning, setTurnWarning] = useState<string | null>(null);
+  const [targetAc, setTargetAc] = useState<number | null>(null); // typed on Best moves: attack rolls are checked against it
   const [hp, setHp] = useState({ cur: character.hp_current ?? character.hp_max ?? 0, temp: character.temp_hp ?? 0 });
   const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>(character.hit_dice_used ?? {});
   const [conc, setConc] = useState<{ spell: string } | null>(character.concentration ?? null);
@@ -94,7 +95,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   }
 
   /** One roll from start to finish (dice, tray, spent uses). Resolves with the saved roll, or null. */
-  async function rollNow(request: RollRequest, adv: Advantage): Promise<SavedRoll | null> {
+  async function rollNow(asked: RollRequest, adv: Advantage): Promise<SavedRoll | null> {
+    // attack rolls go against the AC typed on Best moves (the server decides hit or miss)
+    const atk = asked.kind === "use" ? options.find((x) => x.key === asked.key) : null;
+    const request: RollRequest = asked.kind === "use" && targetAc != null && (atk?.kind === "weapon" || atk?.kind === "spell_attack") ? { ...asked, ac: targetAc } : asked;
     if (practice) {
       const crit = request.kind === "damage" && !!last?.practice && last.isCrit;
       const res = await practiceRoll(character.id, request, adv, crit);
@@ -186,6 +190,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const spellOptions = options.filter((o) => o.fromSpell && (o.damage || o.kind === "heal"));
   const boosts = options.filter((o) => o.kind === "boost" && !o.fromSpell && !o.row_of);
 
+  // How this character's crit works, for the damage button: the rules or the house rule, plus Brutal Critical
+  const critHow = (o: Option) => {
+    const die = o.damage?.match(/d(\d+)/)?.[1];
+    const brutal = crit.extra > 0 && o.kind === "weapon" && !o.ranged && die ? ` + Brutal Critical ${crit.extra}d${die}` : "";
+    return crit.mode === "double" ? `dice${brutal} rolled, then doubled` : `dice doubled${brutal}`;
+  };
+
   // After an attack or a save spell, offer the damage roll (same slot level, crit-aware).
   const followUp = (() => {
     if (last?.next && !!last.practice === practice) {
@@ -193,11 +204,12 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       return { label: `Roll ${next.label}`, onClick: () => doRoll({ kind: "use", key: next.key }) };
     }
     if (!last?.followUp || !!last.practice !== practice) return null;
+    if (last.success === false) return null; // a miss: no damage to roll
     const o = options.find((x) => x.key === last.followUp!.key);
     if (!o) return null;
     const expr = damageExpression(c, o, last.followUp.slot);
     return {
-      label: last.isCrit ? `Roll crit damage (${expr}, dice doubled)` : `Roll damage (${expr})`,
+      label: last.isCrit ? `Roll crit damage (${expr}, ${critHow(o)})` : `Roll damage (${expr})`,
       onClick: () => doRoll(last.practice
         ? { kind: "damage", key: o.key, slot: last.followUp!.slot }
         : { kind: "damage", key: o.key, slot: last.followUp!.slot, parentRollId: last.id }),
@@ -328,14 +340,16 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       <section className="mt-4">
         {tab === "Attacks" && (
           <div className="flex flex-col gap-5">
-            <BestMoves c={c} options={options} turn={inFight ? turnLeft(fight.turn) : null} onDo={canEdit ? doCombo : undefined} busy={pending} />
-            {((homebrew.toggles?.length ?? 0) > 0 || crit.range < 20 || crit.extra > 0) && (
+            <BestMoves c={c} options={options} turn={inFight ? turnLeft(fight.turn) : null} onDo={canEdit ? doCombo : undefined} busy={pending}
+              ac={targetAc} onAc={canEdit ? setTargetAc : undefined} />
+            <CritRule mode={crit.mode} range={crit.range} extra={crit.extra} disabled={!canEdit || pending}
+              onChange={(mode) => {
+                const next = { ...homebrew, crit_mode: mode === "double" ? ("double" as const) : undefined };
+                setHomebrew(next);
+                run(() => saveHomebrew(character.id, next), (r) => setHomebrew(r.homebrew));
+              }} />
+            {(homebrew.toggles?.length ?? 0) > 0 && (
               <div className="flex flex-col gap-2">
-                {(crit.range < 20 || crit.extra > 0) && (
-                  <p className="text-sm text-muted">
-                    Crits on {crit.range === 20 ? "a 20" : `${crit.range}–20`}{crit.extra > 0 ? ` · +${crit.extra} weapon ${crit.extra === 1 ? "die" : "dice"} on a melee crit` : ""}
-                  </p>
-                )}
                 {(homebrew.toggles ?? []).map((t) => (
                   <button key={t.id} type="button" role="switch" aria-checked={t.on} disabled={!canEdit}
                     onClick={() => {
@@ -400,7 +414,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         {tab === "Features" && (
           <>
             {canEdit && (
-              <HomebrewPanel characterId={character.id} name={character.name} homebrew={homebrew} setHomebrew={setHomebrew}
+              <HomebrewPanel characterId={character.id} name={character.name} homebrew={homebrew} setHomebrew={setHomebrew} features={c.features}
                 attacks={c.attacks} resources={resources} setResources={setResources} classLevels={c.class_levels} ruleSet={character.rule_set} />
             )}
             <FeaturesTab features={character.features} featText={featText} />
@@ -506,4 +520,31 @@ function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, e
 function concText(c: { spell: string; dc: number; total: number | null; kept: boolean; reason: string }) {
   if (c.reason === "down") return `Dropped to 0 HP: ${c.spell} ends.`;
   return `Concentration save for ${c.spell}: ${c.total} vs DC ${c.dc}. ${c.kept ? "Still concentrating." : `${c.spell} ends.`}`;
+}
+
+/** Critical hits: the rules (roll the damage dice twice) or the table's house rule (roll once, double what the dice rolled). */
+function CritRule({ mode, range, extra, disabled, onChange }: {
+  mode: "dice" | "double"; range: number; extra: number; disabled: boolean; onChange: (m: "dice" | "double") => void;
+}) {
+  const opts: { id: "dice" | "double"; title: string; sub: string }[] = [
+    { id: "dice", title: "The rules", sub: extra ? "Roll the damage dice twice; Brutal Critical dice once" : "Roll the damage dice twice" },
+    { id: "double", title: "House rule", sub: extra ? "Roll the dice once (Brutal Critical too), double what they rolled" : "Roll the dice once, double what they rolled" },
+  ];
+  return (
+    <section aria-label="Critical hits" className="rounded-2xl border border-line bg-surface p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
+        Critical hits · on {range === 20 ? "a 20" : `${range}–20`}{extra > 0 ? ` · Brutal Critical +${extra} ${extra === 1 ? "die" : "dice"}` : ""}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="How critical hits work">
+        {opts.map((o) => (
+          <button key={o.id} type="button" role="radio" aria-checked={mode === o.id} disabled={disabled} onClick={() => mode !== o.id && onChange(o.id)}
+            className={`rounded-xl border px-3 py-2 text-left ${mode === o.id ? "border-accent bg-accent-surface" : "border-line"}`}>
+            <span className={`block text-sm font-bold ${mode === o.id ? "text-accent" : ""}`}>{o.title}</span>
+            <span className="block text-xs leading-snug text-muted">{o.sub}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-muted">Modifiers are never doubled. Flat bonuses like Rage count once.</p>
+    </section>
+  );
 }

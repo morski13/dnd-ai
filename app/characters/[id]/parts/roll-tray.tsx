@@ -89,6 +89,13 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
           )}
         </div>
 
+        {last && !pending && last.rollType === "attack" && last.success != null && last.vsAc != null && (
+          <p key={`h${last.id}`} role="status" className={`mt-1 rounded-lg px-3 py-2 text-sm font-bold ${last.success ? "animate-pop bg-success-bg text-success" : "animate-shake bg-danger-bg text-danger"}`}>
+            {last.success
+              ? `Hit! ${last.total} vs AC ${last.vsAc}${last.isCrit ? " · critical" : ""}`
+              : `Miss: ${last.total} doesn't beat AC ${last.vsAc}${last.isFumble ? " (natural 1)" : ""}. No damage to roll.`}
+          </p>
+        )}
         {last && !pending && (last.isCrit || last.isFumble) && (
           <p key={last.id} className={`mt-1 text-sm font-bold ${last.isCrit ? "animate-pop text-accent" : "animate-shake text-danger"}`}>
             {last.isCrit ? "Natural 20!" : "Natural 1…"}
