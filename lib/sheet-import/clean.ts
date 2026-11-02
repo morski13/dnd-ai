@@ -2,6 +2,7 @@
 // or the import screen sending it back to the server. Everything is checked and clamped; unknown
 // classes, skills and abilities are dropped or listed as warnings. Pure (tested).
 import { ABILITIES, SKILLS, type Ability } from "../rules";
+import { cleanBonuses } from "../homebrew";
 import { cleanSpellName, num, parseClassLevel, parseDamage, parseSpeed } from "./parse";
 import { emptySheet, type ImportedSheet, type SheetAttack } from "./types";
 
@@ -91,6 +92,8 @@ export function cleanSheet(raw: unknown, source: ImportedSheet["source"]): Impor
   for (const c of ["pp", "gp", "ep", "sp", "cp"] as const) { const n = positive(coins[c], 9_999_999); s.coins[c] = n ?? 0; }
 
   s.features = arr(r.features).map((f) => { const o = obj(f); return { name: str(o.name), description: longStr(o.description) }; }).filter((f) => f.name).slice(0, 60);
+  const bonuses = cleanBonuses(r.bonuses, Object.keys(SKILLS));
+  if (Object.keys(bonuses).length) s.bonuses = bonuses;
   s.warnings = arr(r.warnings).map((w) => str(w, 200)).filter(Boolean).slice(0, 12);
   if (s.unknownClasses.length && !s.warnings.some((w) => w.includes("doesn't have")))
     s.warnings.push(`The app doesn't have ${s.unknownClasses.join(", ")} yet (only the 12 classes from the free rules). Pick the closest one, or keep it as a note.`);

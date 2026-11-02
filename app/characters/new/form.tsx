@@ -6,7 +6,7 @@ import { ABILITIES, SKILLS, type Ability } from "@/lib/rules";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 import { ImportedParts, type Extras } from "../import/parts";
 import { checkNumbers, type CheckRow } from "@/lib/sheet-import/check";
-import { createCharacter } from "./actions";
+import { createCharacter, updateFromSheet } from "./actions";
 
 const field = "h-12 w-full rounded-xl border border-line bg-bg px-3 text-[15px] outline-none focus:border-accent";
 const mod = (n: number) => Math.floor((n - 10) / 2);
@@ -22,7 +22,7 @@ function startFrom(sheet: ImportedSheet | undefined) {
   };
 }
 
-export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean; campaignRules: string; imported?: ImportedSheet }) {
+export function CharacterForm({ isDm, campaignRules, imported, update }: { isDm: boolean; campaignRules: string; imported?: ImportedSheet; update?: { id: string; name: string } }) {
   const [start0] = useState(() => startFrom(imported));
   const [name, setName] = useState(start0.name);
   const [playerName, setPlayerName] = useState(start0.playerName);
@@ -38,7 +38,7 @@ export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean
   const [speed, setSpeed] = useState(start0.speed);
   const [extras, setExtras] = useState<Extras | null>(() => (imported ? {
     saves: imported.saves, expertise: imported.expertise, attacks: imported.attacks, spells: imported.spells, equipment: imported.equipment,
-    coins: imported.coins, features: imported.features, spellAbility: imported.spellAbility, unknownClasses: imported.unknownClasses,
+    coins: imported.coins, features: imported.features, spellAbility: imported.spellAbility, unknownClasses: imported.unknownClasses, bonuses: imported.bonuses,
   } : null));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -60,8 +60,9 @@ export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean
     e.preventDefault();
     setError(null);
     start(async () => {
-      const r = await createCharacter({ name, playerName, species, background, rules, classes, scores, skills, hp: hp ? Number(hp) : null, ac: ac ? Number(ac) : null, speed: speed ? Number(speed) : null, forMe,
-        ...(extras ? { imported: { ...extras, expertise: extras.expertise.filter((x) => skills.includes(x)) } } : {}) });
+      const input = { name, playerName, species, background, rules, classes, scores, skills, hp: hp ? Number(hp) : null, ac: ac ? Number(ac) : null, speed: speed ? Number(speed) : null, forMe,
+        ...(extras ? { imported: { ...extras, expertise: extras.expertise.filter((x) => skills.includes(x)) } } : {}) };
+      const r = update ? await updateFromSheet(update.id, input) : await createCharacter(input);
       if (r?.error) setError(r.error);
     });
   }
@@ -164,11 +165,12 @@ export function CharacterForm({ isDm, campaignRules, imported }: { isDm: boolean
         <p className="mt-2">HP {hp || autoHp}{!hp && " (average)"} · saves {(extras?.saves.length ? extras.saves : main.saves).join(" & ")} · hit dice {classes.map((c) => `${c.level}d${CLASSES[c.class].hitDie}`).join(" + ")}</p>
         {Object.keys(slots).length > 0 && <p className="mt-1">Spell slots: {Object.entries(slots).map(([l, n]) => `${n}× level ${l}`).join(", ")}</p>}
         {resources.length > 0 && <p className="mt-1">{resources.map((r) => `${r.name} ${r.max}`).join(" · ")}</p>}
+        {extras?.bonuses && bonusText(extras.bonuses) && <p className="mt-1">Extras from your sheet (kept as hand-set numbers): {bonusText(extras.bonuses)}</p>}
         <p className="mt-2 text-xs text-muted">{extras ? "Your sheet's attacks, spells, equipment, coins and features are added too." : "Add weapons in the Gear tab and spells in the Spells tab after you save."}</p>
       </section>
 
       {error && <p className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">{error}</p>}
-      <button disabled={pending} className="h-12 rounded-xl bg-accent text-[15px] font-bold text-accent-text">{pending ? "Making…" : "Make character"}</button>
+      <button disabled={pending} className="h-12 rounded-xl bg-accent text-[15px] font-bold text-accent-text">{pending ? (update ? "Updating…" : "Making…") : update ? `Update ${update.name}` : "Make character"}</button>
     </form>
   );
 }
@@ -224,4 +226,16 @@ function Choice({ label, value, active, disabled, onClick }: { label: string; va
       <span className="text-base font-bold">{value ?? "–"}</span>
     </button>
   );
+}
+
+/** "proficiency +5 · initiative +2 · WIS save +1 · Athletics +1" */
+function bonusText(b: NonNullable<ImportedSheet["bonuses"]>): string {
+  const parts: string[] = [];
+  if (b.prof != null) parts.push(`proficiency ${signed(b.prof)}`);
+  if (b.init) parts.push(`initiative ${signed(b.init)}`);
+  for (const [a, v] of Object.entries(b.saves ?? {})) if (v) parts.push(`${a} save ${signed(v)}`);
+  for (const [k, v] of Object.entries(b.skills ?? {})) if (v) parts.push(`${k} ${signed(v)}`);
+  if (b.spell_dc) parts.push(`spell DC ${signed(b.spell_dc)}`);
+  if (b.spell_attack) parts.push(`spell attack ${signed(b.spell_attack)}`);
+  return parts.join(" · ");
 }

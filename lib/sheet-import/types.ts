@@ -1,6 +1,7 @@
 // What we read from a character sheet PDF, before it becomes a character.
 // Pure data: the player checks and edits all of it on the import screen before anything is saved.
 import type { Ability } from "../rules";
+import type { Bonuses } from "../homebrew";
 
 /** One field from the PDF: its name, what's written in it, and where it sits (for ordering). */
 export type PdfField = { name: string; value: string; page: number; y: number; checkbox?: boolean };
@@ -37,6 +38,10 @@ export type ImportedSheet = {
   warnings: string[];
   /** "form": read from the PDF's fields (exact). "ai": an AI read the text (check it). */
   source: "form" | "ai";
+  /** Our own sheet only: totals that differ from the worked-out ones, as hand-set extras ("Edit numbers"). */
+  bonuses?: Bonuses;
+  /** Our own sheet only: the character it was printed from (to update it instead of making a new one). */
+  characterId?: string | null;
 };
 
 export const EMPTY_COINS: Coins = { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 };

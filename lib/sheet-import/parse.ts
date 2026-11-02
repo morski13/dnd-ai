@@ -2,6 +2,7 @@
 // Knows the official WotC fillable sheet (2014) and D&D Beyond's export; anything else is matched by
 // field names that look alike ("MaxHP", "HP Max", "Hit Point Maximum"...). Field names are compared
 // without case, spaces or punctuation, because real sheets are full of stray spaces ("Race ", "DEXmod ").
+import { fromFields, isOwnSheet } from "../own-sheet/fields";
 import { CLASS_NAMES } from "../classes";
 import { ABILITIES, SKILLS, type Ability } from "../rules";
 import { emptySheet, type Coins, type ImportedSheet, type PdfField, type SheetAttack, type SheetFeature, type SheetItem } from "./types";
@@ -153,6 +154,7 @@ function inferProf(total: number | null, mod: number | null, prof: number | null
 }
 
 export function fieldsToSheet(fields: PdfField[]): ImportedSheet {
+  if (isOwnSheet(fields)) return fromFields(fields); // our own sheet: every box is known by name
   const sheet = emptySheet("form");
   fields = fields.map((f) => (f.value.includes("\r") ? { ...f, value: f.value.replace(/\r\n?/g, "\n") } : f));
   const byKey = new Map<string, PdfField>();

@@ -14,6 +14,7 @@ import {
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
+import { PrintButton } from "./parts/print-button";
 import { PortraitButton } from "../../components/map/portrait";
 import { asShown, useDice } from "../../components/dice/dice-provider";
 import { useWarmRolls } from "../../components/dice/use-warm-rolls";
@@ -167,6 +168,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
           </Link>
           <div className="flex-1" />
+          <PrintButton characterId={character.id} />
           {canEdit && <CustomizeButton characterId={character.id} />}
           {canEdit && totalLevel(c.class_levels) < 20 && (
             <Link href={`/characters/${character.id}/level-up`}

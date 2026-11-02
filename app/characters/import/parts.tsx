@@ -6,7 +6,7 @@ import { ABILITIES, type Ability } from "@/lib/rules";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 import { checkLibrary } from "./actions";
 
-export type Extras = Pick<ImportedSheet, "saves" | "expertise" | "attacks" | "spells" | "equipment" | "coins" | "features" | "spellAbility" | "unknownClasses">;
+export type Extras = Pick<ImportedSheet, "saves" | "expertise" | "attacks" | "spells" | "equipment" | "coins" | "features" | "spellAbility" | "unknownClasses" | "bonuses">;
 
 const chip = (on: boolean) => `h-9 rounded-full border px-3 text-sm ${on ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`;
 const COINS = ["pp", "gp", "ep", "sp", "cp"] as const;

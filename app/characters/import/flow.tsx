@@ -6,18 +6,21 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { ImportedSheet } from "@/lib/sheet-import/types";
 import { CharacterForm } from "../new/form";
+import { sheetTarget } from "../new/actions";
 import { readSheetWithAi } from "./actions";
+import { PrintButton } from "../[id]/parts/print-button";
 
 type Step =
   | { at: "pick"; error?: string }
   | { at: "reading"; what: string }
-  | { at: "review"; sheet: ImportedSheet; file: string; by?: string }
+  | { at: "review"; sheet: ImportedSheet; file: string; by?: string; target?: { id: string; name: string } | null }
   | { at: "stuck"; file: string; why: string; partial: ImportedSheet | null };
 
 const MAX_MB = 20;
 
 export function ImportFlow({ isDm, campaignRules, aiReady }: { isDm: boolean; campaignRules: string; aiReady: boolean }) {
   const [step, setStep] = useState<Step>({ at: "pick" });
+  const [asNew, setAsNew] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   async function read(file: File) {
@@ -34,7 +37,11 @@ export function ImportFlow({ isDm, campaignRules, aiReady }: { isDm: boolean; ca
       } catch {
         fieldsSheet = null; // a broken or locked form: try the text below
       }
-      if (fieldsSheet && sheetScore(fieldsSheet) >= 6) return setStep({ at: "review", sheet: fieldsSheet, file: file.name });
+      if (fieldsSheet && sheetScore(fieldsSheet) >= 6) {
+        // our own sheet, printed from a character you can change: offer to update that one
+        const target = fieldsSheet.characterId ? await sheetTarget(fieldsSheet.characterId).catch(() => null) : null;
+        return setStep({ at: "review", sheet: fieldsSheet, file: file.name, target });
+      }
 
       // no usable fields: read the text and let the AI make sense of it
       setStep({ at: "reading", what: "This sheet has no form fields. Reading its text…" });
@@ -77,7 +84,22 @@ export function ImportFlow({ isDm, campaignRules, aiReady }: { isDm: boolean; ca
           )}
           <button type="button" onClick={again} className="mt-2 inline-flex min-h-10 items-center text-sm text-accent underline">Pick a different file</button>
         </div>
-        <CharacterForm key={step.file + s.name} isDm={isDm} campaignRules={campaignRules} imported={s} />
+        {step.target && (
+          <div className="mt-3 rounded-2xl border border-accent-line bg-accent-surface p-4 text-sm" role="radiogroup" aria-label="What to do with this sheet">
+            <p className="font-semibold">This sheet was printed from {step.target.name}.</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {[false, true].map((n) => (
+                <button key={String(n)} type="button" role="radio" aria-checked={asNew === n} onClick={() => setAsNew(n)}
+                  className={`min-h-11 rounded-xl border px-2 text-sm ${asNew === n ? "border-accent bg-surface font-bold text-accent" : "border-line text-soft"}`}>
+                  {n ? "Make a new character" : `Update ${step.target!.name}`}
+                </button>
+              ))}
+            </div>
+            {!asNew && <p className="mt-2 text-xs text-muted">Numbers, skills, spells, coins and attacks come from the sheet. Features and items are only added, never removed; change those on the sheet in the app.</p>}
+          </div>
+        )}
+        <CharacterForm key={step.file + s.name + String(asNew)} isDm={isDm} campaignRules={campaignRules} imported={s}
+          update={step.target && !asNew ? step.target : undefined} />
       </div>
     );
   }
@@ -124,12 +146,17 @@ export function ImportFlow({ isDm, campaignRules, aiReady }: { isDm: boolean; ca
       <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-soft">
         <p className="font-semibold text-text">Which sheets work</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li><b>Our own sheet</b> (from the PDF button on a character, or the blank one below). Read exactly, including changes you made in a PDF app.</li>
           <li><b>D&amp;D Beyond:</b> open your character → Export to PDF. Read exactly.</li>
           <li><b>The official fillable sheet</b> (filled in on a computer). Read exactly.</li>
           <li><b>Other PDFs with text</b> (homemade or other apps): {aiReady ? "read by the AI; check the numbers." : "need the app's AI, which isn't set up yet."}</li>
           <li><b>Scans and photos</b> of paper sheets: not yet. Make the character by hand.</li>
         </ul>
         <p className="mt-2 text-xs text-muted">Classes outside the free rules (Artificer, Blood Hunter…) and their spells are kept as notes.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4 text-sm text-soft">
+        <p className="min-w-0 flex-1">Playing on paper? Print our blank sheet, fill it in (on paper or in a PDF app), and import it here later.</p>
+        <PrintButton characterId={null} label="Blank sheet" />
       </div>
     </div>
   );

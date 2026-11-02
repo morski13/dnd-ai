@@ -60,6 +60,7 @@ export async function importedParts(db: DB, rules: "2014" | "2024", raw: unknown
     coins: s.coins as Coins,
     features: buildFeatures(s.features, { spells: unknownSpells, classes: s.unknownClasses }),
     spellAbility: s.spellAbility,
+    bonuses: s.bonuses ?? {},
   };
 }
 
