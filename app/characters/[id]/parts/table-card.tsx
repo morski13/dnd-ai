@@ -35,7 +35,7 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
     if ("error" in r) return setError(r.error);
     setLive(null);
     setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
-    router.push(`/stats/recap?s=${r.number}`); // the session's stats and story, right away
+    router.push(`/stats/wrapped?s=${r.number}`); // the night's Wrapped, right away (it opens for the rest of the table too)
   });
   // the fight is a real one in the session, so rolls carry it and the recap shows it
   const [fightNote, setFightNote] = useState<string | null>(null);

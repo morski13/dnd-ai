@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Manrope, Spectral } from "next/font/google";
 import { APP_NAME, APP_SHORT_NAME, APP_TAGLINE } from "@/lib/brand";
 import { DiceProvider } from "./components/dice/dice-provider";
 import { ServiceWorker } from "./components/sw-register";
 import { OfflineSync } from "./components/offline-sync";
+import { WrappedWatcher } from "./components/wrapped-watcher";
 import { NAV_SCRIPT } from "./components/nav-script";
 import "./globals.css";
 
@@ -31,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: NAV_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <DiceProvider>{children}<OfflineSync /></DiceProvider>
+        <DiceProvider>{children}<OfflineSync /><Suspense fallback={null}><WrappedWatcher /></Suspense></DiceProvider>
         <ServiceWorker />
       </body>
     </html>

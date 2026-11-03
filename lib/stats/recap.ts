@@ -27,6 +27,8 @@ export type Recap = {
   moments: Moment[];
   awards: Award[];
   mvp: string | null;
+  /** Character keys: who drew the party's first blood, and who landed the last knock-out on an enemy. */
+  firsts: { firstBlood: string | null; lastWord: string | null };
 };
 
 const keyOf = (c: string | null, m: string | null) => (c ? `c:${c}` : m ? `m:${m}` : null);
@@ -126,6 +128,9 @@ export function buildRecap(
       enemiesDown: mine.filter((k) => !isChar(k.victim) && !byKey.get(k.victim)?.ally).length, pcsDropped: mine.filter((k) => isChar(k.victim)).length,
     };
   });
+  const firstHit = ordered.find((r) => r.roll_type === "damage" && isChar(keyOf(r.character_id, null)) && landed(r) > 0);
+  const enemyKos = kos.filter((k) => !isChar(k.victim) && k.killer && isChar(k.killer) && !byKey.get(k.victim)?.ally);
+  const lastKo = enemyKos.length ? enemyKos.reduce((a, b) => (when(b.victim) >= when(a.victim) ? b : a)) : null;
   const start = ordered[0]?.created_at ?? null, end = ordered[ordered.length - 1]?.created_at ?? null;
   return {
     start, end, minutes: start && end ? Math.round((Date.parse(end) - Date.parse(start)) / 60000) : 0,
@@ -135,6 +140,7 @@ export function buildRecap(
     },
     heroes, fights, moments, awards: awards(chars),
     mvp: heroes[0] && heroes[0].damage + heroes[0].healing > 0 ? heroes[0].name : null,
+    firsts: { firstBlood: firstHit ? keyOf(firstHit.character_id, null) : null, lastWord: lastKo?.killer ?? null },
   };
 }
 

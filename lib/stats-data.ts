@@ -1,6 +1,7 @@
 // Loads everything the Statistics screen needs, as the logged-in user.
 // Only rolls made during a session count. The database hides secret DM rolls from players.
 import { wrappedSlides, type Slide } from "./stats/wrapped";
+import { sessionWrappedSlides, tallyVotes, voteMoments, type SessionSlide, type Tally, type VoteMoment, type WrapHero } from "./stats/session-wrapped";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -300,5 +301,55 @@ export async function getWrappedData() {
   return {
     campaignName: ctx.campaign.name,
     slides: wrappedSlides(stats.filter((s) => s.kind === "character"), stats.filter((s) => s.kind === "monster" && !actors.find((x) => x.key === s.key && x.ally)), sessions),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session Wrapped (/stats/wrapped?s=N)
+
+export type SessionWrappedView = {
+  campaignName: string; isDm: boolean; userId: string;
+  session: { id: string; number: number; title: string | null; live: boolean; teaser: string | null };
+  slides: SessionSlide[];
+  moments: VoteMoment[]; tally: Tally; votesReady: boolean;
+};
+
+/**
+ * One session's Wrapped, the same for everyone at the table: open rolls only (secret DM rolls are left out
+ * even for the DM, because every slide can be shared). `s` = the session number; missing = the newest ended one.
+ */
+export async function getSessionWrappedData(params: { s?: string }): Promise<SessionWrappedView | { campaignName: string | null; empty: true }> {
+  await connection();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) redirect("/login");
+  const ctx = await recapContext(supabase, userId);
+  if (!ctx) return { campaignName: null, empty: true };
+  const { campaign, isDm } = ctx;
+  const { data: rows } = await supabase.from("sessions").select("*").eq("campaign_id", campaign.id).not("started_at", "is", null).order("number");
+  const all = (rows ?? []) as { id: string; number: number; title: string | null; ended_at: string | null; teaser?: string | null }[];
+  const chosen = all.find((x) => String(x.number) === params.s) ?? [...all].reverse().find((x) => x.ended_at);
+  if (!chosen) return { campaignName: campaign.name, empty: true };
+
+  const [{ recap, characters }, portraits, votesRes] = await Promise.all([
+    recapFor(supabase, campaign.id, chosen.id, userId, { onlyOpen: true }),
+    supabase.from("characters").select("id, portrait").eq("campaign_id", campaign.id),
+    supabase.from("session_votes").select("moment_key, user_id").eq("session_id", chosen.id),
+  ]);
+  const stamp = new Map(((portraits.data ?? []) as { id: string; portrait: number | null }[]).map((c) => [c.id, Number(c.portrait) || null]));
+  const heroes: WrapHero[] = characters.map((c) => ({
+    key: c.key, name: c.name, short: c.short, color: c.color, mine: c.mine,
+    portrait: stamp.get(c.id) ? `/api/portrait/character/${c.id}?v=${stamp.get(c.id)}` : null,
+  }));
+  const teaser = chosen.teaser ?? null;
+  const moments = voteMoments(recap.moments);
+  return {
+    campaignName: campaign.name, isDm, userId,
+    session: { id: chosen.id, number: chosen.number, title: chosen.title, live: !chosen.ended_at, teaser },
+    slides: sessionWrappedSlides({ session: chosen, recap, heroes, teaser, isDm, campaign: campaign.name }),
+    moments,
+    tally: tallyVotes((votesRes.data ?? []) as { moment_key: string; user_id: string }[], moments, userId),
+    votesReady: !votesRes.error, // SQL 32 not run yet → no voting
   };
 }

@@ -234,7 +234,10 @@ function LastSession({ strip }: { strip: Awaited<ReturnType<typeof lastSessionSt
     <section className="mt-5 rounded-2xl border border-line bg-surface-2 p-4 lg:p-6" aria-label="Last session">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Last session · Session {strip.number}{strip.title ? ` · ${strip.title}` : ""}</p>
-        <Link href={`/stats/recap?s=${strip.number}`} className="inline-flex min-h-10 shrink-0 items-center text-sm font-semibold text-accent underline">Read the recap</Link>
+        <span className="flex shrink-0 gap-3">
+          <Link href={`/stats/wrapped?s=${strip.number}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-accent underline">Wrapped</Link>
+          <Link href={`/stats/recap?s=${strip.number}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-accent underline">Read the recap</Link>
+        </span>
       </div>
       <div className="mt-2 grid gap-2 md:grid-cols-4">
         {strip.mvp && (

@@ -106,7 +106,10 @@ function Filters({ d }: { d: StatsView }) {
       )}
       {d.session?.title && <p className="text-sm text-muted">Session {d.session.number} · {d.session.title}</p>}
       {d.scope === "session" && d.session && (
-        <Link href={`/stats/recap?s=${d.session.number}`} className="mt-2 inline-flex h-10 items-center gap-2 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">📜 Session {d.session.number} recap</Link>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link href={`/stats/recap?s=${d.session.number}`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-accent-line bg-accent-surface px-3 text-sm font-bold text-accent">📜 Session {d.session.number} recap</Link>
+          <Link href={`/stats/wrapped?s=${d.session.number}`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-accent-line px-3 text-sm font-bold text-accent">▶ Wrapped</Link>
+        </div>
       )}
 
       <nav aria-label="Who" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">

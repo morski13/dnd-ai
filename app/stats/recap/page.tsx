@@ -59,6 +59,7 @@ async function Recap({ searchParams }: { searchParams: SP }) {
         <nav className="mt-3 flex flex-wrap gap-2 text-sm" aria-label="Other sessions">
           {prev && <Link href={`/stats/recap?s=${prev.number}`} className="inline-flex h-9 items-center rounded-full border border-line px-3 text-soft">← Session {prev.number}</Link>}
           {next && <Link href={`/stats/recap?s=${next.number}`} className="inline-flex h-9 items-center rounded-full border border-line px-3 text-soft">Session {next.number} →</Link>}
+          <Link href={`/stats/wrapped?s=${d.session.number}`} className="inline-flex h-9 items-center rounded-full bg-accent px-3 font-bold text-accent-text">▶ Session Wrapped</Link>
           <Link href={`/stats?s=${d.session.number}`} className="inline-flex h-9 items-center rounded-full border border-accent-line px-3 font-bold text-accent">All stats for this session</Link>
         </nav>
       </header>

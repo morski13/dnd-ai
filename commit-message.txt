@@ -1,1 +1,4 @@
-Builder levels, Pick for me, random character, portraits, party level-up, offline rolls and real dice, confirm numbers, stats on Home, DM quick log, fight mode, share cards, Campaign Wrapped, live fight odds, homebrew editor, offline page (run supabase/30 and 31)
+Session Wrapped: a story for the whole table when a session ends, personal slides, Moment of the night vote, rotating awards, DM teaser (run supabase/32)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014ScUJ83rpWZeGEezMA72Eg

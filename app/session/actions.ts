@@ -63,7 +63,7 @@ export async function endSession(sessionId: string): Promise<Fail | void> {
   const { data: ended } = await createAdminClient().from("sessions").select("number").eq("id", sessionId).maybeSingle();
   const r = await closeSession(campaignId, sessionId);
   if (r) return r;
-  redirect(ended ? `/stats/recap?s=${ended.number}` : "/"); // straight to what happened
+  redirect(ended ? `/stats/wrapped?s=${ended.number}` : "/"); // straight to the night's Wrapped (everyone else's opens too)
 }
 
 /**
