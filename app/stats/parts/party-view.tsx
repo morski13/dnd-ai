@@ -4,6 +4,8 @@ import type { ActorStats } from "@/lib/stats/compute";
 import { TierBadge } from "../../fights/tier";
 import { Awards, Section, Tiles, avg, pct } from "./bits";
 import { CharacterBars, TrendChart } from "./charts";
+import { DprSection } from "./dpr";
+import { PartyLuck } from "./luck";
 
 export function PartyView({ d }: { d: StatsView }) {
   const chars = d.characters.filter((c) => d.stats[c.key]);
@@ -18,6 +20,8 @@ export function PartyView({ d }: { d: StatsView }) {
     { label: "Attacks (hits)", get: (s) => (s.attacks ? `${s.attacks} (${s.hits})` : "—") },
     { label: "Hit rate", get: (s) => pct(s.hitRate) },
     { label: "Average d20", get: (s) => avg(s.d20Avg) },
+    ...(d.luck ? [{ label: "Luck index", get: (s: ActorStats) => { const v = d.luck!.byChar[s.key]?.all.both.index; return v == null ? "—" : Math.round(v); } }] : []),
+    ...(d.fights ? [{ label: "Dmg/round", get: (s: ActorStats) => d.fights!.byChar[s.key]?.dpr ?? "—" }] : []),
     { label: "Nat 20s", get: (s) => s.nat20 },
     { label: "Nat 1s", get: (s) => s.nat1 },
     { label: "HP lost", get: (s) => s.damageTaken },
@@ -55,6 +59,20 @@ export function PartyView({ d }: { d: StatsView }) {
             </Section>
           )}
           </div>
+
+          {d.luck && (
+            <Section title="Luck index" sub="Each d20 scored against its own odds (advantage counts). 50 is average luck.">
+              <div className="rounded-[18px] border border-line bg-surface p-3">
+                <PartyLuck chars={chars} byChar={d.luck.byChar} party={d.luck.party} hasReal={d.luck.hasReal} />
+              </div>
+            </Section>
+          )}
+
+          {d.fights && (
+            <Section title="Damage per round" sub="Fight by fight, per character">
+              <DprSection fights={d.fights.list} chars={chars} />
+            </Section>
+          )}
 
           <Section title="Awards" sub={d.scope === "session" ? `Session ${d.session?.number}` : "Whole campaign"}>
             <Awards awards={d.awards} colorOf={colorOf} campaign={d.campaignName} />

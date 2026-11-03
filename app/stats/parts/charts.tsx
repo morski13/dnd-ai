@@ -2,9 +2,9 @@
 // Charts for the Statistics screen (Recharts). Each character keeps its own color everywhere.
 import { useState } from "react";
 import {
-  Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { TrendPoint } from "@/lib/stats-data";
+import type { FightRow, TrendPoint } from "@/lib/stats-data";
 
 const INK = { text: "#efe7da", soft: "#cbbfad", muted: "#a89c8a", line: "#3a332a", surface: "#211d18" };
 
@@ -47,6 +47,8 @@ export function CharacterBars({ data, unit = "" }: { data: { name: string; value
 
 const METRICS = [
   { id: "damage", label: "Damage", unit: "" },
+  { id: "dpr", label: "Dmg / round", unit: "" },
+  { id: "luck", label: "Luck", unit: "" },
   { id: "healing", label: "Healing", unit: "" },
   { id: "damageTaken", label: "HP lost", unit: "" },
   { id: "d20Avg", label: "Avg d20", unit: "" },
@@ -83,12 +85,15 @@ export function TrendChart({ trends, series }: { trends: Record<MetricId, TrendP
           ))}
         </ul>
       )}
+      {metric === "luck" && <p className="mt-2 text-xs text-muted">50 is average luck. Sessions with only a few rolls swing a lot.</p>}
+      {metric === "dpr" && <p className="mt-2 text-xs text-muted">Damage in that session&apos;s fights ÷ the rounds they were in.</p>}
       <div className="mt-2 h-56">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 12, right: 16, bottom: 0, left: -16 }}>
             <CartesianGrid vertical={false} stroke={INK.line} strokeDasharray="0" />
             <XAxis dataKey="session" tickLine={false} axisLine={{ stroke: INK.line }} tick={{ fill: INK.muted, fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tick={{ fill: INK.muted, fontSize: 12 }} allowDecimals={metric === "d20Avg"} domain={metric === "d20Avg" ? [1, 20] : metric === "hitRate" ? [0, 100] : [0, "auto"]} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fill: INK.muted, fontSize: 12 }} allowDecimals={metric === "d20Avg" || metric === "dpr"} domain={metric === "d20Avg" ? [1, 20] : metric === "hitRate" || metric === "luck" ? [0, 100] : [0, "auto"]} ticks={metric === "luck" ? [0, 25, 50, 75, 100] : undefined} />
+            {metric === "luck" && <ReferenceLine y={50} stroke={INK.muted} strokeWidth={1} />}
             <Tooltip cursor={{ stroke: INK.muted, strokeWidth: 1 }} content={<Tip unit={m.unit} />} />
             {series.map((s) => (
               <Line
@@ -107,6 +112,114 @@ export function TrendChart({ trends, series }: { trends: Record<MetricId, TrendP
           </LineChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Damage per round, fight by fight (oldest left).
+ * Party: one column per fight, its height the party's DPR, split by who dealt it.
+ * With `focus`: that character's line is the point and the party's per-character average is grey context.
+ */
+export function DprChart({ fights, series, focus }: { fights: FightRow[]; series: Series[]; focus?: string }) {
+  if (!focus) return <DprStack fights={fights} series={series} />;
+  const AVG = "__avg";
+  const data = fights.map((f) => {
+    const p: Record<string, string | number | null> = { x: `${f.order}`, name: f.name, sessionNumber: f.sessionNumber, rounds: f.rounds };
+    for (const s of series) p[s.key] = f.dpr[s.key] ?? null;
+    const vals = Object.values(f.dpr);
+    p[AVG] = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    return p;
+  });
+  const lines: Series[] = [{ key: AVG, name: "Party avg per hero", color: INK.muted }, ...series.filter((s) => s.key === focus)];
+  return (
+    <div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-soft" aria-label="Legend">
+        {lines.map((s) => (
+          <li key={s.key} className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-4 rounded" style={{ background: s.color }} />{s.name}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 12, right: 16, bottom: 0, left: -16 }}>
+            <CartesianGrid vertical={false} stroke={INK.line} />
+            <XAxis dataKey="x" tickLine={false} axisLine={{ stroke: INK.line }} tick={{ fill: INK.muted, fontSize: 12 }} interval="preserveStartEnd" minTickGap={8} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fill: INK.muted, fontSize: 12 }} domain={[0, "auto"]} />
+            <Tooltip cursor={{ stroke: INK.muted, strokeWidth: 1 }} content={<FightTip />} />
+            {lines.map((s) => (
+              <Line
+                key={s.key}
+                dataKey={s.key}
+                name={s.name}
+                stroke={s.color}
+                strokeWidth={2}
+                dot={{ r: 4, fill: s.color, stroke: INK.surface, strokeWidth: 2 }}
+                activeDot={{ r: 6, stroke: INK.surface, strokeWidth: 2 }}
+                connectNulls
+                animationDuration={900}
+                animationEasing="ease-out"
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-1 text-center text-[11px] text-muted">Fight number, oldest first</p>
+    </div>
+  );
+}
+
+function FightTip({ active, payload }: { active?: boolean; payload?: { name?: string; value?: number | null; color?: string; payload?: Record<string, string | number | null> }[] }) {
+  if (!active || !payload?.length) return null;
+  const f = payload[0].payload ?? {};
+  return (
+    <div className="max-w-[14rem] rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs shadow-lg">
+      <p className="font-semibold text-text">{String(f.name ?? "Fight")}</p>
+      <p className="mb-1 text-muted">{f.sessionNumber !== null && f.sessionNumber !== undefined ? `Session ${f.sessionNumber} · ` : ""}{f.rounds} round{f.rounds === 1 ? "" : "s"}</p>
+      {f.party !== undefined && <p className="mb-0.5 text-soft"><span className="font-semibold text-text">{f.party}</span> party</p>}
+      {payload.filter((p) => p.value !== null && p.value !== undefined).map((p, i) => (
+        <p key={i} className="flex items-center gap-2 text-soft">
+          <span className="inline-block h-0.5 w-3 rounded" style={{ background: p.color }} />
+          <span className="font-semibold text-text">{p.value}</span> {p.name}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function DprStack({ fights, series }: { fights: FightRow[]; series: Series[] }) {
+  const used = series.filter((s) => fights.some((f) => f.dpr[s.key] !== undefined));
+  const data = fights.map((f) => {
+    const p: Record<string, string | number | null> = { x: `${f.order}`, name: f.name, sessionNumber: f.sessionNumber, rounds: f.rounds, party: f.partyDpr };
+    for (const s of used) p[s.key] = f.dpr[s.key] ?? null;
+    return p;
+  });
+  return (
+    <div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-soft" aria-label="Legend">
+        {used.map((s) => (
+          <li key={s.key} className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />{s.name}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 h-56" role="img" aria-label={fights.map((f) => `Fight ${f.order} ${f.name}: party ${f.partyDpr} per round`).join("; ")}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 18, right: 8, bottom: 0, left: -16 }} barCategoryGap="28%">
+            <CartesianGrid vertical={false} stroke={INK.line} />
+            <XAxis dataKey="x" tickLine={false} axisLine={{ stroke: INK.line }} tick={{ fill: INK.muted, fontSize: 12 }} interval="preserveStartEnd" minTickGap={4} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fill: INK.muted, fontSize: 12 }} domain={[0, "auto"]} />
+            <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<FightTip />} />
+            {used.map((s, i) => (
+              <Bar key={s.key} dataKey={s.key} name={s.name} stackId="dpr" fill={s.color} stroke={INK.surface} strokeWidth={2} maxBarSize={24} radius={i === used.length - 1 ? [4, 4, 0, 0] : 0} animationDuration={700} animationEasing="ease-out">
+                {i === used.length - 1 && fights.length <= 12 && <LabelList dataKey="party" position="top" fill={INK.text} fontSize={11} fontWeight={700} />}
+              </Bar>
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-1 text-center text-[11px] text-muted">Fight number, oldest first · column = party damage per round</p>
     </div>
   );
 }

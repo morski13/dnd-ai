@@ -28,6 +28,10 @@ export type StatRoll = {
   target_character_id: string | null;
   target_monster_id: string | null;
   created_at: string;
+  // For the luck index (older rows / databases before SQL 30 may not have them)
+  advantage?: string | null;
+  dice_all?: number[] | null;
+  physical?: boolean | null;
 };
 
 export type StatEffect = {

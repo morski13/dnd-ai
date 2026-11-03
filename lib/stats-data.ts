@@ -1,7 +1,6 @@
 // Loads everything the Statistics screen needs, as the logged-in user.
 // Only rolls made during a session count. The database hides secret DM rolls from players.
 import { wrappedSlides, type Slide } from "./stats/wrapped";
-import { sessionWrappedSlides, tallyVotes, voteMoments, type SessionSlide, type Tally, type VoteMoment, type WrapHero } from "./stats/session-wrapped";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -11,17 +10,23 @@ import {
   type ActorStats, type Award, type FightSummary, type StatActor, type StatEffect, type StatRoll,
 } from "@/lib/stats/compute";
 import { buildRecap, type Recap } from "@/lib/stats/recap";
+import { dprOver, fightDpr, type FightDpr } from "@/lib/stats/dpr";
+import { luckByActor, mergeLuck, type LuckBreakdown } from "@/lib/stats/luck";
 
 /** One color per character, always the same one (checked for color-blind safety on the dark theme). */
 export const CHARACTER_COLORS = ["#d95926", "#199e70", "#3987e5", "#d55181", "#c98500", "#9085e9"];
 
 const ROLL_COLUMNS =
   "id, session_id, combat_id, round, character_id, monster_id, roll_type, source, expression, dice, total, is_crit, is_fumble, success, spell_slot, parent_roll_id, target_character_id, target_monster_id, created_at";
+// Extra columns for the luck index. `physical` only exists after SQL 30, so the loader falls back without it.
+const LUCK_COLUMNS = ", advantage, dice_all";
+const PHYSICAL_COLUMN = ", physical";
 const EFFECT_COLUMNS =
   "id, session_id, combat_id, roll_event_id, actor_character_id, actor_monster_id, target_character_id, target_monster_id, kind, amount, rolled_amount, dropped_to_zero, created_at";
 
 export type CharacterInfo = { key: string; id: string; name: string; short: string; color: string; mine: boolean };
 export type TrendPoint = { session: string } & Record<string, number | string | null>;
+export type FightRow = FightDpr & { sessionNumber: number | null; order: number };
 export type MonsterRow = { type: string; count: number; damageDealt: number; downs: number; hitRate: number | null; damageTaken: number };
 
 export type StatsView = {
@@ -35,7 +40,11 @@ export type StatsView = {
   stats: Record<string, ActorStats>; // by character key, current scope
   awards: Award[];
   party: { damage: number; healing: number; kills: number; rolls: number; nat20: number; nat1: number; dropped: number; d20Avg: number | null };
-  trends: { damage: TrendPoint[]; healing: TrendPoint[]; d20Avg: TrendPoint[]; hitRate: TrendPoint[]; damageTaken: TrendPoint[] } | null;
+  trends: { damage: TrendPoint[]; healing: TrendPoint[]; d20Avg: TrendPoint[]; hitRate: TrendPoint[]; damageTaken: TrendPoint[]; luck: TrendPoint[]; dpr: TrendPoint[] } | null;
+  /** Whole campaign only: luck per character key and for the whole table. */
+  luck: { byChar: Record<string, LuckBreakdown>; party: LuckBreakdown; hasReal: boolean } | null;
+  /** Whole campaign only: every fight with its damage per round, oldest first. */
+  fights: { list: FightRow[]; byChar: Record<string, { damage: number; rounds: number; dpr: number; fights: number }> } | null;
   dm: {
     monsterDamage: number; pcsDropped: number; monsterHitRate: number | null; monsterD20Avg: number | null; monstersDown: number;
     monsters: MonsterRow[]; fights: (FightSummary & { sessionNumber: number | null })[];
@@ -52,6 +61,14 @@ async function readAll<T>(page: (from: number, to: number) => PromiseLike<{ data
     if (data.length < 1000) break;
   }
   return out;
+}
+
+/** Session rolls with the luck columns; without `physical` when SQL 30 hasn't been run yet. */
+async function readRolls(page: (cols: string, from: number, to: number) => PromiseLike<{ data: StatRoll[] | null; error: unknown }>): Promise<StatRoll[]> {
+  const full = ROLL_COLUMNS + LUCK_COLUMNS + PHYSICAL_COLUMN;
+  const probe = await page(full, 0, 0);
+  const cols = probe.error ? ROLL_COLUMNS + LUCK_COLUMNS : full;
+  return readAll<StatRoll>((a, b) => page(cols, a, b));
 }
 
 const shortName = (name: string) => name.split(" ")[0];
@@ -82,7 +99,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     supabase.from("combats").select("id, session_id, name, round").eq("campaign_id", cid).not("session_id", "is", null).order("started_at"),
     srdSpellNames().then((data) => ({ data })),
     isDm ? supabase.from("encounters").select("name, summary").eq("campaign_id", cid) : Promise.resolve({ data: [] as { name: string; summary: { tier?: string } | null }[] }),
-    readAll<StatRoll>((a, b) => supabase.from("roll_events").select(ROLL_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).order("created_at").order("id").range(a, b)),
+    readRolls((cols, a, b) => supabase.from("roll_events").select(cols).eq("campaign_id", cid).not("session_id", "is", null).order("created_at").order("id").range(a, b) as unknown as PromiseLike<{ data: StatRoll[] | null; error: unknown }>),
     readAll<StatEffect>((a, b) => supabase.from("effects").select(EFFECT_COLUMNS).eq("campaign_id", cid).not("session_id", "is", null).order("created_at").order("id").range(a, b)),
   ]);
 
@@ -124,12 +141,32 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     d20Avg: d20Count ? sum((s) => s.d20Sum) / d20Count : null,
   };
 
+  // Fights with damage per round (whole campaign only)
+  const sessionNo = new Map((sessionsRes.data ?? []).map((s) => [s.id, s.number as number]));
+  const allFights = scope === "campaign" ? fightDpr(combatsRes.data ?? [], rolls, effects, actors, spellNames) : [];
+  const fights: StatsView["fights"] = scope === "campaign"
+    ? { list: allFights.map((f, i) => ({ ...f, sessionNumber: f.sessionId ? sessionNo.get(f.sessionId) ?? null : null, order: i + 1 })), byChar: dprOver(allFights) }
+    : null;
+
+  // Luck (whole campaign only)
+  let luck: StatsView["luck"] = null;
+  if (scope === "campaign") {
+    const all = luckByActor(rolls);
+    const byChar: Record<string, LuckBreakdown> = {};
+    for (const c of characters) { const l = all.get(c.key); if (l) byChar[c.key] = l; }
+    const party = mergeLuck(Object.values(byChar));
+    luck = { byChar, party, hasReal: party.all.real.n > 0 };
+  }
+
   // Trends: one point per session, one line per character
   let trends: StatsView["trends"] = null;
   if (scope === "campaign" && sessions.length) {
-    const t = { damage: [] as TrendPoint[], healing: [] as TrendPoint[], d20Avg: [] as TrendPoint[], hitRate: [] as TrendPoint[], damageTaken: [] as TrendPoint[] };
+    const t = { damage: [] as TrendPoint[], healing: [] as TrendPoint[], d20Avg: [] as TrendPoint[], hitRate: [] as TrendPoint[], damageTaken: [] as TrendPoint[], luck: [] as TrendPoint[], dpr: [] as TrendPoint[] };
     for (const s of sessions) {
-      const per = computeStats(rolls.filter((r) => r.session_id === s.id), effects.filter((e) => e.session_id === s.id), actors, spellNames);
+      const sRolls = rolls.filter((r) => r.session_id === s.id);
+      const per = computeStats(sRolls, effects.filter((e) => e.session_id === s.id), actors, spellNames);
+      const sLuck = luckByActor(sRolls);
+      const sDpr = dprOver(allFights.filter((f) => f.sessionId === s.id));
       const row = (f: (x: ActorStats) => number | null) => {
         const p: TrendPoint = { session: `S${s.number}` };
         for (const c of characters) { const x = per.get(c.key); p[c.key] = x ? f(x) : null; }
@@ -140,6 +177,14 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
       t.d20Avg.push(row((x) => (x.d20Avg === null ? null : Math.round(x.d20Avg * 10) / 10)));
       t.hitRate.push(row((x) => (x.hitRate === null ? null : Math.round(x.hitRate * 100))));
       t.damageTaken.push(row((x) => x.damageTaken));
+      const luckRow: TrendPoint = { session: `S${s.number}` };
+      const dprRow: TrendPoint = { session: `S${s.number}` };
+      for (const c of characters) {
+        luckRow[c.key] = sLuck.get(c.key)?.all.both.index ?? null;
+        dprRow[c.key] = sDpr[c.key]?.dpr ?? null;
+      }
+      t.luck.push(luckRow);
+      t.dpr.push(dprRow);
     }
     trends = t;
   }
@@ -163,7 +208,6 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
     const mD20 = enemies.reduce((n, s) => n + s.d20Count, 0);
     const tiers = new Map<string, string>();
     for (const e of encountersRes.data ?? []) if (e.summary?.tier) tiers.set(e.name, e.summary.tier);
-    const sessionNo = new Map((sessionsRes.data ?? []).map((s) => [s.id, s.number]));
     const combats = inScope(combatsRes.data ?? []);
     dm = {
       monsterDamage: enemies.reduce((n, s) => n + s.damageDealt, 0),
@@ -180,7 +224,7 @@ export async function getStatsData(params: { scope?: string; s?: string; c?: str
 
   return {
     campaignName: campaign.name, isDm, sessions, scope, session, characters, focus, stats,
-    awards: awards(charStats), party, trends, dm,
+    awards: awards(charStats), party, trends, luck, fights, dm,
   };
 }
 
@@ -301,55 +345,5 @@ export async function getWrappedData() {
   return {
     campaignName: ctx.campaign.name,
     slides: wrappedSlides(stats.filter((s) => s.kind === "character"), stats.filter((s) => s.kind === "monster" && !actors.find((x) => x.key === s.key && x.ally)), sessions),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Session Wrapped (/stats/wrapped?s=N)
-
-export type SessionWrappedView = {
-  campaignName: string; isDm: boolean; userId: string;
-  session: { id: string; number: number; title: string | null; live: boolean; teaser: string | null };
-  slides: SessionSlide[];
-  moments: VoteMoment[]; tally: Tally; votesReady: boolean;
-};
-
-/**
- * One session's Wrapped, the same for everyone at the table: open rolls only (secret DM rolls are left out
- * even for the DM, because every slide can be shared). `s` = the session number; missing = the newest ended one.
- */
-export async function getSessionWrappedData(params: { s?: string }): Promise<SessionWrappedView | { campaignName: string | null; empty: true }> {
-  await connection();
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getClaims();
-  const userId = auth?.claims?.sub;
-  if (!userId) redirect("/login");
-  const ctx = await recapContext(supabase, userId);
-  if (!ctx) return { campaignName: null, empty: true };
-  const { campaign, isDm } = ctx;
-  const { data: rows } = await supabase.from("sessions").select("*").eq("campaign_id", campaign.id).not("started_at", "is", null).order("number");
-  const all = (rows ?? []) as { id: string; number: number; title: string | null; ended_at: string | null; teaser?: string | null }[];
-  const chosen = all.find((x) => String(x.number) === params.s) ?? [...all].reverse().find((x) => x.ended_at);
-  if (!chosen) return { campaignName: campaign.name, empty: true };
-
-  const [{ recap, characters }, portraits, votesRes] = await Promise.all([
-    recapFor(supabase, campaign.id, chosen.id, userId, { onlyOpen: true }),
-    supabase.from("characters").select("id, portrait").eq("campaign_id", campaign.id),
-    supabase.from("session_votes").select("moment_key, user_id").eq("session_id", chosen.id),
-  ]);
-  const stamp = new Map(((portraits.data ?? []) as { id: string; portrait: number | null }[]).map((c) => [c.id, Number(c.portrait) || null]));
-  const heroes: WrapHero[] = characters.map((c) => ({
-    key: c.key, name: c.name, short: c.short, color: c.color, mine: c.mine,
-    portrait: stamp.get(c.id) ? `/api/portrait/character/${c.id}?v=${stamp.get(c.id)}` : null,
-  }));
-  const teaser = chosen.teaser ?? null;
-  const moments = voteMoments(recap.moments);
-  return {
-    campaignName: campaign.name, isDm, userId,
-    session: { id: chosen.id, number: chosen.number, title: chosen.title, live: !chosen.ended_at, teaser },
-    slides: sessionWrappedSlides({ session: chosen, recap, heroes, teaser, isDm, campaign: campaign.name }),
-    moments,
-    tally: tallyVotes((votesRes.data ?? []) as { moment_key: string; user_id: string }[], moments, userId),
-    votesReady: !votesRes.error, // SQL 32 not run yet → no voting
   };
 }

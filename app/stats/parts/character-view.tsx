@@ -2,6 +2,8 @@
 import type { StatsView } from "@/lib/stats-data";
 import { Awards, CountList, Section, Tiles, avg, pct } from "./bits";
 import { TrendChart } from "./charts";
+import { DprSection } from "./dpr";
+import { CharacterLuck } from "./luck";
 
 const sorted = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
@@ -72,6 +74,23 @@ export function CharacterView({ d }: { d: StatsView }) {
             {s.failedChecks.length > 0 && <p className="mt-2 text-sm text-muted">Failed: {s.failedChecks.join(", ")}</p>}
           </Section>
           </div>
+
+          {d.luck?.byChar[c.key] && (
+            <Section title="Luck index" sub="Each d20 scored against its own odds (advantage counts). 50 is average luck.">
+              <div className="rounded-[18px] border border-line bg-surface p-3">
+                <CharacterLuck luck={d.luck.byChar[c.key]} color={c.color} name={c.short} hasReal={d.luck.hasReal} />
+              </div>
+            </Section>
+          )}
+
+          {d.fights && (
+            <Section
+              title="Damage per round"
+              sub={d.fights.byChar[c.key] ? `${d.fights.byChar[c.key].dpr} over ${d.fights.byChar[c.key].fights} fight${d.fights.byChar[c.key].fights === 1 ? "" : "s"} (${d.fights.byChar[c.key].rounds} rounds)` : undefined}
+            >
+              <DprSection fights={d.fights.list} chars={d.characters} focus={c.key} />
+            </Section>
+          )}
 
           {won.length > 0 && (
             <Section title="Awards won">
