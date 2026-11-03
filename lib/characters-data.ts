@@ -1,5 +1,6 @@
 // Loads the characters in your campaign, as the logged-in user.
 import { toConfirm } from "./sheet-confirm";
+import { charactersOnList } from "./character-visibility";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -59,10 +60,12 @@ export async function getCharactersData() {
     toConfirm: toConfirm({ ac: r.ac, speed: r.speed, hp_max: r.hp_max, sheet_values: r.sheet_values as Record<string, number> | null }).length,
   }));
 
+  // players only get their own characters (and ones the DM made for them to claim) sent to the browser
+  const isDm = membership.role === "dm" || membership.role === "co_dm";
   return {
     userId,
-    isDm: membership.role === "dm" || membership.role === "co_dm",
-    characters,
+    isDm,
+    characters: charactersOnList(characters, userId, isDm).all,
     inCampaign: true,
   };
 }

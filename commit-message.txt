@@ -1,26 +1,4 @@
-Aim from the full sheet, on-the-spot fight builder with monster search and live odds
-
-Character sheet
-- Heals, buffs and (during a fight) attacks, damage and enemy spells ask who
-  they go to: "Who gets Healing Word?", "Who does Morningstar hit?". Hits are
-  checked against that creature's AC and damage goes on its HP. Area spells
-  (Fireball) pick several; Mass Healing Word heals several.
-- Heals on party characters apply outside sessions and fights too.
-- Players only see characters players made or imported, plus whoever is in
-  the running fight; monsters show how hurt they look, never their HP, and
-  ones hidden on the battle map stay out. Checked on the server as well.
-
-Session mode (DM)
-- Build a fight on the spot: pick the players, search the monster library,
-  add homebrew monsters and NPCs (as enemy or ally, with counts) and your own
-  characters (on the party's side). Copies are made for library and homebrew
-  monsters ("Goblin 1", "Goblin 2").
-- DM-only odds preview of the planned fight (win / someone drops / death),
-  redone after every change; the same builder adds to a running fight.
-- "Roll for monsters & your characters" also rolls the DM's own characters.
-- Turn card: spells that pick several creatures allow several targets.
-
-lib/targets.ts, lib/fight-plan.ts with tests (401 total).
+Players see only their own characters; log in with a username instead of email
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJ9vHTe7BJYNvrzcHWg

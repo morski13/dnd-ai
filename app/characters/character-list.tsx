@@ -24,6 +24,35 @@ export function CharacterList({ characters, userId, isDm }: {
   const unclaimed = characters.filter((c) => !c.ownerId);
   const [filter, setFilter] = useState<Filter>(mine.length ? "mine" : "all");
 
+  // Players: only their own characters, and below them any the DM made for them to claim. No filter chips.
+  if (!isDm) {
+    return (
+      <>
+        <div className="mt-5 flex flex-col gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
+          {mine.length === 0 && (
+            <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted md:col-span-2 lg:col-span-3">
+              No characters yet. Make one with <b className="text-soft">+ New</b>, or bring your sheet in with <b className="text-soft">Import PDF</b>.
+              {unclaimed.length > 0 && " If your DM made one for you, it's below."}
+            </p>
+          )}
+          {mine.map((c) => (
+            <Card key={c.id} c={c} color={avatarColors[characters.indexOf(c) % avatarColors.length]} isMine canClaim={false} />
+          ))}
+        </div>
+        {unclaimed.length > 0 && (
+          <>
+            <p className="mt-6 text-xs uppercase tracking-[0.12em] text-muted">Made by your DM for a player · tap &quot;This is mine&quot; if it&apos;s yours</p>
+            <div className="mt-2 flex flex-col gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
+              {unclaimed.map((c) => (
+                <Card key={c.id} c={c} color={avatarColors[characters.indexOf(c) % avatarColors.length]} isMine={false} canClaim />
+              ))}
+            </div>
+          </>
+        )}
+      </>
+    );
+  }
+
   const chips: { key: Filter; label: string; count: number }[] = [
     { key: "all", label: "All", count: characters.length },
     { key: "mine", label: "Mine", count: mine.length },
@@ -52,7 +81,7 @@ export function CharacterList({ characters, userId, isDm }: {
         {shown.length === 0 && (
           <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
             {filter === "mine"
-              ? "You haven't claimed a character yet. Look under Unclaimed."
+              ? "You haven't made a character yet."
               : "No characters here."}
           </p>
         )}
@@ -62,7 +91,7 @@ export function CharacterList({ characters, userId, isDm }: {
             c={c}
             color={avatarColors[characters.indexOf(c) % avatarColors.length]}
             isMine={c.ownerId === userId}
-            canClaim={!c.ownerId && !isDm}
+            canClaim={false}
           />
         ))}
       </div>

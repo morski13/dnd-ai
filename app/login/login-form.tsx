@@ -34,15 +34,12 @@ export function LoginForm() {
       </div>
 
       <form key={mode} action={isSignup ? signupAction : loginAction} className="mt-6 flex flex-col gap-4">
-        {isSignup && (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs uppercase tracking-[0.12em] text-muted">Your name</span>
-            <input name="name" autoComplete="nickname" required className={inputClass} placeholder="e.g. Marko" />
-          </label>
-        )}
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.12em] text-muted">Email</span>
-          <input name="email" type="email" autoComplete="email" required className={inputClass} />
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">Username</span>
+          <input name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required
+            minLength={isSignup ? 3 : undefined} maxLength={isSignup ? 20 : undefined} pattern={isSignup ? "[A-Za-z0-9][A-Za-z0-9._\\-]{2,19}" : undefined}
+            className={inputClass} placeholder={isSignup ? "e.g. marko" : undefined} />
+          {isSignup && <span className="text-xs text-muted">3–20 letters, numbers, dots, dashes or underscores. Your party sees it.</span>}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">Password</span>
@@ -74,6 +71,7 @@ export function LoginForm() {
         >
           {pending ? "One moment…" : isSignup ? "Create account" : "Log in"}
         </button>
+        {!isSignup && <p className="text-center text-xs text-muted">Made your account with an email before? Type the email in the username box, or use your username from the Home menu.</p>}
       </form>
     </>
   );

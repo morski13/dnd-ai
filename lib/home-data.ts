@@ -23,7 +23,7 @@ export async function getHomeData() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("*") // "*": the username column only exists after 33-usernames.sql
     .eq("id", userId)
     .single();
 
@@ -37,12 +37,13 @@ export async function getHomeData() {
     .maybeSingle();
 
   const displayName = profile?.display_name ?? "Adventurer";
+  const username = ((profile as { username?: string | null } | null)?.username) ?? null;
   const campaign = membership?.campaigns as unknown as
     | { id: string; name: string; settings: CampaignSettings; invite_code: string }
     | null;
 
   if (!membership || !campaign) {
-    return { displayName, campaign: null } as const;
+    return { displayName, username, campaign: null } as const;
   }
 
   const isDm = membership.role === "dm" || membership.role === "co_dm";
@@ -66,6 +67,7 @@ export async function getHomeData() {
 
   return {
     displayName,
+    username,
     campaign: {
       id: campaign.id,
       name: campaign.name,

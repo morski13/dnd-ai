@@ -31,7 +31,7 @@ async function Home() {
   if (!data.campaign) {
     return (
       <>
-        <Header label="Welcome" title={data.displayName} subtitle={null} initial={data.displayName} />
+        <Header label="Welcome" title={data.displayName} subtitle={null} initial={data.displayName} username={data.username} />
         <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
           <p className="font-semibold">Join your campaign</p>
           <p className="mt-1 text-sm text-muted">Ask your DM for the invite code and enter it here.</p>
@@ -76,7 +76,7 @@ async function Home() {
 
   return (
     <>
-      <Header label="Your campaign" title={campaign.name} subtitle={subtitle} initial={data.displayName} />
+      <Header label="Your campaign" title={campaign.name} subtitle={subtitle} initial={data.displayName} username={data.username} />
       <Link href="/campaigns" className="mt-1 inline-flex min-h-10 items-center gap-1 text-sm text-accent underline">
         {data.campaignCount > 1 ? `Switch campaign (${data.campaignCount})` : "Your campaigns · start a new one"}
       </Link>
@@ -177,8 +177,8 @@ async function Home() {
   );
 }
 
-function Header({ label, title, subtitle, initial }: {
-  label: string; title: string; subtitle: string | null; initial: string;
+function Header({ label, title, subtitle, initial, username = null }: {
+  label: string; title: string; subtitle: string | null; initial: string; username?: string | null;
 }) {
   return (
     <header className="flex items-start justify-between gap-4">
@@ -195,8 +195,9 @@ function Header({ label, title, subtitle, initial }: {
         <summary className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-surface font-bold [&::-webkit-details-marker]:hidden">
           {initial.charAt(0).toUpperCase()}
         </summary>
-        <form action={logOut} className="absolute right-0 z-10 mt-2">
-          <button className="h-11 whitespace-nowrap rounded-xl border border-line bg-surface-2 px-4 text-sm">
+        <form action={logOut} className="absolute right-0 z-10 mt-2 flex flex-col items-end gap-1 rounded-xl border border-line bg-surface-2 p-2">
+          {username && <p className="whitespace-nowrap px-2 pt-1 text-xs text-muted">Logged in as <b className="text-soft">@{username}</b></p>}
+          <button className="h-11 whitespace-nowrap rounded-xl border border-line bg-surface px-4 text-sm">
             Log out
           </button>
         </form>
