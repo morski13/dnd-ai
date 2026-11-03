@@ -174,8 +174,8 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
           <DmPanel
             sessionId={data.session.id}
             combatId={combat?.id ?? null}
-            monsters={data.monsters}
-            inFightIds={monsterIdsInFight}
+            builder={data.builder}
+            inFightIds={combatants.flatMap((c) => [c.monsterId, c.characterId].filter((x): x is string => !!x))}
             hiddenByDefault={data.monstersHiddenByDefault}
             waitingForInitiative={waiting}
             savedFights={data.savedFights}

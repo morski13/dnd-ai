@@ -66,13 +66,13 @@ export async function getSessionData(focusParam?: string | null) {
   if (!membership || !campaign) return { userId, campaign: null } as const;
   const isDm = membership.role === "dm" || membership.role === "co_dm";
 
-  const [{ data: session }, { data: lastSession }, { data: characters }, { data: monsters }, { data: fights }, { data: maps }] = await Promise.all([
+  const [{ data: session }, { data: lastSession }, { data: characters }, { data: monsters }, { data: fights }, { data: maps }, { data: memberRows }] = await Promise.all([
     supabase.from("sessions").select("id, number, started_at")
       .eq("campaign_id", campaign.id).not("started_at", "is", null).is("ended_at", null)
       .order("number", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("sessions").select("number").eq("campaign_id", campaign.id)
       .order("number", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("characters").select("id, name, owner_user_id, ac, hp_current, hp_max, temp_hp, concentration").eq("campaign_id", campaign.id).order("name"),
+    supabase.from("characters").select("id, name, owner_user_id, ac, hp_current, hp_max, temp_hp, concentration, class_levels").eq("campaign_id", campaign.id).order("name"),
     isDm
       ? supabase.from("monsters").select("id, name, ac, hp_max, hp_current, is_boss, kind, stat_block, concentration").eq("campaign_id", campaign.id).order("name")
       : Promise.resolve({ data: [] as { id: string; name: string; ac: number | null; hp_max: number | null; hp_current: number | null; is_boss: boolean; kind: string; stat_block: { actions?: QuickAction[] } | null; concentration: { spell?: string } | null }[] }),
@@ -83,6 +83,10 @@ export async function getSessionData(focusParam?: string | null) {
     isDm
       ? supabase.from("battle_maps").select("id, name, cols, rows").eq("campaign_id", campaign.id).order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as { id: string; name: string; cols: number; rows: number }[] }),
+    // who plays and who runs the game: the fight builder keeps the players' characters apart from the DM's
+    isDm
+      ? supabase.from("campaign_members").select("user_id, role").eq("campaign_id", campaign.id)
+      : Promise.resolve({ data: [] as { user_id: string; role: string }[] }),
   ]);
 
   const myCharacterIds = (characters ?? []).filter((c) => c.owner_user_id === userId).map((c) => c.id);
@@ -102,6 +106,7 @@ export async function getSessionData(focusParam?: string | null) {
     savedFights: (fights ?? []).map((f) => ({ id: f.id as string, name: f.name as string, tier: (f.summary as { tier?: string } | null)?.tier ?? null })),
     myCharacterIds,
     maps: ((maps ?? []) as { id: string; name: string; cols: number; rows: number }[]),
+    builder: isDm ? fightBuilderData(characters ?? [], monsters ?? [], memberRows ?? []) : null,
   };
   if (!session) return { ...base, session: null, combat: null, combatants: [] as Combatant[], current: null, battle: null as Battle | null, log: [] as LogRow[], focus: null, focusMonster: null } as const;
 
@@ -197,4 +202,41 @@ export function shortName(name: string) {
 export function sortCombatants<T extends { initiative: number | null; dex_mod: number; name: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) =>
     (b.initiative ?? -99) - (a.initiative ?? -99) || b.dex_mod - a.dex_mod || a.name.localeCompare(b.name));
+}
+
+/** What the DM's fight builder offers: the players' characters, the DM's own characters, and the campaign's creatures. */
+export type BuilderCreature = { id: string; name: string; kind: "homebrew" | "npc" | "monster"; ac: number | null; hp: number | null; hpMax: number | null; simulated: boolean };
+export type FightBuilderData = {
+  players: { id: string; name: string; level: number }[];
+  dmCharacters: { id: string; name: string; level: number; unclaimed: boolean }[];
+  creatures: BuilderCreature[];
+  partyLevel: number;
+};
+function fightBuilderData(
+  characters: { id: string; name: string; owner_user_id: string | null; class_levels?: unknown }[],
+  monsters: { id: string; name: string; kind: string; ac: number | null; hp_max: number | null; hp_current: number | null; stat_block: unknown }[],
+  members: { user_id: string; role: string }[],
+): FightBuilderData {
+  const roles = new Map(members.map((m) => [m.user_id, m.role]));
+  const level = (c: { class_levels?: unknown }) => Math.max(1, ((c.class_levels as { level?: number }[] | null) ?? []).reduce((a, x) => a + (x.level ?? 0), 0));
+  const players = characters.filter((c) => c.owner_user_id && roles.get(c.owner_user_id) === "player").map((c) => ({ id: c.id, name: c.name, level: level(c) }));
+  const dmCharacters = characters.filter((c) => !players.some((p) => p.id === c.id))
+    .map((c) => ({ id: c.id, name: c.name, level: level(c), unclaimed: !c.owner_user_id }));
+  const creatures: BuilderCreature[] = monsters
+    // homebrew templates, NPCs, and monsters the DM made; copies made for earlier fights ("Goblin 2") stay out
+    .filter((m) => {
+      const sb = m.stat_block as { homebrew?: boolean; copied_from?: string } | null;
+      if (sb?.homebrew) return true;
+      if (sb?.copied_from && m.kind !== "npc") return false;
+      return (m.hp_current ?? 1) > 0;
+    })
+    .map((m) => {
+      const sb = m.stat_block as { homebrew?: boolean; actions?: unknown[] } | null;
+      return {
+        id: m.id, name: m.name, kind: sb?.homebrew ? "homebrew" : m.kind === "npc" ? "npc" : "monster",
+        ac: m.ac, hp: m.hp_current ?? m.hp_max, hpMax: m.hp_max, simulated: Array.isArray(sb?.actions),
+      };
+    });
+  const partyLevel = players.length ? Math.round(players.reduce((a, p) => a + p.level, 0) / players.length) : 1;
+  return { players, dmCharacters, creatures, partyLevel };
 }

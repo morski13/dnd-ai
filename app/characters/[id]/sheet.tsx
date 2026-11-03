@@ -8,7 +8,8 @@ import { addQueued, offlineRoll, recorder, replayRng } from "@/lib/offline-rolls
 import { diceSides, physicalValues, shapeOf, type RollShape } from "@/lib/physical";
 import { RealDicePad, useRealDice, type Typed } from "./parts/real-dice";
 import { TargetPick, type Picked } from "./parts/target-pick";
-import { aimOf, mostHurt, type Aim, type PartyMember } from "@/lib/targets";
+import { aimOf, firstPick, type Aim, type AimChoice, type PartyMember } from "@/lib/targets";
+import { aimChoices } from "./aim-actions";
 import type { Target } from "@/lib/roll-service";
 import { toConfirm } from "@/lib/sheet-confirm";
 import { ConfirmNumbers } from "./parts/confirm-numbers";
@@ -127,7 +128,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     if (request.kind === "use") {
       const who = await askTarget(atk, request.slot);
       if (who === null) return null; // cancelled
-      aimed = { target: who[0] ? { characterId: who[0] } : null, more: who.slice(1).map((id) => ({ characterId: id })) };
+      const ref = (k: string): Target => (k.startsWith("m:") ? { monsterId: k.slice(2) } : { characterId: k.slice(2) });
+      aimed = { target: who[0] ? ref(who[0]) : null, more: who.slice(1).map(ref) };
     }
     // Real dice: ask what they show (or let the app roll)
     if (realDice) {
@@ -157,17 +159,30 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     return res.roll;
   }
 
-  // ---- who a heal or a buff goes to ("Who gets Healing Word?")
-  const [aimPick, setAimPick] = useState<{ title: string; aim: Aim; initial: string[]; done: (p: Picked | null) => void } | null>(null);
-  const lastAim = useRef<Record<string, string[]>>({}); // last pick per spell, for buffs cast again
-  function askTarget(o: Option | null | undefined, slot?: number): Promise<Picked | null> {
-    const aim = aimOf(o, slot);
-    if (!aim || !o || party.length === 0) return Promise.resolve([]);
-    const alive = (ids: string[]) => ids.filter((id) => party.some((p) => p.id === id)).slice(0, aim.max ?? undefined);
-    const initial = aim.heal ? [mostHurt(party, character.id)] : alive(lastAim.current[o.key] ?? [character.id]);
+  // ---- who a roll goes to: "Who gets Healing Word?", and in a fight "Who does Morningstar hit?"
+  const [aimPick, setAimPick] = useState<{ title: string; aim: Aim; choices: AimChoice[]; initial: string[]; done: (p: Picked | null) => void } | null>(null);
+  const lastAim = useRef<Record<string, string[]>>({}); // last pick per option ("" = last enemy attacked)
+  async function askTarget(o: Option | null | undefined, slot?: number): Promise<Picked | null> {
+    if (!o || !aimOf(o, slot, true)) return [];
+    // who's there right now (the fight changes between rolls); without internet: the party from page load
+    let got: Awaited<ReturnType<typeof aimChoices>>;
+    try { got = await aimChoices(character.id); } catch { got = { error: "offline" }; }
+    const inFight = !("error" in got) && got.inFight;
+    const choices: AimChoice[] = "error" in got
+      ? party.map((p) => ({ key: `c:${p.id}`, name: p.name, side: "party", me: p.id === character.id, hp: p.hp, max: p.max, temp: p.temp, health: p.hp === 0 && p.max ? "down" : "unhurt" }))
+      : got.choices;
+    const aim = aimOf(o, slot, inFight);
+    if (!aim) return [];
+    const usable = choices.filter((c) => (aim.foe ? c.side === "enemy" || aim.many : c.side === "party"));
+    if (!usable.length || (aim.foe && !usable.some((c) => c.side === "enemy"))) return [];
+    const initial = firstPick(aim, usable, lastAim.current[o.key] ?? (aim.foe ? lastAim.current[""] : undefined));
     return new Promise((resolve) => setAimPick({
-      title: o.name, aim, initial,
-      done: (p) => { setAimPick(null); if (p && p.length) lastAim.current[o.key] = p; resolve(p); },
+      title: o.name, aim, choices: usable, initial,
+      done: (p) => {
+        setAimPick(null);
+        if (p && p.length) { lastAim.current[o.key] = p; if (aim.foe) lastAim.current[""] = p; }
+        resolve(p);
+      },
     }));
   }
 
@@ -593,8 +608,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined} />}
       {pad && <RealDicePad title={pad.title} shape={pad.shape} onDone={pad.done} />}
       {aimPick && (
-        <TargetPick title={aimPick.title} heal={aimPick.aim.heal} many={aimPick.aim.many} max={aimPick.aim.max}
-          party={party} meId={character.id} initial={aimPick.initial} onDone={aimPick.done} />
+        <TargetPick title={aimPick.title} heal={aimPick.aim.heal} foe={aimPick.aim.foe} many={aimPick.aim.many} max={aimPick.aim.max}
+          choices={aimPick.choices} initial={aimPick.initial} onDone={aimPick.done} />
       )}
     </>
   );

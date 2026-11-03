@@ -18,6 +18,7 @@ import { asShown, useDice } from "../../components/dice/dice-provider";
 import { AdvToggle, ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, DeathSavePanel, HpBar } from "./moderator";
 import { healthOf } from "@/lib/moderator/hp";
+import { aimOf } from "@/lib/targets";
 import { parseArea } from "@/lib/maps/area";
 import { useMapAim } from "./map-aim";
 
@@ -67,7 +68,8 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
   const selected = options.find((o) => o.key === key) ?? null;
   const target = targets.find((t) => t.id === targetId) ?? null;
   const targetRef = target ? { characterId: target.characterId, monsterId: target.monsterId } : null;
-  const multi = selected?.kind === "save" || !!selected?.many || selected?.kind === "table";
+  // several targets: save spells, area options, tables, and spells that pick several (Mass Healing Word, Bless)
+  const multi = selected?.kind === "save" || !!selected?.many || selected?.kind === "table" || !!aimOf(selected, undefined, true)?.many;
   const moreRefs = multi ? targets.filter((t) => also.includes(t.id) && t.id !== targetId).map((t) => ({ characterId: t.characterId, monsterId: t.monsterId })) : [];
   const short = character.name.split(" ")[0];
   const left = (o: Option) => {

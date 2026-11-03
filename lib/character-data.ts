@@ -9,7 +9,7 @@ import { getGear } from "@/lib/items-data";
 import { spellsNamed } from "@/lib/srd-cache";
 import { cleanSheetStyle } from "@/lib/themes";
 import { TABLE_SESSION_HOURS, type TableSession } from "@/lib/roll-service";
-import type { PartyMember } from "./targets";
+import { visibleParty, type PartyMember } from "./targets";
 
 export type Resource = { name: string; max: number; used?: number; recharge?: string };
 export type Feature = { name: string; source?: string; description?: string; feat?: boolean };
@@ -166,12 +166,21 @@ export async function getCharacterSheet(id: string) {
 
   const live = await runningSession(supabase, character.campaign_id, userId);
   // the party, for aiming a heal or a buff from the sheet ("Who gets Healing Word?")
-  const { data: partyRows } = canEdit
-    ? await supabase.from("characters").select("id, name, hp_current, hp_max, temp_hp").eq("campaign_id", character.campaign_id).order("name")
-    : { data: [] };
-  const party: PartyMember[] = (partyRows ?? []).map((p) => ({
-    id: p.id as string, name: p.name as string, hp: (p.hp_current as number | null) ?? (p.hp_max as number | null), max: p.hp_max as number | null, temp: (p.temp_hp as number) ?? 0,
-  }));
+  // players only see characters players made or imported: the DM's characters and NPCs stay private
+  const [{ data: partyRows }, { data: memberRows }] = canEdit
+    ? await Promise.all([
+      supabase.from("characters").select("id, name, owner_user_id, hp_current, hp_max, temp_hp").eq("campaign_id", character.campaign_id).order("name"),
+      supabase.from("campaign_members").select("user_id, role").eq("campaign_id", character.campaign_id),
+    ])
+    : [{ data: [] }, { data: [] }];
+  const roles: Record<string, string> = Object.fromEntries((memberRows ?? []).map((m) => [m.user_id as string, m.role as string]));
+  const viewerIsDm = roles[userId] === "dm" || roles[userId] === "co_dm";
+  const party: PartyMember[] = visibleParty((partyRows ?? []) as { id: string; owner_user_id: string | null }[], roles, userId, viewerIsDm).map((p0) => {
+    const p = p0 as Record<string, unknown>;
+    return {
+      id: p.id as string, name: p.name as string, hp: (p.hp_current as number | null) ?? (p.hp_max as number | null), max: p.hp_max as number | null, temp: (p.temp_hp as number) ?? 0,
+    };
+  });
   return { character, canEdit, library, featText, gear, levelPlan, sheetStyle, portrait, live, levelUpTo, party };
 }
 

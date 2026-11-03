@@ -44,6 +44,28 @@ export async function lookupTarget(admin: Admin, campaignId: string, t?: Target 
   return null;
 }
 
+/**
+ * The characters (of `ids`) a player may aim at: themselves, characters owned by players, and anyone fighting
+ * in the running combat (the DM put them there). The DM's own characters and NPCs stay out of reach otherwise.
+ */
+export async function reachableCharacters(admin: Admin, campaignId: string, combatId: string | null, viewerId: string, ids: (string | null | undefined)[]) {
+  const want = [...new Set(ids.filter((x): x is string => !!x))];
+  const ok = new Set<string>();
+  if (!want.length) return ok;
+  const [{ data: chars }, { data: members }, { data: fighting }] = await Promise.all([
+    admin.from("characters").select("id, owner_user_id").eq("campaign_id", campaignId).in("id", want),
+    admin.from("campaign_members").select("user_id, role").eq("campaign_id", campaignId),
+    combatId ? admin.from("combatants").select("character_id").eq("combat_id", combatId).in("character_id", want) : Promise.resolve({ data: [] as { character_id: string | null }[] }),
+  ]);
+  const roles = new Map((members ?? []).map((m) => [m.user_id as string, m.role as string]));
+  for (const c of chars ?? []) {
+    const owner = c.owner_user_id as string | null;
+    if (owner && (owner === viewerId || roles.get(owner) === "player")) ok.add(c.id as string);
+  }
+  for (const f of fighting ?? []) if (f.character_id) ok.add(f.character_id);
+  return ok;
+}
+
 /** Hit or miss: natural 20 always hits, natural 1 always misses. Null if the target's AC is unknown. */
 export function hitOrMiss(total: number | null, ac: number | null | undefined, natural20: boolean, natural1: boolean) {
   if (natural20) return true;

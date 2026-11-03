@@ -223,7 +223,7 @@ export async function rollNpcInitiative(combatId: string, hidden: boolean): Prom
     let isHidden = false;
     if (r.character_id) {
       const { character } = await loadCharacter(r.character_id);
-      if (!character || character.owner_user_id) continue; // players roll their own
+      if (!character || (character.owner_user_id && character.owner_user_id !== userId)) continue; // players roll their own; the DM's own characters are rolled here
       bonus = initiative(character as SheetCharacter);
     } else {
       isHidden = hidden;

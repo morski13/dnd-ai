@@ -12,7 +12,7 @@ import { cleanBonuses, cleanCustomAction, cleanHomebrew, type Bonuses, type Home
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { hitOrMiss, liveState, lookupTarget, recordInitiative, type Target } from "@/lib/roll-service";
+import { hitOrMiss, liveState, lookupTarget, reachableCharacters, recordInitiative, type Target } from "@/lib/roll-service";
 import type { ConcentrationCheck } from "@/lib/moderator/concentration";
 import { maskSaves, rollTargetSaves, type TargetSave } from "@/lib/moderator/saves";
 import { adjustHp, applyHp, campaignAutoApply, isCampaignDm, maskFor, type Applied } from "@/lib/moderator/apply";
@@ -193,7 +193,7 @@ export async function rollForCharacter(
     const { error } = await supabase.from("characters").update(changes).eq("id", c.id);
     return error;
   };
-  const [saveError, { session, combat }, tgt, viewerIsDm, autoApply] = await Promise.all([
+  const [saveError, { session, combat }, tgtFound, viewerIsDm, autoApply] = await Promise.all([
     saveChanges(),
     liveState(admin, c.campaign_id),
     lookupTarget(admin, c.campaign_id, parentTarget ?? target),
@@ -201,6 +201,27 @@ export async function rollForCharacter(
     campaignAutoApply(admin, c.campaign_id),
   ]);
   if (saveError) return { error: "Couldn't save the spell slot / resource. " + saveError.message };
+  // Players can't aim at the DM's characters or NPCs unless they're in the fight: those are dropped quietly.
+  let tgt = tgtFound;
+  if (!viewerIsDm) {
+    const ok = await reachableCharacters(admin, c.campaign_id, combat?.id ?? null, userId!, [tgt?.characterId, target?.characterId, ...(moreTargets ?? []).map((t) => t?.characterId)]);
+    ok.add(c.id); // yourself
+    // monsters: only the ones in the running fight that aren't hidden on the battle map
+    const fighting = new Set<string>();
+    const wantM = [tgt?.monsterId, target?.monsterId, ...(moreTargets ?? []).map((t) => t?.monsterId)].filter((x): x is string => !!x);
+    if (wantM.length && combat) {
+      const [{ data: cm }, { data: hid }] = await Promise.all([
+        admin.from("combatants").select("id, monster_id").eq("combat_id", combat.id).in("monster_id", wantM),
+        admin.from("map_tokens").select("combatant_id").eq("combat_id", combat.id).eq("hidden", true),
+      ]);
+      const hiddenIds = new Set((hid ?? []).map((h) => h.combatant_id as string));
+      for (const r of cm ?? []) if (r.monster_id && !hiddenIds.has(r.id as string)) fighting.add(r.monster_id as string);
+    }
+    const reach = (t?: Target | null) => !t || (t.characterId ? ok.has(t.characterId) : t.monsterId ? fighting.has(t.monsterId) : true);
+    if (!parentTarget && tgt && !reach(tgt)) tgt = null;
+    if (!reach(target)) target = null;
+    moreTargets = moreTargets?.filter((t) => reach(t));
+  }
   // against the target's AC, or the AC typed on the sheet when there's no target
   const vsAc = plan.rollType === "attack" ? tgt?.ac ?? typedAc(request) : null;
   const success = plan.rollType === "attack" && result
