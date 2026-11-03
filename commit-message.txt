@@ -1,4 +1,4 @@
-Players see only their own characters; log in with a username instead of email
+Fix the build: add back the Session Wrapped loader in stats-data
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJ9vHTe7BJYNvrzcHWg

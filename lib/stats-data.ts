@@ -12,6 +12,7 @@ import {
 import { buildRecap, type Recap } from "@/lib/stats/recap";
 import { dprOver, fightDpr, type FightDpr } from "@/lib/stats/dpr";
 import { luckByActor, mergeLuck, type LuckBreakdown } from "@/lib/stats/luck";
+import { sessionWrappedSlides, tallyVotes, voteMoments, type SessionSlide, type Tally, type VoteMoment, type WrapHero } from "@/lib/stats/session-wrapped";
 
 /** One color per character, always the same one (checked for color-blind safety on the dark theme). */
 export const CHARACTER_COLORS = ["#d95926", "#199e70", "#3987e5", "#d55181", "#c98500", "#9085e9"];
@@ -345,5 +346,56 @@ export async function getWrappedData() {
   return {
     campaignName: ctx.campaign.name,
     slides: wrappedSlides(stats.filter((s) => s.kind === "character"), stats.filter((s) => s.kind === "monster" && !actors.find((x) => x.key === s.key && x.ally)), sessions),
+  };
+}
+
+// ---------------------------------------------------------------- Session Wrapped (one session's story)
+export type SessionWrappedView = {
+  campaignName: string; isDm: boolean;
+  session: { id: string; number: number; title: string | null; live: boolean; teaser: string | null };
+  slides: SessionSlide[]; moments: VoteMoment[]; tally: Tally;
+  /** false until SQL 32 (session_votes) is run: the vote slide says so */
+  votesReady: boolean;
+};
+
+/**
+ * One session's Wrapped (`s` = its number; the newest ended session when missing). Secret DM rolls never
+ * appear, even for the DM: everyone at the table sees the same story.
+ */
+export async function getSessionWrappedData(params: { s?: string }): Promise<SessionWrappedView | { campaignName: string | null; empty: true }> {
+  await connection();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) redirect("/login");
+  const ctx = await recapContext(supabase, userId);
+  if (!ctx) return { campaignName: null, empty: true };
+  const { campaign, isDm } = ctx;
+  // "*": teaser only exists after 32-session-wrapped.sql
+  const { data: rows } = await supabase.from("sessions").select("*").eq("campaign_id", campaign.id).not("started_at", "is", null).order("number");
+  const all = (rows ?? []) as { id: string; number: number; title: string | null; started_at: string | null; ended_at: string | null; teaser?: string | null }[];
+  const chosen = all.find((x) => String(x.number) === params.s) ?? [...all].reverse().find((x) => x.ended_at) ?? all[all.length - 1];
+  if (!chosen) return { campaignName: campaign.name, empty: true };
+
+  const [{ characters, recap }, portraitRes, votesRes] = await Promise.all([
+    recapFor(supabase, campaign.id, chosen.id, userId, { onlyOpen: true }),
+    // "*": portrait only exists after 23-battle-maps.sql
+    supabase.from("characters").select("*").eq("campaign_id", campaign.id),
+    supabase.from("session_votes").select("moment_key, user_id").eq("session_id", chosen.id),
+  ]);
+  const stamp = new Map(((portraitRes.data ?? []) as { id: string; portrait?: number | null }[]).map((c) => [c.id, Number(c.portrait) || null]));
+  const heroes: WrapHero[] = characters.map((c) => {
+    const v = stamp.get(c.id);
+    return { key: c.key, name: c.name, short: c.short, color: c.color, mine: c.mine, portrait: v ? `/api/portrait/character/${c.id}?v=${v}` : null };
+  });
+  const moments = voteMoments(recap.moments);
+  const votesReady = !votesRes.error;
+  const tally = tallyVotes((votesRes.data ?? []) as { moment_key: string; user_id: string }[], moments, userId);
+  const teaser = chosen.teaser ?? null;
+  return {
+    campaignName: campaign.name, isDm,
+    session: { id: chosen.id, number: chosen.number, title: chosen.title, live: !chosen.ended_at, teaser },
+    slides: sessionWrappedSlides({ session: { number: chosen.number, title: chosen.title }, recap, heroes, teaser, isDm, campaign: campaign.name }),
+    moments, tally, votesReady,
   };
 }
