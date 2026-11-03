@@ -1,17 +1,14 @@
-Stats: luck index, damage per round per fight, Luck and DPR trend lines
+Pick who a heal or buff goes to from the character sheet
 
-- lib/stats/luck.ts: every d20 scored against its own odds (advantage / disadvantage /
-  Elven Accuracy counted), averaged ×100 so 50 = average luck; split by attacks, saves,
-  checks and app vs real dice; "could easily be chance" vs "more than chance" verdicts
-  (2 standard errors, 10+ rolls); app vs real dice comparison
-- lib/stats/dpr.ts: damage that landed in each fight ÷ its rounds, per character and party;
-  DPR over a set of fights
-- Stats > Whole campaign: Luck index card (bars out from 50, app ● vs real ○ dumbbell,
-  tap-for-numbers readout, table view), Damage per round card (party: stacked columns per
-  fight; character: their line vs the party average; fight table), Luck and Dmg/round in
-  the trend switcher and the side-by-side table
-- Loader reads advantage, dice_all and physical (falls back without physical before SQL 30)
-- Tests: luck math, grouping, merge, app vs real, DPR on the sample session
+Casting Healing Word, Cure Wounds, Mass Healing Word, Bless, Aid, Haste and the
+like from the sheet now asks "Who gets ...?" with the party and their HP. Healing
+changes the target's HP right away, in or out of a session or fight; buffs are
+logged on the creatures picked. The tray shows "Orrin +15 HP (0 -> 15 / 31)".
+
+- lib/targets.ts: aimOf (which options ask, one or several, extra creatures
+  from a higher slot), mostHurt (default pick for heals); tests
+- server: heals on party characters apply without a running session
+- sheet: TargetPick dialog, party list from getCharacterSheet
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_014ScUJ9ddqyCKYg4cY8TLXs
+Claude-Session: https://claude.ai/code/session_014ScUJ9vHTe7BJYNvrzcHWg

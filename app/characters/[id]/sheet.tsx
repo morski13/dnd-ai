@@ -2,11 +2,14 @@
 // The interactive character sheet. Every tap on a bonus asks the server to roll and save it.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { signed, type Advantage } from "@/lib/dice";
 import { addQueued, offlineRoll, recorder, replayRng } from "@/lib/offline-rolls";
 import { diceSides, physicalValues, shapeOf, type RollShape } from "@/lib/physical";
 import { RealDicePad, useRealDice, type Typed } from "./parts/real-dice";
+import { TargetPick, type Picked } from "./parts/target-pick";
+import { aimOf, mostHurt, type Aim, type PartyMember } from "@/lib/targets";
+import type { Target } from "@/lib/roll-service";
 import { toConfirm } from "@/lib/sheet-confirm";
 import { ConfirmNumbers } from "./parts/confirm-numbers";
 import type { Feature, FullCharacter, Resource } from "@/lib/character-data";
@@ -44,8 +47,10 @@ import { ACTION_LABEL, Empty, Pips, RollButton, RowButton, StatBox } from "./par
 
 type Tab = "Attacks" | "Spells" | "Skills" | "Features" | "Gear";
 
-export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null, live: initialLive = null, levelUpTo = null }: {
+export function CharacterSheet({ character, canEdit, library: initialLibrary, featText, gear, levelPlan = null, portrait = null, live: initialLive = null, levelUpTo = null, party = [] }: {
   character: FullCharacter; canEdit: boolean; library: SpellInfo[]; featText: Record<string, string>; gear: Gear; levelPlan?: string | null; portrait?: string | null;
+  /** everyone in the campaign: who a heal or a buff can go to */
+  party?: PartyMember[];
   /** the DM said the party levels up to this level */
   levelUpTo?: number | null;
   live?: TableSession;
@@ -117,16 +122,23 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       await showTriggered(res.roll, res.triggered);
       return res.roll; // nothing was spent or saved, so the sheet stays as it is
     }
+    // A heal or a buff: ask who it goes to (healing changes their HP, a buff is logged on them)
+    let aimed: { target: Target | null; more: Target[] } = { target: null, more: [] };
+    if (request.kind === "use") {
+      const who = await askTarget(atk, request.slot);
+      if (who === null) return null; // cancelled
+      aimed = { target: who[0] ? { characterId: who[0] } : null, more: who.slice(1).map((id) => ({ characterId: id })) };
+    }
     // Real dice: ask what they show (or let the app roll)
     if (realDice) {
       const typed = await askDice(request, adv);
       if (typed === null) return null;
-      if (typed !== "app") return rollReal(request, adv, typed);
+      if (typed !== "app") return rollReal(request, adv, typed, aimed);
     }
     // No internet: roll here, keep it on the phone, send it later (OfflineSync). An already-offline phone doesn't wait for the network.
     const offlineNow = typeof navigator !== "undefined" && navigator.onLine === false;
     let res: Awaited<ReturnType<typeof rollQuick>> | null = null;
-    if (!offlineNow) { try { res = await rollQuick(character.id, request, adv); } catch { res = null; } } // the dice land first, the page refreshes after
+    if (!offlineNow) { try { res = await rollQuick(character.id, request, adv, aimed.target, aimed.more); } catch { res = null; } } // the dice land first, the page refreshes after
     if (!res) return rollOffline(request, adv);
     if ("error" in res) { setError(res.error); return null; }
     spendTurn(request);
@@ -143,6 +155,20 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     setResources(res.resources);
     setTimeout(() => router.refresh(), 0); // other screens (stats, lists) see it now, without keeping the button busy
     return res.roll;
+  }
+
+  // ---- who a heal or a buff goes to ("Who gets Healing Word?")
+  const [aimPick, setAimPick] = useState<{ title: string; aim: Aim; initial: string[]; done: (p: Picked | null) => void } | null>(null);
+  const lastAim = useRef<Record<string, string[]>>({}); // last pick per spell, for buffs cast again
+  function askTarget(o: Option | null | undefined, slot?: number): Promise<Picked | null> {
+    const aim = aimOf(o, slot);
+    if (!aim || !o || party.length === 0) return Promise.resolve([]);
+    const alive = (ids: string[]) => ids.filter((id) => party.some((p) => p.id === id)).slice(0, aim.max ?? undefined);
+    const initial = aim.heal ? [mostHurt(party, character.id)] : alive(lastAim.current[o.key] ?? [character.id]);
+    return new Promise((resolve) => setAimPick({
+      title: o.name, aim, initial,
+      done: (p) => { setAimPick(null); if (p && p.length) lastAim.current[o.key] = p; resolve(p); },
+    }));
   }
 
   // ---- real dice: the number pad, then the usual roll with those dice
@@ -163,13 +189,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     const label = options.find((o) => "key" in request && o.key === request.key)?.name ?? r.plan.source;
     return new Promise((resolve) => setPad({ title: `${label}${r.plan.rollType === "damage" ? " damage" : r.plan.rollType === "heal" ? " healing" : ""}`, shape, done: (t) => { setPad(null); resolve(t); } }));
   }
-  async function rollReal(request: RollRequest, adv: Advantage, typed: Typed): Promise<SavedRoll | null> {
+  async function rollReal(request: RollRequest, adv: Advantage, typed: Typed, aimed?: { target: Target | null; more: Target[] }): Promise<SavedRoll | null> {
     const { plan, opts } = rollOpts(request, adv);
     const v = physicalValues(diceSides(plan.expression!, opts), typed);
     if ("error" in v) { setError(v.error); return null; }
     const offlineNow = typeof navigator !== "undefined" && navigator.onLine === false;
     let res: Awaited<ReturnType<typeof realDiceRoll>> | null = null;
-    if (!offlineNow) { try { res = await realDiceRoll(character.id, request, adv, v.values); } catch { res = null; } }
+    if (!offlineNow) { try { res = await realDiceRoll(character.id, request, adv, v.values, aimed?.target, aimed?.more); } catch { res = null; } }
     if (!res) {
       const r = offlineRoll(c, library, request, adv, opts.critical, replayRng(v.values));
       if ("error" in r) { setError(r.error); return null; }
@@ -256,6 +282,9 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   // HP changed by a roll's "then" (temp HP from Wild Surge, damage from Magic Reserves)
   function applySelf(r: SavedRoll) {
     if (r.self?.hp_current !== undefined) setHp({ cur: r.self.hp_current, temp: r.self.temp_hp ?? 0 });
+    // you healed yourself (Healing Word on "you")
+    const mine = [r.applied, ...(r.appliedAll ?? [])].find((a) => a?.target.characterId === character.id && a.kind === "heal");
+    if (mine?.hpAfter != null) { const cur = mine.hpAfter; setHp((h) => ({ ...h, cur })); }
   }
 
   function run<T>(fn: () => Promise<T | { error: string }>, done: (r: T) => void) {
@@ -563,6 +592,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }}
         realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined} />}
       {pad && <RealDicePad title={pad.title} shape={pad.shape} onDone={pad.done} />}
+      {aimPick && (
+        <TargetPick title={aimPick.title} heal={aimPick.aim.heal} many={aimPick.aim.many} max={aimPick.aim.max}
+          party={party} meId={character.id} initial={aimPick.initial} onDone={aimPick.done} />
+      )}
     </>
   );
 }

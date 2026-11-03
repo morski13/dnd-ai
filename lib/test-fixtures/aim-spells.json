@@ -1,0 +1,461 @@
+[
+{
+"name": "Healing Word",
+"level": 1,
+"school": "Abjuration",
+"classes": [
+"Bard",
+"Cleric",
+"Druid"
+],
+"casting_time": "Bonus Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "A creature of your choice that you can see within range regains Hit Points equal to 2d4 plus your spellcasting ability modifier.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 2d4 for each spell slot level above 1.",
+"action": "bonus",
+"roll": {
+"kind": "heal",
+"damage": "2d4",
+"add_mod": true,
+"per_level": "2d4"
+}
+},
+{
+"name": "Mass Healing Word",
+"level": 3,
+"school": "Abjuration",
+"classes": [
+"Bard",
+"Cleric"
+],
+"casting_time": "Bonus Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "Up to six creatures of your choice that you can see within range regain Hit Points equal to 2d4 plus your spellcasting ability modifier.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 1d4 for each spell slot level above 3.",
+"action": "bonus",
+"roll": {
+"kind": "heal",
+"damage": "2d4",
+"add_mod": true,
+"per_level": "1d4"
+}
+},
+{
+"name": "Cure Wounds",
+"level": 1,
+"school": "Abjuration",
+"classes": [
+"Bard",
+"Cleric",
+"Druid",
+"Paladin",
+"Ranger"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "Touch",
+"components": "V, S",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "A creature you touch regains a number of Hit Points equal to 2d8 plus your spellcasting ability modifier.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 2d8 for each spell slot level above 1.",
+"action": "action",
+"roll": {
+"kind": "heal",
+"damage": "2d8",
+"add_mod": true,
+"per_level": "2d8"
+}
+},
+{
+"name": "Heal",
+"level": 6,
+"school": "Abjuration",
+"classes": [
+"Cleric",
+"Druid"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V, S",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "Choose a creature that you can see within range. Positive energy washes through the target, restoring 70 Hit Points. This spell also ends the Blinded, Deafened, and Poisoned conditions on the target.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 10 for each spell slot level above 6.",
+"action": "action",
+"roll": {
+"kind": "heal",
+"damage": "70",
+"add_mod": false,
+"per_level": "10"
+}
+},
+{
+"name": "Prayer of Healing",
+"level": 2,
+"school": "Abjuration",
+"classes": [
+"Cleric",
+"Paladin"
+],
+"casting_time": "10 minutes",
+"ritual": false,
+"range": "30 feet",
+"components": "V",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "Up to five creatures of your choice who remain within range for the spell’s entire casting gain the benefits of a Short Rest and also regain 2d8 Hit Points. A creature can’t be affected by this spell again until that creature finishes a Long Rest.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 1d8 for each spell slot level above 2.",
+"action": "other",
+"roll": {
+"kind": "heal",
+"damage": "2d8",
+"add_mod": false,
+"per_level": "1d8"
+}
+},
+{
+"name": "Mass Heal",
+"level": 9,
+"school": "Abjuration",
+"classes": [
+"Cleric"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V, S",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "A flood of healing energy flows from you into creatures around you. You restore up to 700 Hit Points, divided as you choose among any number of creatures that you can see within range. Creatures healed by this spell also have the Blinded, Deafened, and Poisoned conditions removed from them.",
+"higher_levels": null,
+"action": "action"
+},
+{
+"name": "Mass Cure Wounds",
+"level": 5,
+"school": "Abjuration",
+"classes": [
+"Bard",
+"Cleric",
+"Druid"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V, S",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "A wave of healing energy washes out from a point you can see within range. Choose up to six creatures in a 30-foot-radius Sphere centered on that point. Each target regains Hit Points equal to 5d8 plus your spellcasting ability modifier.",
+"higher_levels": "Using a Higher-Level Spell Slot. The healing increases by 1d8 for each spell slot level above 5.",
+"action": "action",
+"roll": {
+"kind": "heal",
+"damage": "5d8",
+"add_mod": true,
+"per_level": "1d8"
+}
+},
+{
+"name": "Bless",
+"level": 1,
+"school": "Enchantment",
+"classes": [
+"Cleric",
+"Paladin"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a Holy Symbol worth 5+ GP)",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "You bless up to three creatures within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save.",
+"higher_levels": "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
+"action": "action"
+},
+{
+"name": "Aid",
+"level": 2,
+"school": "Abjuration",
+"classes": [
+"Bard",
+"Cleric",
+"Druid",
+"Paladin",
+"Ranger"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a strip of white cloth)",
+"duration": "8 hours",
+"concentration": false,
+"description": "Choose up to three creatures within range. Each target’s Hit Point maximum and current Hit Points increase by 5 for the duration.",
+"higher_levels": "Using a Higher-Level Spell Slot. Each target’s Hit Points increase by 5 for each spell slot level above 2.",
+"action": "action"
+},
+{
+"name": "Haste",
+"level": 3,
+"school": "Transmutation",
+"classes": [
+"Sorcerer",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a shaving of licorice root)",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "Choose a willing creature that you can see within range. Until the spell ends, the target’s Speed is doubled, it gains a +2 bonus to Armor Class, it has Advantage on Dexterity saving throws, and it gains an additional action on each of its turns. That action can be used to take only the Attack (one attack only), Dash, Disengage, Hide, or Utilize action.\n\nWhen the spell ends, the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of lethargy washes over it.",
+"higher_levels": null,
+"action": "action"
+},
+{
+"name": "Shield of Faith",
+"level": 1,
+"school": "Abjuration",
+"classes": [
+"Cleric",
+"Paladin"
+],
+"casting_time": "Bonus Action",
+"ritual": false,
+"range": "60 feet",
+"components": "V, S, M (a prayer scroll)",
+"duration": "Concentration, up to 10 minutes",
+"concentration": true,
+"description": "A shimmering field surrounds a creature of your choice within range, granting it a +2 bonus to AC for the duration.",
+"higher_levels": null,
+"action": "bonus"
+},
+{
+"name": "Beacon of Hope",
+"level": 3,
+"school": "Abjuration",
+"classes": [
+"Cleric"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "Choose any number of creatures within range. For the duration, each target has Advantage on Wisdom saving throws and Death Saving Throws and regains the maximum number of Hit Points possible from any healing.",
+"higher_levels": null,
+"action": "action"
+},
+{
+"name": "Bane",
+"level": 1,
+"school": "Enchantment",
+"classes": [
+"Bard",
+"Cleric",
+"Warlock"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a drop of blood)",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "Up to three creatures of your choice that you can see within range must each make a Charisma saving throw. Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save.",
+"higher_levels": "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
+"action": "action"
+},
+{
+"name": "Shield",
+"level": 1,
+"school": "Abjuration",
+"classes": [
+"Sorcerer",
+"Wizard"
+],
+"casting_time": "Reaction, which you take when you are hit by an attack roll or targeted by the Magic Missile spell",
+"ritual": false,
+"range": "Self",
+"components": "V, S",
+"duration": "1 round",
+"concentration": false,
+"description": "An imperceptible barrier of magical force protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from Magic Missile.",
+"higher_levels": null,
+"action": "reaction"
+},
+{
+"name": "Fireball",
+"level": 3,
+"school": "Evocation",
+"classes": [
+"Sorcerer",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "150 feet",
+"components": "V, S, M (a ball of bat guano and sulfur)",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "A bright streak flashes from you to a point you choose within range and then blossoms with a low roar into a fiery explosion. Each creature in a 20-foot-radius Sphere centered on that point makes a Dexterity saving throw, taking 8d6 Fire damage on a failed save or half as much damage on a successful one.\n\nFlammable objects in the area that aren’t being worn or carried start burning.",
+"higher_levels": "Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 3.",
+"action": "action",
+"roll": {
+"kind": "save",
+"damage": "8d6",
+"damage_type": "fire",
+"save_ability": "DEX",
+"half_on_save": true,
+"per_level": "1d6"
+}
+},
+{
+"name": "Hideous Laughter",
+"level": 1,
+"school": "Enchantment",
+"classes": [
+"Bard",
+"Warlock",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a tart and a feather)",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "One creature of your choice that you can see within range makes a Wisdom saving throw. On a failed save, it has the Prone and Incapacitated conditions for the duration. During that time, it laughs uncontrollably if it’s capable of laughter, and it can’t end the Prone condition on itself.\n\nAt the end of each of its turns and each time it takes damage, it makes another Wisdom saving throw. The target has Advantage on the save if the save is triggered by damage. On a successful save, the spell ends.",
+"higher_levels": "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
+"action": "action"
+},
+{
+"name": "Bestow Curse",
+"level": 3,
+"school": "Necromancy",
+"classes": [
+"Bard",
+"Cleric",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "Touch",
+"components": "V, S",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "You touch a creature, which must succeed on a Wisdom saving throw or become cursed for the duration. Until the curse ends, the target suffers one of the following effects of your choice:\n\n• Choose one ability. The target has Disadvantage on ability checks and saving throws made with that ability.\n\n• The target has Disadvantage on attack rolls against you.\n\n• In combat, the target must succeed on a Wisdom saving throw at the start of each of its turns or be forced to take the Dodge action on that turn.\n\n• If you deal damage to the target with an attack roll or a spell, the target takes an extra 1d8 Necrotic damage.",
+"higher_levels": "Using a Higher-Level Spell Slot. If you cast this spell using a level 4 spell slot, you can maintain Concentration on it for up to 10 minutes. If you use a level 5+ spell slot, the spell doesn’t require Concentration, and the duration becomes 8 hours (level 5–6 slot) or 24 hours (level 7–8 slot). If you use a level 9 spell slot, the spell lasts until dispelled.",
+"action": "action",
+"roll": {
+"kind": "save",
+"damage": "1d8",
+"damage_type": "necrotic",
+"save_ability": "WIS",
+"half_on_save": false
+}
+},
+{
+"name": "Sanctuary",
+"level": 1,
+"school": "Abjuration",
+"classes": [
+"Cleric"
+],
+"casting_time": "Bonus Action",
+"ritual": false,
+"range": "30 feet",
+"components": "V, S, M (a shard of glass from a mirror)",
+"duration": "1 minute",
+"concentration": false,
+"description": "You ward a creature within range. Until the spell ends, any creature who targets the warded creature with an attack roll or a damaging spell must succeed on a Wisdom saving throw or either choose a new target or lose the attack or spell. This spell doesn’t protect the warded creature from areas of effect. The spell ends if the warded creature makes an attack roll, casts a spell, or deals damage.",
+"higher_levels": null,
+"action": "bonus"
+},
+{
+"name": "Death Ward",
+"level": 4,
+"school": "Abjuration",
+"classes": [
+"Cleric",
+"Paladin"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "Touch",
+"components": "V, S",
+"duration": "8 hours",
+"concentration": false,
+"description": "You touch a creature and grant it a measure of protection from death. The first time the target would drop to 0 Hit Points before the spell ends, the target instead drops to 1 Hit Point, and the spell ends.\n\nIf the spell is still in effect when the target is subjected to an effect that would kill it instantly without dealing damage, that effect is negated against the target, and the spell ends.",
+"higher_levels": null,
+"action": "action"
+},
+{
+"name": "Counterspell",
+"level": 3,
+"school": "Abjuration",
+"classes": [
+"Sorcerer",
+"Warlock",
+"Wizard"
+],
+"casting_time": "Reaction, which you take when you see a creature within 60 feet of yourself casting a spell with Verbal, Somatic, or Material components",
+"ritual": false,
+"range": "60 feet",
+"components": "S",
+"duration": "Instantaneous",
+"concentration": false,
+"description": "You attempt to interrupt a creature in the process of casting a spell. The creature makes a Constitution saving throw. On a failed save, the spell dissipates with no effect, and the action, Bonus Action, or Reaction used to cast it is wasted. If that spell was cast with a spell slot, the slot isn’t expended.",
+"higher_levels": null,
+"action": "reaction"
+},
+{
+"name": "Slow",
+"level": 3,
+"school": "Transmutation",
+"classes": [
+"Bard",
+"Sorcerer",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "120 feet",
+"components": "V, S, M (a drop of molasses)",
+"duration": "Concentration, up to 1 minute",
+"concentration": true,
+"description": "You alter time around up to six creatures of your choice in a 40-foot Cube within range. Each target must succeed on a Wisdom saving throw or be affected by this spell for the duration.\n\nAn affected target’s Speed is halved, it takes a −2 penalty to AC and Dexterity saving throws, and it can’t take Reactions. On its turns, it can take either an action or a Bonus Action, not both, and it can make only one attack if it takes the Attack action. If it casts a spell with a Somatic component, there is a 25 percent chance the spell fails as a result of the target making the spell’s gestures too slowly.\n\nAn affected target repeats the save at the end of each of its turns, ending the spell on itself on a success.",
+"higher_levels": null,
+"action": "action"
+},
+{
+"name": "Invisibility",
+"level": 2,
+"school": "Illusion",
+"classes": [
+"Bard",
+"Sorcerer",
+"Warlock",
+"Wizard"
+],
+"casting_time": "Action",
+"ritual": false,
+"range": "Touch",
+"components": "V, S, M (an eyelash in gum arabic)",
+"duration": "Concentration, up to 1 hour",
+"concentration": true,
+"description": "A creature you touch has the Invisible condition until the spell ends. The spell ends early immediately after the target makes an attack roll, deals damage, or casts a spell.",
+"higher_levels": "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 2.",
+"action": "action"
+}
+]

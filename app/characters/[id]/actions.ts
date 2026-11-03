@@ -40,6 +40,8 @@ export type SavedRoll = {
   vsAc?: number | null;                      // the AC it was rolled against (a target's, or one typed on the sheet)
   target?: string | null;                    // "Ogre"
   applied?: Applied | null;                  // what the fight moderator did with it (HP change)
+  appliedAll?: Applied[];                    // healing on several creatures (Mass Healing Word): one HP change each
+  aimedAt?: string[];                        // everyone it was aimed at (a buff on several friends)
   missed?: boolean;                          // damage after a missed attack: not applied
   table?: { row: string; text?: string };    // a roll table: the row it landed on
   next?: { key: string; label: string; many?: boolean }; // a table row with something to roll: offer it next
@@ -279,11 +281,13 @@ export async function rollForCharacter(
   }
 
   // Fight moderator: damage / healing with a target changes their HP right away.
+  // Healing a party member works without a session too (Healing Word after the fight, from the sheet).
+  const healFriend = (t: Target | null | undefined) => plan.rollType === "heal" && !!t?.characterId;
   let applied: Applied | null = appliedAll?.[0] ?? null;
-  if (!parentIsSave && (plan.rollType === "damage" || plan.rollType === "heal") && result && tgt && session && !parentMissed
+  if (!parentIsSave && (plan.rollType === "damage" || plan.rollType === "heal") && result && tgt && (session || healFriend(tgt)) && !parentMissed
       && autoApply) {
     applied = await applyHp(admin, {
-      campaignId: c.campaign_id, sessionId: session.id, combatId: combat?.id ?? null, round: combat?.round ?? null,
+      campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null,
       kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id,
       actor: { characterId: c.id }, target: { characterId: tgt.characterId, monsterId: tgt.monsterId }, createdBy: userId,
     });
@@ -293,13 +297,14 @@ export async function rollForCharacter(
 
   // Healing (Mass Healing Word…) or area damage with no save (Wild Surge's burst): everyone picked gets the same amount.
   const area = plan.rollType === "heal" || (plan.rollType === "damage" && !parentIsSave && !parentMissed && !!opt?.many);
-  if (area && result && session && moreTargets?.length && autoApply) {
+  if (area && result && (session || plan.rollType === "heal") && moreTargets?.length && autoApply) {
     appliedAll = applied ? [applied] : [];
     for (const t of moreTargets) {
       if (!t?.characterId && !t?.monsterId) continue;
+      if (!session && !healFriend(t)) continue; // outside a session only the party can be healed
       if (tgt && t.characterId === tgt.characterId && t.monsterId === tgt.monsterId) continue;
       const kind = plan.rollType === "heal" ? "heal" : "damage";
-      const one = await applyHp(admin, { ...base, sessionId: session.id, kind, total: result.total, crit: false, rollId: saved.id,
+      const one = await applyHp(admin, { ...base, sessionId: session?.id ?? null, kind, total: result.total, crit: false, rollId: saved.id,
         actor: { characterId: c.id }, target: { characterId: t.characterId ?? null, monsterId: t.monsterId ?? null } });
       if (!one) continue;
       if (kind === "damage") dealt.push(one.amount);
@@ -321,6 +326,13 @@ export async function rollForCharacter(
       appliedAll = appliedAll?.filter((x) => !(x.target.monsterId && hiddenM.has(x.target.monsterId)));
       if (applied?.target.monsterId && hiddenM.has(applied.target.monsterId)) applied = null;
     }
+  }
+
+  // Everyone it was aimed at, for the tray ("Bless → Orrin, Lyra, you"). Buffs only log who they're on.
+  let aimedAt: string[] | undefined;
+  if (request.kind === "use" && tgt && moreTargets?.length && plan.rollType !== "save_dc") {
+    const rest = await Promise.all(moreTargets.slice(0, 20).map((t) => lookupTarget(admin, c.campaign_id, t)));
+    aimedAt = [tgt.name, ...rest.filter((x): x is NonNullable<typeof x> => !!x && x.name !== tgt.name).map((x) => x.name)];
   }
 
   if (plan.rollType === "initiative" && combat && result) {
@@ -367,7 +379,9 @@ export async function rollForCharacter(
       success,
       vsAc,
       target: tgt?.name ?? null,
+      aimedAt,
       applied,
+      appliedAll: plan.rollType === "heal" ? appliedAll : undefined,
       missed: parentMissed && plan.rollType === "damage",
       ...(row ? { table: { row: row.name, text: row.text }, next: row.effect ? { key: rowKey(opt!.name, row.min), label: `${row.name}${row.effect.damage ? ` (${row.effect.damage}${row.effect.damage_type ? ` ${row.effect.damage_type}` : ""})` : ""}`, many: !!row.effect.many } : undefined } : {}),
       self,

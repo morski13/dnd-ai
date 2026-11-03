@@ -123,6 +123,7 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
           </p>
         )}
         {last && !pending && last.self && <p className="mt-2 text-sm text-soft">{last.self.note}</p>}
+        {last && !pending && <AimedNote last={last} />}
 
         {last?.physical && !last.offline && !pending && onUndoReal && (
           <button type="button" onClick={onUndoReal} className="mt-2 inline-flex min-h-10 items-center text-sm text-muted underline">Typo? Take it back and type again</button>
@@ -163,4 +164,27 @@ function subscribe(cb: () => void) {
   window.addEventListener(KEY, cb);
   window.addEventListener("storage", cb);
   return () => { window.removeEventListener(KEY, cb); window.removeEventListener("storage", cb); };
+}
+
+/** Who a heal or a buff from the sheet went to: "Orrin +15 HP (12 → 27 / 31)", "Bless on Orrin, Lyra". */
+function AimedNote({ last }: { last: SavedRoll }) {
+  const heals = [last.applied, ...(last.appliedAll ?? [])]
+    .filter((a, i, all): a is NonNullable<typeof a> => !!a && a.kind === "heal" && all.findIndex((x) => x?.effectId === a.effectId) === i);
+  if (heals.length) {
+    return (
+      <ul key={`a${last.id}`} className="animate-pop mt-2 flex flex-col gap-1 rounded-lg bg-success-bg px-3 py-2 text-sm">
+        {heals.map((h) => (
+          <li key={h.effectId || h.target.name} className="flex justify-between gap-2">
+            <span className="truncate font-semibold">{h.target.name}{h.revived ? " is back up!" : ""}</span>
+            <span className="shrink-0 tabular-nums text-success">
+              +{h.hpBefore != null && h.hpAfter != null ? h.hpAfter - h.hpBefore : h.amount} HP{h.hpBefore != null && h.hpAfter != null ? ` (${h.hpBefore} → ${h.hpAfter}${h.hpMax ? ` / ${h.hpMax}` : ""})` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (last.rollType === "heal" && last.target && !last.practice) return <p className="mt-2 text-sm text-soft">Healing for {last.target}: the DM turned off applying it automatically, so they add it by hand.</p>;
+  const on = last.aimedAt ?? (last.target && last.rollType === "other" ? [last.target] : null);
+  return on?.length ? <p className="mt-2 text-sm text-soft">On {on.join(", ")}.</p> : null;
 }
