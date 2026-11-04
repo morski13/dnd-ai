@@ -22,20 +22,23 @@ export function PartyLevelCard({ campaignId, level, target = null, party = [] }:
   });
   return (
     <section className="mt-5 rounded-2xl border border-line bg-surface-2 p-4 lg:p-6" aria-label="Party level">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-[0.12em] text-muted">Party level</p>
-          <p className="font-heading text-2xl font-bold">{level ?? "Not set"}</p>
+      {/* phones: the level on its own line, the controls under it; wider screens: one row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="sm:min-w-32 sm:flex-1">
+          <p className="whitespace-nowrap text-xs uppercase tracking-[0.12em] text-muted">Party level</p>
+          <p className="whitespace-nowrap font-heading text-2xl font-bold">{level ?? "Not set"}</p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-soft">
-          <span>Level up to</span>
-          <select value={to} onChange={(e) => setTo(Number(e.target.value))} aria-label="New party level"
-            className="h-11 shrink-0 rounded-xl border border-line bg-bg px-2 font-bold text-text">
-            {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={go} disabled={pending || to === level}
-          className="h-11 shrink-0 rounded-xl bg-accent px-4 font-bold text-accent-text disabled:opacity-40">{pending ? "Saving…" : "Level up the party"}</button>
+        <div className="flex items-center gap-2">
+          <label className="flex shrink-0 items-center gap-2 text-sm text-soft">
+            <span className="whitespace-nowrap">Level up to</span>
+            <select value={to} onChange={(e) => setTo(Number(e.target.value))} aria-label="New party level"
+              className="h-11 shrink-0 rounded-xl border border-line bg-bg px-2 font-bold text-text">
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={go} disabled={pending || to === level}
+            className="h-11 min-w-0 flex-1 whitespace-nowrap rounded-xl bg-accent px-4 font-bold text-accent-text disabled:opacity-40 sm:flex-none">{pending ? "Saving…" : "Level up the party"}</button>
+        </div>
       </div>
       {msg && <p className="mt-2 text-sm text-soft" role="status">{msg}</p>}
       {target && party.length > 0 && (
