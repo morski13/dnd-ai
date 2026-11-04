@@ -8,7 +8,7 @@ import { KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terr
  * Pictures in /public/terrain/<name>.png that are there (the DM's own). Grass, water, fire, lava and smoke stay
  * plain colours on purpose; everything else uses its colour until its picture is added here.
  */
-export const TERRAIN_PICTURES = new Set<string>(["tree", "bush"]);
+export const TERRAIN_PICTURES = new Set<string>([]);
 
 export type Brush = { kind: Kind | "clear" | null; height: number | null; door: "door" | "window" | null; size: 1 | 3 };
 
