@@ -13,7 +13,7 @@ import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
 import { castArea, dashToken, disengageToken, flyTo, moveToken, setFlySpeed, setTokenHidden, teleportToken } from "../map-actions";
 import { terrainOf } from "@/lib/engine/space";
-import { LightLayer, TerrainLayer } from "./terrain-layer";
+import { describeSquare, LightLayer, TerrainLayer } from "./terrain-layer";
 import Link from "next/link";
 import { useMapAim } from "./map-aim";
 
@@ -144,7 +144,8 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     }
     if (at && at.id !== selId) { setSelId(at.id); setError(null); return; }
     if (at && at.id === selId) { setSelId(null); return; }
-    if (!sel) return;
+    // nothing picked: say what's on that square (height, terrain, object)
+    if (!sel) { setError(null); setNote(`(${sq.x + 1}, ${sq.y + 1}) ${describeSquare(tData, sq.x, sq.y, map.feet)}`); return; }
     if (free && isDm) {
       if (!freeAt(sel, sq.x, sq.y, tokens, map.cols, map.rows)) return setError("Someone is already there.");
       setOptimistic({ [sel.id]: sq });
@@ -286,7 +287,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       {board}
 
       {error && <p className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">{error}</p>}
-      {note && <p className="mt-2 text-sm text-success">{note}</p>}
+      {note && <p className="mt-2 text-sm text-success" role="status">{note}</p>}
 
       {!aim && (
         <div className="mt-2 space-y-2">
@@ -314,7 +315,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
               )}
             </div>
           ) : (
-            <p className="text-xs text-muted">Tap a token to see it. Drag to look around, pinch or use + / − to zoom.</p>
+            <p className="text-xs text-muted">Tap a token to see it, or an empty square to see its height and terrain. Drag to look around, pinch or use + / − to zoom.</p>
           )}
           {sel && (isDm || sel.mine) && (sel.fly > 0 || isDm || sel.mine) && (
             <div className="rounded-xl border border-line bg-surface px-3 py-2" aria-label="Flying">

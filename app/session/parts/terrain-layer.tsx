@@ -2,7 +2,8 @@
 // Terrain on the battle map: what each painted square looks like (the DM's own pictures from /public/terrain
 // when they're there, colours until then), heights; and the DM's paint tools.
 import { useState } from "react";
-import { KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terrain";
+import { DEFAULT_TALL, KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terrain";
+export { describeSquare } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
 import { lightMap } from "@/lib/engine/vision";
 
@@ -57,9 +58,15 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
                 <circle cx={o.x + o.size / 2} cy={o.y + o.size / 2} r={o.size * 0.46} fill={r.color} opacity={0.85} stroke="#00000066" strokeWidth={0.04} />
                 <text x={o.x + o.size / 2} y={o.y + o.size / 2} dy="0.35em" textAnchor="middle" fontSize={0.42 * o.size}>{GLYPH[o.k] ?? ""}</text>
               </>}
+            {/* how tall it is (for flying over it) */}
+            {(o.tall ?? DEFAULT_TALL[o.k] ?? 0) > 0 && (
+              <text x={o.x + o.size - 0.06} y={o.y + o.size - 0.08} textAnchor="end" fontSize={Math.min(0.32, 0.2 + o.size * 0.02)} fontWeight={700}
+                fill="#fff" stroke="#000" strokeWidth={0.05} paintOrder="stroke" data-tall="">{o.tall ?? DEFAULT_TALL[o.k]} ft</text>
+            )}
           </g>
         );
       })}
+      <HeightEdges data={data} />
     </g>
   );
 }
@@ -115,6 +122,38 @@ export function LightTools({ light, fog, pending, onChange }: { light: "bright" 
 
 /** Placed as objects (any size), not painted square by square. */
 const OBJECT_ONLY = new Set<Kind>(["tree", "boulder", "bush", "barrel", "crate", "torch"]);
+
+/**
+ * Edges between ground of different heights: a line where the ground steps up or down, thicker for bigger steps,
+ * with a light side on the higher ground (ledges, cliffs, pit edges).
+ */
+function HeightEdges({ data }: { data: TerrainData }) {
+  const h = (x: number, y: number) => data.cells[`${x},${y}`]?.h ?? 0;
+  const seen = new Set<string>();
+  const lines: React.ReactNode[] = [];
+  for (const k of Object.keys(data.cells)) {
+    if (!data.cells[k].h) continue;
+    const [x, y] = k.split(",").map(Number);
+    // the four sides of this square; each side once
+    for (const [nx, ny, x1, y1, x2, y2] of [[x + 1, y, x + 1, y, x + 1, y + 1], [x - 1, y, x, y, x, y + 1], [x, y + 1, x, y + 1, x + 1, y + 1], [x, y - 1, x, y, x + 1, y]] as const) {
+      if (nx < 0 || ny < 0) continue;
+      const step = h(x, y) - h(nx, ny);
+      if (!step) continue;
+      const id = `${Math.min(x1, x2)},${Math.min(y1, y2)},${x1 === x2 ? "v" : "h"}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const w = Math.min(0.16, 0.05 + Math.abs(step) / 150);
+      lines.push(
+        <g key={id} data-ledge={Math.abs(step)}>
+          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#000" strokeOpacity={0.75} strokeWidth={w + 0.06} strokeLinecap="round" />
+          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f3e2b8" strokeWidth={w} strokeLinecap="round" />
+        </g>,
+      );
+    }
+  }
+  return <g aria-hidden pointerEvents="none">{lines}</g>;
+}
+
 
 /** The DM's paint tools: what to paint, a height, brush size. */
 export function PaintTools({ brush, setBrush }: { brush: Brush | null; setBrush: (b: Brush | null) => void }) {

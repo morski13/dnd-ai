@@ -144,3 +144,24 @@ export function objectAt(t: TerrainData, x: number, y: number): MapObject | null
 export function removeObject(t: TerrainData, id: string): TerrainData {
   return { ...t, objects: (t.objects ?? []).filter((o) => o.id !== id) };
 }
+
+/** What's on a square, in words: "Ground +15 ft · Tree, 20 ft tall (blocks moving, up to three-quarters cover)". */
+export function describeSquare(data: TerrainData, x: number, y: number, feet = 5): string {
+  const c = data.cells[`${x},${y}`];
+  const o = objectAt(data, x, y);
+  const parts: string[] = [];
+  parts.push(c?.h ? `Ground ${c.h > 0 ? `+${c.h}` : c.h} ft` : "Ground level");
+  if (c && c.k !== "ground") {
+    const r = KINDS[c.k];
+    const what = [r.blocksMove ? "blocks moving" : r.difficult ? "difficult terrain" : null, r.cover ? `${r.cover} cover` : null,
+      r.lightlyObscured ? "lightly obscured" : null, r.heavilyObscured ? "can't see through" : null, r.hazard ? `${r.hazard.dice} ${r.hazard.type} ${r.hazard.note}` : null].filter(Boolean).join(", ");
+    parts.push(`${r.label}${what ? ` (${what})` : ""}`);
+  }
+  if (o) {
+    const r = KINDS[o.k];
+    const tall = o.tall ?? DEFAULT_TALL[o.k] ?? 0;
+    const what = [r.blocksMove ? "blocks moving" : r.difficult ? "difficult terrain" : null, r.cover === "three-quarters" ? "up to three-quarters cover" : r.cover ? `${r.cover} cover` : null, r.light ? "light" : null].filter(Boolean).join(", ");
+    parts.push(`${r.label}, ${o.size * feet} ft wide${tall ? `, ${tall} ft tall` : ""}${what ? ` (${what})` : ""}`);
+  }
+  return parts.join(" · ");
+}

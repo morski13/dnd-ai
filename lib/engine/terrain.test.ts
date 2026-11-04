@@ -63,3 +63,15 @@ describe("objects", () => {
     expect(readTerrain({ objects: [{ id: "z", k: "lava", x: 1, y: 1, size: 2 }] }).objects).toBeUndefined(); // not an object kind
   });
 });
+
+describe("what's on a square", () => {
+  it("describes height, terrain and objects", async () => {
+    const { describeSquare } = await import("./terrain");
+    const t = readTerrain({ v: 2, cells: { "1,1": { k: "grass", h: 15 } }, objects: [{ id: "a", k: "tree", x: 1, y: 1, size: 2, tall: 30 }] });
+    const s = describeSquare(t, 1, 1);
+    expect(s).toMatch(/Ground \+15 ft/);
+    expect(s).toMatch(/Tall grass \(difficult terrain/);
+    expect(s).toMatch(/Tree, 10 ft wide, 30 ft tall/);
+    expect(describeSquare(t, 5, 5)).toBe("Ground level");
+  });
+});
