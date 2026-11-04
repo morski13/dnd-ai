@@ -10,12 +10,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCharacter } from "@/lib/character-data";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat, type TableSession } from "@/lib/roll-service";
 import { advanceTurn } from "@/lib/combat-turns";
+import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods } from "@/lib/engine/conditions";
+import { campaignRules, whoIs } from "@/lib/engine/server";
+import { attackGeometry } from "@/lib/maps/server";
+import type { Advantage } from "@/lib/dice";
 
 type Fail = { error: string };
 export type QuickRoll = {
   label: string; expression: string; total: number; dice: number[]; diceAll: number[]; modifier: number;
   isCrit: boolean; isFumble: boolean; success: boolean | null; target: string | null; hidden: boolean;
   applied?: Applied | null;
+  reasons?: string[];       // what the rules changed (advantage from conditions, cover, distance)
 };
 
 /** Who is asking, and their role in their campaign. */
@@ -318,11 +323,40 @@ export async function monsterRoll(
   if (!monster) return { error: "Monster not found." };
 
   let res;
-  // Damage right after a critical hit: every damage die is rolled twice.
-  try { res = roll(form.expression, { critical: form.kind === "damage" && !!form.crit }); } catch (e) { return { error: (e as Error).message }; }
   const { session, combat } = await liveState(admin, campaignId);
+  // the rules: the monster's and the target's conditions, distance and cover on the battle map
+  const reasons: string[] = [];
+  let adv: Advantage = /\badv\b/i.test(form.expression) ? "advantage" : /\bdis\b/i.test(form.expression) ? "disadvantage" : "normal";
+  let coverAc = 0;
+  let autoCrit: string | undefined;
+  let autoFail: string | undefined;
+  if (combat && (form.kind === "attack" || form.kind === "save" || form.kind === "check")) {
+    const rules = await campaignRules(admin, campaignId);
+    const meW = await whoIs(admin, campaignId, combat.id, { monsterId });
+    if (meW && form.kind === "attack") {
+      const them = await whoIs(admin, campaignId, combat.id, { characterId: form.targetCharacterId });
+      const geo = form.targetCharacterId ? await attackGeometry(campaignId, { monsterId }, { characterId: form.targetCharacterId }) : null;
+      if (geo?.cover.level === "total") return { error: `${them?.name ?? "The target"} has total cover from ${monster.name}.` };
+      const within5 = geo ? geo.dist <= 5 : true;
+      const m = attackMods(meW, them ?? { name: "the target", conds: [] }, { ranged: !!geo && geo.dist > 10, within5, rules });
+      adv = combineAdvantage(adv, m);
+      coverAc = geo?.cover.ac ?? 0;
+      autoCrit = m.autoCrit;
+      reasons.push(...rollWith("normal", m).reasons, ...(geo?.cover.why ? [`${them?.name}: ${geo.cover.why}`] : []), ...(geo ? [`${geo.dist} ft away`] : []));
+    } else if (meW && (form.kind === "save" || form.kind === "check")) {
+      const ab = (form.label.match(/\b(STR|DEX|CON|INT|WIS|CHA)\b/)?.[1] ?? null) as "STR" | "DEX" | "CON" | "INT" | "WIS" | "CHA" | null;
+      const m = form.kind === "save" && ab ? saveMods(meW, ab, rules) : checkMods(meW, rules);
+      adv = combineAdvantage(adv, m);
+      autoFail = m.autoFail;
+      reasons.push(...rollWith("normal", m).reasons);
+    }
+  }
+  // Damage right after a critical hit: every damage die is rolled twice.
+  try { res = roll(form.expression.replace(/\s*\b(adv|dis)\b/gi, ""), { critical: form.kind === "damage" && !!form.crit, advantage: adv }); } catch (e) { return { error: (e as Error).message }; }
   const tgt = await lookupTarget(admin, campaignId, { characterId: form.targetCharacterId });
-  const success = form.kind === "attack" ? hitOrMiss(res.total, tgt?.ac, res.isCrit, res.isFumble) : null;
+  let success = form.kind === "attack" ? hitOrMiss(res.total, tgt?.ac != null ? tgt.ac + coverAc : null, res.isCrit, res.isFumble) : null;
+  if (autoCrit && success !== false && form.kind === "attack" && !res.isCrit) { res = { ...res, isCrit: true }; reasons.unshift(autoCrit); }
+  if (autoFail) { success = false; reasons.unshift(autoFail); }
   const { data: saved, error } = await admin.from("roll_events").insert({
     campaign_id: campaignId, session_id: session?.id ?? null, combat_id: combat?.id ?? null, round: combat?.round ?? null,
     rolled_by: userId, monster_id: monster.id, roll_type: form.kind, source: form.label.trim() || "Roll",
@@ -345,7 +379,7 @@ export async function monsterRoll(
   return {
     label: `${monster.name}: ${form.label || "Roll"}`, expression: res.expression, total: res.total, dice: res.dice,
     diceAll: res.diceAll, modifier: res.modifier, isCrit: res.isCrit, isFumble: res.isFumble, success,
-    target: tgt?.name ?? null, hidden: form.hidden, applied,
+    target: tgt?.name ?? null, hidden: form.hidden, applied, reasons: reasons.length ? reasons : undefined,
   };
 }
 

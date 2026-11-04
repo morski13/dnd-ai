@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Crop } from "@/lib/maps/grid";
 import { moveBudget, sizeSquares, startingSpots, walkSpeed } from "@/lib/maps/move";
+import { terrainOf } from "@/lib/engine/space";
 
 export type MapRow = { id: string; name: string; image_path: string | null; image_w: number | null; image_h: number | null; cols: number; rows: number; crop: Crop | null; stretch: boolean; feet: number; updated_at: string };
 export const MAP_COLUMNS = "id, name, image_path, image_w, image_h, cols, rows, crop, stretch, feet, updated_at";
@@ -13,17 +14,22 @@ export type BattleToken = {
   id: string; combatantId: string; x: number; y: number; size: number; hidden: boolean;
   name: string; kind: "pc" | "monster" | "npc"; characterId: string | null; monsterId: string | null;
   portrait: string | null; speed: number; movedFt: number; dashes: number; budget: number; mine: boolean;
+  conds: string[];   // conditions right now (Prone, Grappled…): speed, standing up
 };
 export type BattleArea = { by: string; spell: string; placed: unknown; at: string } | null;
 export type Battle = {
-  map: { id: string; name: string; cols: number; rows: number; feet: number; crop: Crop | null; stretch: boolean; image: string | null; imageW: number | null; imageH: number | null };
+  map: {
+    id: string; name: string; cols: number; rows: number; feet: number; crop: Crop | null; stretch: boolean; image: string | null; imageW: number | null; imageH: number | null;
+    walls: string[]; difficult: string[];  // painted by the DM (SQL 36): "x,y" squares
+  };
+  diag: "5" | "5-10-5"; rules: "2014" | "2024";
   tokens: BattleToken[]; lastArea: BattleArea; currentCombatantId: string | null;
 };
 
 export const mapImageUrl = (m: Pick<MapRow, "id" | "image_path" | "updated_at">) => (m.image_path ? `/api/maps/${m.id}/image?v=${encodeURIComponent(m.updated_at)}` : null);
 export const portraitUrl = (kind: "character" | "monster", id: string, stamp: number | null | undefined) => (stamp ? `/api/portrait/${kind}/${id}?v=${stamp}` : null);
 
-type Combatant = { id: string; name: string; characterId: string | null; monsterId: string | null; ally?: boolean; isMine?: boolean };
+type Combatant = { id: string; name: string; characterId: string | null; monsterId: string | null; ally?: boolean; isMine?: boolean; conditions?: string[] };
 
 /** DM: every fighter in this combat gets a token (new ones start along the top / bottom edge). */
 export async function ensureTokens(campaignId: string, combatId: string, cols: number, rows: number) {
@@ -75,8 +81,11 @@ export async function loadBattle(supabase: SupabaseClient, a: {
 }): Promise<Battle | null> {
   const { data: c, error } = await supabase.from("combats").select("map_id, last_area").eq("id", a.combatId).maybeSingle();
   if (error || !c?.map_id) return null; // no map (or 23-battle-maps.sql not run yet)
-  const { data: m } = await supabase.from("battle_maps").select(MAP_COLUMNS).eq("id", c.map_id).maybeSingle();
-  const map = m as MapRow | null;
+  const [{ data: m }, { data: camp }] = await Promise.all([
+    supabase.from("battle_maps").select("*").eq("id", c.map_id).maybeSingle(), // "*": terrain only after 36-map-terrain.sql
+    supabase.from("campaigns").select("rule_set, settings").eq("id", a.campaignId).maybeSingle(),
+  ]);
+  const map = m as (MapRow & { terrain?: { walls?: string[]; difficult?: string[] } }) | null;
   if (!map) return null;
   if (a.isDm) await ensureTokens(a.campaignId, a.combatId, map.cols, map.rows);
   const { data: rows } = await supabase.from("map_tokens").select("id, combatant_id, x, y, size, hidden, moved_ft, dashes").eq("combat_id", a.combatId);
@@ -103,10 +112,16 @@ export async function loadBattle(supabase: SupabaseClient, a: {
       portrait: cRow ? portraitUrl("character", cRow.id, cRow.portrait) : mRow ? portraitUrl("monster", mRow.id, mRow.portrait) : null,
       speed, movedFt: t.moved_ft, dashes: t.dashes, budget: moveBudget(speed, t.dashes),
       mine: !!cb.characterId && a.myCharacterIds.includes(cb.characterId),
+      conds: cb.conditions ?? [],
     });
   }
   return {
-    map: { id: map.id, name: map.name, cols: map.cols, rows: map.rows, feet: map.feet, crop: map.crop, stretch: map.stretch, image: mapImageUrl(map), imageW: map.image_w, imageH: map.image_h },
+    map: {
+      id: map.id, name: map.name, cols: map.cols, rows: map.rows, feet: map.feet, crop: map.crop, stretch: map.stretch, image: mapImageUrl(map), imageW: map.image_w, imageH: map.image_h,
+      walls: [...terrainOf(map.terrain).walls], difficult: [...terrainOf(map.terrain).difficult],
+    },
+    diag: (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5",
+    rules: camp?.rule_set === "2014" ? "2014" : "2024",
     tokens, lastArea: (c.last_area as BattleArea) ?? null, currentCombatantId: a.currentCombatantId,
   };
 }

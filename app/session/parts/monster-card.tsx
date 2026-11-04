@@ -146,6 +146,7 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
         <div className="mt-3 rounded-xl bg-bg p-3">
           <ResultLine roll={{ ...last, rollType: kind }} />
           {last.hidden && <p className="mt-1 text-xs text-muted">Hidden from players</p>}
+          {!!last.reasons?.length && <ul className="mt-1 space-y-0.5 text-xs text-soft">{last.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
         </div>
       )}
       {last?.applied && <div className="mt-2"><AppliedNote key={last.applied.effectId} applied={last.applied} /></div>}

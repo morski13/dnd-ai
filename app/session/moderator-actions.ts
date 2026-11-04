@@ -148,6 +148,19 @@ export async function setAutoApply(on: boolean): Promise<Fail | void> {
   if (combat) await touchCombat(admin, combat.id);
 }
 
+/** DM house rule: diagonals on the battle map cost 5 ft each (as the app always did) or 5-10-5 (every second one 10 ft). */
+export async function setDiagonals(rule: "5" | "5-10-5"): Promise<Fail | void> {
+  refresh();
+  const { campaignId, isDm } = await me();
+  if (!campaignId || !isDm) return { error: "Only the DM can change that." };
+  const admin = createAdminClient();
+  const { data } = await admin.from("campaigns").select("settings").eq("id", campaignId).single();
+  const settings = (data?.settings ?? {}) as { house_rules?: Record<string, unknown> };
+  await admin.from("campaigns").update({ settings: { ...settings, house_rules: { ...(settings.house_rules ?? {}), diagonals: rule === "5-10-5" ? "5-10-5" : "5" } } }).eq("id", campaignId);
+  const { combat } = await liveState(admin, campaignId);
+  if (combat) await touchCombat(admin, combat.id);
+}
+
 /** DM: the whole party rests. Long = everything back. Short = short-rest abilities and pact slots back
  *  (each player spends their own hit dice on their sheet). */
 export async function partyRest(kind: "short" | "long"): Promise<{ error: string } | { count: number }> {

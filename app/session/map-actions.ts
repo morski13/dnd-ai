@@ -5,8 +5,11 @@ import { loadCharacter } from "@/lib/character-data";
 import { inRange, parseArea, place, tokensIn } from "@/lib/maps/area";
 import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
-import { battleState, who } from "@/lib/maps/server";
-import { liveState } from "@/lib/roll-service";
+import { battleState, moveCtx, who } from "@/lib/maps/server";
+import { canAct, speedOf } from "@/lib/engine/conditions";
+import { moveCosts, provoked, standUpCost } from "@/lib/engine/space";
+import { addEffect } from "./effect-actions";
+import { liveState, touchCombat } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { allOptions } from "@/lib/rules";
 import type { Advantage } from "@/lib/dice";
@@ -16,7 +19,7 @@ type Fail = { error: string };
 const NO_MAP = { error: "There's no battle map in this fight." };
 
 /** Move a token to (x, y). `free`: DM only, ignores turns and distance (for setting up). */
-export async function moveToken(tokenId: string, x: number, y: number, free = false): Promise<Fail | { movedFt: number }> {
+export async function moveToken(tokenId: string, x: number, y: number, free = false): Promise<Fail | { movedFt: number; provoked?: string[]; stood?: boolean }> {
   const me = await who();
   if (!me.userId || !me.campaignId) return { error: "Log in first." };
   const b = await battleState(me.campaignId);
@@ -34,11 +37,49 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
   const mine = !!t.character_id && t.owner === me.userId;
   if (!me.isDm && !mine) return { error: "That isn't your token." };
   if (!isTurn) return { error: "You can move on your turn." };
-  const cost = squares(t, { x: nx, y: ny }) * b.map.feet;
-  const left = moveBudget(t.speed, t.dashes) - t.moved_ft;
-  if (cost > left) return { error: `That's ${cost} ft; you have ${Math.max(0, left)} ft of movement left.` };
-  await b.admin.from("map_tokens").update({ x: nx, y: ny, moved_ft: t.moved_ft + cost, updated_at: new Date().toISOString() }).eq("id", t.id);
-  return { movedFt: t.moved_ft + cost };
+  // the rules: speed after conditions, standing up from Prone first, the real path around walls, enemies and difficult terrain
+  const speed = speedOf(t.speed, t.conds, b.rules);
+  if (speed.speed <= 0) return { error: `${t.name} can't move: ${speed.why}.` };
+  const prone = t.conds.includes("Prone");
+  const standing = prone ? standUpCost(speed.speed) : 0;
+  const left = moveBudget(speed.speed, t.dashes) - t.moved_ft - standing;
+  const m = moveCosts(t, moveCtx(b, t), Math.max(0, left));
+  const cost = m.costFt(nx, ny);
+  if (cost == null) return { error: left > 0 ? `Can't get there with ${Math.max(0, left)} ft left (walls, enemies or difficult terrain in the way).` : "No movement left this turn." };
+  const path = m.pathTo(nx, ny) ?? [];
+  const threats = b.tokens.filter((o) => o.side !== t.side && o.id !== t.id).map((o) => ({ ...o, canReact: canAct(o.conds, b.rules).reactions }));
+  const prov = provoked(path, t, threats, { feet: b.map.feet, diag: b.diag, disengaged: t.conds.includes("Disengaged") });
+  await b.admin.from("map_tokens").update({ x: nx, y: ny, moved_ft: t.moved_ft + standing + cost, updated_at: new Date().toISOString() }).eq("id", t.id);
+  if (prone) await standUp(b.admin, t);
+  return {
+    movedFt: t.moved_ft + standing + cost, stood: prone,
+    provoked: prov.map((o) => (o.hidden && !me.isDm ? "Something unseen" : o.name)),
+  };
+}
+
+/** Standing up from Prone: off the fight's conditions (and the sheet's). */
+async function standUp(admin: ReturnType<typeof createAdminClient>, t: { combatant_id: string; character_id: string | null }) {
+  const { data: c } = await admin.from("combatants").select("conditions").eq("id", t.combatant_id).maybeSingle();
+  await admin.from("combatants").update({ conditions: ((c?.conditions as string[] | null) ?? []).filter((x) => x !== "Prone") }).eq("id", t.combatant_id);
+  if (t.character_id) {
+    const { data: ch, error } = await admin.from("characters").select("conditions").eq("id", t.character_id).maybeSingle();
+    const had = (ch as { conditions?: string[] } | null)?.conditions;
+    if (!error && had?.includes("Prone")) await admin.from("characters").update({ conditions: had.filter((x) => x !== "Prone") }).eq("id", t.character_id);
+  }
+}
+
+/** Disengage on the map: until the end of this turn, leaving reach provokes no opportunity attacks. */
+export async function disengageToken(tokenId: string): Promise<Fail | { ok: true }> {
+  const me = await who();
+  if (!me.userId || !me.campaignId) return { error: "Log in first." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const t = b.tokens.find((k) => k.id === tokenId);
+  if (!t) return { error: "That token isn't in this fight." };
+  if (!me.isDm && !(t.character_id && t.owner === me.userId)) return { error: "That isn't your token." };
+  if (b.currentCombatantId !== t.combatant_id) return { error: "You can Disengage on your turn." };
+  const r = await addEffect(t.combatant_id, { conditions: ["Disengaged"], name: "Disengage", duration: "end_of_next_turn" });
+  return "error" in r ? r : { ok: true };
 }
 
 /** Dash: as much movement again this turn (uses the action, or a bonus action with Cunning Action). */
@@ -147,4 +188,23 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
     res.appliedAll = res.appliedAll?.filter((a) => !(a.target.monsterId && hiddenMonsters.has(a.target.monsterId)));
   }
   return { ...res, hit: targets.length };
+}
+
+/** DM: paint squares of the fight's map as walls or difficult terrain, or clear them. */
+export async function paintTerrain(cells: string[], kind: "wall" | "difficult" | "clear"): Promise<Fail | { walls: number; difficult: number }> {
+  const me = await who();
+  if (!me.campaignId || !me.isDm) return { error: "Only the DM can paint the map." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const ok = cells.filter((k) => /^\d+,\d+$/.test(k)).slice(0, 2000).filter((k) => { const [x, y] = k.split(",").map(Number); return x < b.map.cols && y < b.map.rows; });
+  const walls = new Set(b.terrain.walls), difficult = new Set(b.terrain.difficult);
+  for (const k of ok) {
+    walls.delete(k); difficult.delete(k);
+    if (kind === "wall") walls.add(k);
+    if (kind === "difficult") difficult.add(k);
+  }
+  const { error } = await b.admin.from("battle_maps").update({ terrain: { walls: [...walls], difficult: [...difficult] } }).eq("id", b.map.id);
+  if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
+  await touchCombat(b.admin, b.combat.id);
+  return { walls: walls.size, difficult: difficult.size };
 }

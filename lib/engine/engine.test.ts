@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attackMods, canAct, checkMods, combine, exhaustion, rollWith, saveMods, speedOf } from "./conditions";
-import { conditionBlocked, defensesOf, factorFor, parseDamageList, typesIn } from "./damage";
+import { conditionBlocked, defensesOf, factorFor, monsterReach, parseDamageList, typesIn } from "./damage";
 import { afterSave, cleanEffects, describe as describeEffect, endConcentration, makeEffect, shownConditions, tick, withoutEffect } from "./effects";
 
 const you = (conds: string[] = []) => ({ name: "Kazar", conds });
@@ -58,6 +58,11 @@ describe("damage types", () => {
     expect(golem.resist.find((d) => d.type === "fire")?.nonmagicalOnly).toBe(false);
     expect(golem.conditionImmune).toEqual(["Charmed", "Poisoned"]);
     expect(typesIn("Fire + Radiant")).toEqual(["fire", "radiant"]);
+    const zombie = defensesOf({ immunities: "Poison; Exhaustion, Poisoned" });
+    expect(zombie.immune.map((d) => d.type)).toEqual(["poison"]);
+    expect(zombie.conditionImmune).toEqual(["Exhaustion", "Poisoned"]);
+    expect(monsterReach({ sections: { Actions: ["Tail. Melee Attack Roll: +9, reach 10 ft. Hit"] } })).toBe(10);
+    expect(monsterReach({})).toBe(5);
   });
   it("resist, immune, vulnerable, magical weapons", () => {
     expect(factorFor(["fire"], golem).factor).toBe("resist");

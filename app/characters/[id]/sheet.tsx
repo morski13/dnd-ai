@@ -153,6 +153,14 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     let warning: string | null = null;
     setFight((f) => { const r = takeAction(f.turn, name, asBonus); warning = r.warning; return { ...f, turn: r.turn }; });
     setTurnWarning(warning);
+    // the fight knows it too: attacks against a Dodging creature have disadvantage; Disengage stops opportunity attacks
+    const cid = combat?.myCombatantId;
+    if (cid && (name === "Dodge" || name === "Disengage")) {
+      const fx = name === "Dodge"
+        ? { conditions: ["Dodging"], name: "Dodge", duration: "start_of_next_turn" as const }
+        : { conditions: ["Disengaged"], name: "Disengage", duration: "end_of_next_turn" as const };
+      addEffect(cid, fx).then(() => reloadCombat()).catch(() => {});
+    }
   }
   function doMove(feet: number) {
     let warning: string | null = null;

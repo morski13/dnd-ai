@@ -97,6 +97,7 @@ export async function getSessionData(focusParam?: string | null) {
     theme: (isThemeId(campaign.settings?.session_theme) ? campaign.settings.session_theme : "tavern") as ThemeId,
     monstersHiddenByDefault: (campaign.settings?.house_rules?.monster_rolls ?? "hidden") === "hidden",
     autoApply: campaign.settings?.house_rules?.auto_apply_damage !== false,
+    diagonals: ((campaign.settings?.house_rules as { diagonals?: string } | undefined)?.diagonals === "5-10-5" ? "5-10-5" : "5") as "5" | "5-10-5",
     deathSavesSecret: campaign.settings?.house_rules?.death_saves === "secret",
     nextSessionNumber: (lastSession?.number ?? 0) + 1,
     party: (characters ?? []).map((c) => ({ id: c.id, name: c.name, unclaimed: !c.owner_user_id })),

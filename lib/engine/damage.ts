@@ -36,7 +36,12 @@ export function defensesOf(statBlock: unknown): Defenses {
   const s = (statBlock && typeof statBlock === "object" ? statBlock : {}) as Record<string, unknown>;
   const pick = (...keys: string[]) => keys.map((k) => s[k]).find((v) => v != null);
   const condRaw = pick("condition_immunities", "conditionImmunities");
-  const condText = (Array.isArray(condRaw) ? condRaw.map((x) => (typeof x === "object" && x ? (x as { name?: string }).name ?? "" : String(x))) : [String(condRaw ?? "")]).join(", ").toLowerCase();
+  // 2024 stat blocks list both in "Immunities": "Poison; Exhaustion, Poisoned"
+  const imm = pick("immunities", "damage_immunities", "damageImmunities");
+  const condText = [
+    ...(Array.isArray(condRaw) ? condRaw.map((x) => (typeof x === "object" && x ? (x as { name?: string }).name ?? "" : String(x))) : [String(condRaw ?? "")]),
+    ...(Array.isArray(imm) ? imm.map(String) : [String(imm ?? "")]),
+  ].join(", ").toLowerCase();
   return {
     resist: parseDamageList(pick("resistances", "damage_resistances", "damageResistances")),
     immune: parseDamageList(pick("immunities", "damage_immunities", "damageImmunities")),
@@ -75,4 +80,12 @@ export function factorFor(types: DamageType[], d: Defenses, o: { magical: boolea
 export function conditionBlocked(condition: string, d: Defenses): string | null {
   const base = condition.replace(/\s+\d$/, "");
   return d.conditionImmune.includes(base) ? `immune to being ${base}` : null;
+}
+
+/** A monster's longest melee reach from its stat block text ("Melee Attack Roll: +6, reach 10 ft."), 5 ft if none. */
+export function monsterReach(statBlock: unknown): number {
+  const text = JSON.stringify(statBlock ?? "");
+  let best = 5;
+  for (const m of text.matchAll(/reach (\d+) ?ft/gi)) best = Math.max(best, Number(m[1]));
+  return best;
 }

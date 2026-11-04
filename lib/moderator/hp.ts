@@ -119,5 +119,5 @@ export function healthOf(hp: number | null, max: number | null): Health {
 export const CONDITIONS = [
   "Blinded", "Charmed", "Deafened", "Frightened", "Grappled", "Incapacitated", "Invisible", "Paralyzed",
   "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious", "Exhaustion",
-  "Concentrating", "Raging", "Blessed", "Hidden", "Dodging",
+  "Concentrating", "Raging", "Blessed", "Hidden", "Dodging", "Disengaged",
 ] as const;

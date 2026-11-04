@@ -7,15 +7,17 @@ import { addMonster, endCombat, endSession, nextTurn, rollNpcInitiative, startSa
 import type { FightBuilderData } from "@/lib/session-data";
 import { FightBuilder } from "./fight-builder";
 import { TierBadge } from "../../fights/tier";
-import { partyRest, setAutoApply } from "../moderator-actions";
+import { partyRest, setAutoApply, setDiagonals } from "../moderator-actions";
 import type { ThemeId } from "@/lib/themes";
 import { TableTheme } from "./table-theme";
 import { setFightMap } from "../map-actions";
 
-export function DmPanel({ sessionId, combatId, combatMode = "app", builder, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply, theme = "tavern", maps = [], mapInFight = null }: {
+export function DmPanel({ diagonals = "5", sessionId, combatId, combatMode = "app", builder, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply, theme = "tavern", maps = [], mapInFight = null }: {
   sessionId: string; combatId: string | null; builder: FightBuilderData | null;
   /** table = combat mode for a fight played at the table */
   combatMode?: "app" | "table";
+  /** house rule: diagonals on the battle map */
+  diagonals?: "5" | "5-10-5";
   /** characters and monsters already fighting */
   inFightIds: string[];
   hiddenByDefault: boolean; waitingForInitiative: number;
@@ -54,6 +56,16 @@ export function DmPanel({ sessionId, combatId, combatMode = "app", builder, inFi
           <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${autoApply ? "left-6" : "left-1"}`} />
         </span>
       </button>
+
+      <div className="mt-3 rounded-xl border border-line bg-surface px-3 py-2">
+        <p className="text-sm font-semibold">Diagonals on the battle map</p>
+        <div className="mt-1.5 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Diagonals">
+          {([["5", "5 ft each"], ["5-10-5", "5-10-5 (every second 10 ft)"]] as const).map(([k, label]) => (
+            <button key={k} type="button" role="radio" aria-checked={diagonals === k} disabled={pending} onClick={() => diagonals !== k && act(() => setDiagonals(k))}
+              className={`min-h-10 rounded-lg border px-2 text-xs ${diagonals === k ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`}>{label}</button>
+          ))}
+        </div>
+      </div>
 
       <TableTheme current={theme} />
 

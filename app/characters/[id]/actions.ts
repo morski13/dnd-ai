@@ -5,7 +5,9 @@ import { refresh } from "next/cache";
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
 import { combine, roll, type Advantage, type Rng } from "@/lib/dice";
-import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods } from "@/lib/engine/conditions";
+import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods, type Mods } from "@/lib/engine/conditions";
+import { checkRange, reachOf } from "@/lib/engine/space";
+import { attackGeometry } from "@/lib/maps/server";
 import { campaignRules, endConcentrationEffects, whoIs } from "@/lib/engine/server";
 import { replayRng } from "@/lib/offline-rolls";
 import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
@@ -173,8 +175,12 @@ export async function rollForCharacter(
   // automatic failures and crits). Each reason is shown with the roll.
   const early = createAdminClient();
   const livePromise = liveState(early, c.campaign_id);
-  let rules: Awaited<ReturnType<typeof conditionRules>> = null;
-  if (plan.d20) rules = await conditionRules(early, c, plan, opt, request, parentTarget ?? target, (await livePromise).combat?.id ?? null);
+  let rules: { mods: Mods; ruleSet: string; coverAc?: number; dist?: number | null } | null = null;
+  if (plan.d20) {
+    const r = await conditionRules(early, c, plan, opt, request, parentTarget ?? target, (await livePromise).combat?.id ?? null);
+    if (r && "block" in r) return { error: r.block! };
+    rules = r;
+  }
 
   let result: ReturnType<typeof roll> | null = null;
   try {
@@ -249,7 +255,9 @@ export async function rollForCharacter(
     moreTargets = moreTargets?.filter((t) => reach(t));
   }
   // against the target's AC, or the AC typed on the sheet when there's no target
-  const vsAc = plan.rollType === "attack" ? tgt?.ac ?? typedAc(request) : null;
+  const baseAc = plan.rollType === "attack" ? tgt?.ac ?? typedAc(request) : null;
+  // cover on the battle map: +2 (half) or +5 (three-quarters) to the target's AC
+  const vsAc = baseAc != null ? baseAc + (rules?.coverAc ?? 0) : null;
   let success = plan.rollType === "attack" && result
     ? hitOrMiss(result.total, vsAc, result.isCrit, result.isFumble)
     : null;
@@ -470,10 +478,24 @@ async function conditionRules(admin: ReturnType<typeof createAdminClient>, c: { 
   const me = await whoIs(admin, c.campaign_id, combatId, { characterId: c.id });
   if (!me) return null;
   if (plan.rollType === "attack") {
-    const them = await whoIs(admin, c.campaign_id, combatId, target);
-    // as far as the app knows: ranged weapons and ranged spell attacks are from afar, melee is next to the target
-    const ranged = !!opt?.ranged || (opt?.kind === "spell_attack" && !/touch|self/i.test(opt.range ?? ""));
-    return { mods: attackMods(me, them ?? { name: "the target", conds: [] }, { ranged, within5: !ranged, rules: ruleSet }), ruleSet };
+    const [them, geo] = await Promise.all([whoIs(admin, c.campaign_id, combatId, target), combatId ? attackGeometry(c.campaign_id, { characterId: c.id }, target) : Promise.resolve(null)]);
+    // without a map: ranged weapons and ranged spell attacks are from afar, melee is next to the target
+    let ranged = !!opt?.ranged || (opt?.kind === "spell_attack" && !/touch|self/i.test(opt.range ?? ""));
+    let within5 = !ranged;
+    let long: string | null = null;
+    // on the battle map: the real distance, range / reach and cover
+    if (geo && opt) {
+      const rc = checkRange(geo.dist, reachOf(opt));
+      if (!rc.ok) return { block: `${opt.name} can't reach: ${rc.why}.` };
+      if (geo.cover.level === "total") return { block: `${them?.name ?? "The target"} has total cover: no clear line to it.` };
+      ranged = rc.mode === "ranged";
+      within5 = geo.dist <= 5;
+      long = rc.long ? rc.why : null;
+    }
+    const mods = attackMods(me, them ?? { name: "the target", conds: [] }, { ranged, within5, rules: ruleSet });
+    if (long) mods.disadvantage.push(long);
+    if (geo?.cover.ac) mods.notes.unshift(`${them?.name ?? "The target"} has ${geo.cover.why}`);
+    return { mods, ruleSet, coverAc: geo?.cover.ac ?? 0, dist: geo?.dist ?? null };
   }
   if (plan.rollType === "save" && plan.ability) return { mods: saveMods(me, plan.ability, ruleSet), ruleSet };
   if (plan.rollType === "check") return { mods: checkMods(me, ruleSet, plan.ability), ruleSet };

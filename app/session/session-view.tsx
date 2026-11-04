@@ -184,6 +184,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
             sessionId={data.session.id}
             combatId={combat?.id ?? null}
             combatMode={combat?.mode ?? "app"}
+            diagonals={data.diagonals}
             builder={data.builder}
             inFightIds={combatants.flatMap((c) => [c.monsterId, c.characterId].filter((x): x is string => !!x))}
             hiddenByDefault={data.monstersHiddenByDefault}

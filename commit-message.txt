@@ -1,17 +1,17 @@
-Battle engine phase 1: the rules core, and save spells marked at the table
+Battle engine phase 2: the battle map follows the rules (distance, range, cover, terrain, opportunity attacks)
 
-- lib/engine: what conditions really do (advantage / disadvantage with reasons, auto-crit within 5 ft,
-  auto-fail STR/DEX saves, speed, can't act), Exhaustion by rule set (2014 levels, 2024 −2 per level),
-  damage types vs resistances / immunities / vulnerabilities ("nonmagical" too), condition immunities,
-  timed effects (end / start of a turn, rounds, 1 minute, save ends, concentration).
-- Sheet rolls follow the rules: attack, save and check advantage from your and the target's conditions,
-  reasons shown under the roll; saves the app rolls for targets too.
-- Damage lands with the target's defenses ("Ogre is resistant to fire").
-- Turns tick timed conditions: they run out, repeat saves are rolled (monsters secretly);
-  losing concentration ends what it kept up.
-- Conditions with a duration on the Session screen and the sheet (Hold Person: Paralyzed, WIS save ends).
-- Save spells at the table: "They failed / They saved"; a save means half damage (or none).
-- SQL 35-timed-effects.sql.
+- lib/engine/space.ts: distance between creatures (Large ones too), 5 ft or 5-10-5 diagonals,
+  reach and range of weapons and spells (reach weapons, thrown, long range), cover from walls and
+  creatures (half +2, three-quarters +5, total), movement costs around walls and enemies through
+  difficult terrain (allies passable; 2024: their space is difficult), opportunity attacks along a path.
+- DM paints walls and difficult terrain on the fight's map; house rule for diagonals in DM tools.
+- Moving: real path costs, speed after conditions, standing up from Prone first, Disengage button;
+  "leaving reach: Ogre can make an opportunity attack".
+- Attacks from the sheet and the DM's monster attacks: out of reach / range refused, long range =
+  disadvantage, melee next to the target for Prone / auto-crit, cover added to AC, total cover refused;
+  the monster's and target's conditions now apply to DM rolls too.
+- Dodge / Disengage from the sheet reach the fight. 2024 stat blocks' condition immunities read.
+- SQL 36-map-terrain.sql.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

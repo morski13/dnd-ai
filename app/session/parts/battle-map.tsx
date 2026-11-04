@@ -4,12 +4,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { inRange, place, squaresIn, tokensIn, type Placed } from "@/lib/maps/area";
-import { freeAt, reachable, squares } from "@/lib/maps/move";
+import { freeAt, squares } from "@/lib/maps/move";
+import { distanceFt, key as sqKey, reachableSquares, standUpCost, type MoveCtx } from "@/lib/engine/space";
+import { speedOf } from "@/lib/engine/conditions";
 import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, moveToken, setTokenHidden, teleportToken } from "../map-actions";
+import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken } from "../map-actions";
 import { useMapAim } from "./map-aim";
 
 export type Teleport = { key: string; name: string; range: number };
@@ -34,12 +36,20 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const [note, setNote] = useState<string | null>(null);
   const [big, setBig] = useState(false);
   const [hideArea, setHideArea] = useState<string | null>(null);
+  // DM: painting walls and difficult terrain (squares change at once, the server keeps them)
+  const [paint, setPaint] = useState<"wall" | "difficult" | "clear" | null>(null);
+  const [painted, setPainted] = useState<Record<string, "wall" | "difficult" | "clear">>({});
   const [pending, start] = useTransition();
   const wrap = useRef<HTMLDivElement>(null);
 
   // fresh data from the server replaces the guesses
   const [seenBattle, setSeenBattle] = useState(battle);
-  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); }
+  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); setPainted({}); }
+  const terrain = useMemo(() => {
+    const walls = new Set(map.walls ?? []), difficult = new Set(map.difficult ?? []);
+    for (const [k, v] of Object.entries(painted)) { walls.delete(k); difficult.delete(k); if (v === "wall") walls.add(k); if (v === "difficult") difficult.add(k); }
+    return { walls, difficult };
+  }, [map.walls, map.difficult, painted]);
   const tokens = useMemo(() => battle.tokens.map((t) => (optimistic[t.id] ? { ...t, ...optimistic[t.id] } : t)), [battle.tokens, optimistic]);
   const byCombatant = useMemo(() => new Map(combatants.map((c) => [c.id, c])), [combatants]);
   const current = tokens.find((t) => t.combatantId === currentCombatantId) ?? null;
@@ -60,13 +70,21 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const sel = tokens.find((t) => t.id === selId) ?? null;
   const isTurnOf = (t: BattleToken) => t.combatantId === currentCombatantId;
   const canStrict = (t: BattleToken) => isTurnOf(t) && (t.mine || isDm);
-  const left = sel ? Math.max(0, sel.budget - sel.movedFt) : 0;
+  // the rules: speed after conditions, standing up from Prone first (half your speed)
+  const selSpeed = sel ? speedOf(sel.speed, sel.conds ?? [], battle.rules) : null;
+  const standing = sel && (sel.conds ?? []).includes("Prone") ? standUpCost(selSpeed!.speed) : 0;
+  const left = sel && selSpeed ? Math.max(0, selSpeed.speed * (1 + sel.dashes) - sel.movedFt - standing) : 0;
   const reach = useMemo(() => {
-    if (!sel || aim || tele) return [];
+    if (!sel || aim || tele || paint) return [];
     if (free && isDm) return [];
     if (!canStrict(sel)) return [];
-    return reachable(sel, tokens, map.cols, map.rows, left, map.feet);
-  }, [sel, tokens, map, left, free, isDm, aim, tele]); // eslint-disable-line react-hooks/exhaustive-deps
+    const party = (t: BattleToken) => t.kind !== "monster";
+    const ctx: MoveCtx = {
+      cols: map.cols, rows: map.rows, feet: map.feet, diag: battle.diag, terrain, rules: battle.rules,
+      others: tokens.filter((t) => t.id !== sel.id).map((t) => ({ id: t.id, x: t.x, y: t.y, size: t.size, hostile: party(t) !== party(sel) })),
+    };
+    return reachableSquares(sel, ctx, left);
+  }, [sel, tokens, map, left, free, isDm, aim, tele, paint, terrain, battle.diag, battle.rules]); // eslint-disable-line react-hooks/exhaustive-deps
   const reachSet = useMemo(() => new Set(reach.map((p) => `${p.x},${p.y}`)), [reach]);
   const myToken = teleportCharacterId ? tokens.find((t) => t.characterId === teleportCharacterId) ?? null : null;
   const teleSquares = useMemo(() => {
@@ -84,7 +102,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const placed: Placed | null = aim && caster && aimAt ? place(aim.spec, caster, aimAt, map.feet) : null;
   const okRange = !!(aim && caster && aimAt && inRange(aim.spec, caster, aimAt, map.feet));
   const inside = placed && aim && caster ? tokensIn(placed, tokens, caster.id, aim.spec.shape) : [];
-  const areaSquares = useMemo(() => (placed && aim?.spec.shape !== "targets" ? squaresIn(placed, map.cols, map.rows) : []), [placed, aim, map]);
+  const areaSquares = placed && aim?.spec.shape !== "targets" ? squaresIn(placed, map.cols, map.rows) : [];
   const choose = aim?.spec.pick === "choose";
   const ready = !!aimPt || aim?.spec.shape === "targets"; // "targets" spells: the area is your range, just pick
 
@@ -101,6 +119,14 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   function tap(p: Pt) {
     if (Object.keys(optimistic).length) return; // the last move is still on its way
     const sq = { x: Math.floor(p.x), y: Math.floor(p.y) };
+    if (paint && isDm) {
+      const k = sqKey(sq.x, sq.y);
+      const now = terrain.walls.has(k) ? "wall" : terrain.difficult.has(k) ? "difficult" : "clear";
+      const to = now === paint ? "clear" : paint; // tapping the same kind again clears it
+      setPainted((x) => ({ ...x, [k]: to }));
+      start(async () => { const r = await paintTerrain([k], to); if ("error" in r) setError(r.error); });
+      return;
+    }
     const at = tokens.find((t) => sq.x >= t.x && sq.x < t.x + t.size && sq.y >= t.y && sq.y < t.y + t.size) ?? null;
     if (aim) {
       if (aim.spec.shape === "targets") {
@@ -134,9 +160,14 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       return act(() => moveToken(sel.id, sq.x, sq.y, true));
     }
     if (!canStrict(sel)) return setError(isTurnOf(sel) ? "That isn't your token." : `${sel.name} can move on their turn.`);
-    if (!reachSet.has(`${sq.x},${sq.y}`)) return setError(left > 0 ? `Too far: ${sel.name} has ${left} ft left. Lit squares are in reach.` : "No movement left. Dash to move again.");
+    if (!reachSet.has(`${sq.x},${sq.y}`)) return setError(left > 0 ? `Can't get there: ${sel.name} has ${left} ft left (walls, enemies and difficult terrain count). Lit squares are in reach.` : selSpeed?.speed === 0 ? `${sel.name} can't move: ${selSpeed.why}.` : "No movement left. Dash to move again.");
     setOptimistic({ [sel.id]: sq });
-    act(() => moveToken(sel.id, sq.x, sq.y));
+    const who = sel.mine ? "You" : sel.name;
+    act(() => moveToken(sel.id, sq.x, sq.y), (r) => {
+      const bits = [r.stood ? `${who} stood up first (half the speed).` : null,
+        r.provoked?.length ? `Leaving reach: ${r.provoked.join(", ")} can make an opportunity attack.` : null].filter(Boolean);
+      if (bits.length) setNote(bits.join(" "));
+    });
   }
 
   function togglePick(id: string) {
@@ -162,6 +193,14 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       focus={focusTok ? { x: focusTok.x, y: focusTok.y } : null}
       height={big ? "max(220px, calc(100dvh - 210px))" : "min(64dvh, 520px)"}
       onTap={tap} onHover={aim ? setHover : undefined}>
+      {/* terrain the DM painted: walls block moving and sight, difficult terrain costs double */}
+      <defs>
+        <pattern id="difficult-hatch" width={0.25} height={0.25} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1={0} y1={0} x2={0} y2={0.25} stroke="#C9A05A" strokeWidth={0.06} />
+        </pattern>
+      </defs>
+      {[...terrain.difficult].map((k) => { const [x, y] = k.split(",").map(Number); return <rect key={`d${k}`} x={x} y={y} width={1} height={1} fill="url(#difficult-hatch)" opacity={0.75} data-difficult="" />; })}
+      {[...terrain.walls].map((k) => { const [x, y] = k.split(",").map(Number); return <rect key={`w${k}`} x={x} y={y} width={1} height={1} fill="#16120e" opacity={0.85} stroke="#6b5a45" strokeWidth={0.03} data-wall="" />; })}
       {/* the last area spell, for everyone */}
       {lastSquares.map((s) => <rect key={`l${s.x},${s.y}`} x={s.x} y={s.y} width={1} height={1} fill="#F0703C" opacity={0.28} />)}
       {/* squares you can move to */}
@@ -263,12 +302,17 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold">{sel.name}{sel.hidden && <span className="font-normal text-muted"> · hidden</span>}{selCombatant?.out && <span className="font-normal text-muted"> · down</span>}</p>
                 <p className="text-xs text-muted" aria-live="polite">
-                  {isTurnOf(sel) ? `${left} ft of movement left (speed ${sel.speed} ft${sel.dashes ? `, dashed ×${sel.dashes}` : ""})` : `Speed ${sel.speed} ft · not their turn`}
+                  {isTurnOf(sel) ? `${left} ft of movement left (speed ${selSpeed?.speed ?? sel.speed} ft${selSpeed?.why ? `: ${selSpeed.why}` : ""}${sel.dashes ? `, dashed ×${sel.dashes}` : ""}${standing ? `; standing up costs ${standing} ft` : ""})` : `Speed ${sel.speed} ft · not their turn`}
+                  {focusTok && focusTok.id !== sel.id && ` · ${distanceFt(focusTok, sel, map.feet, battle.diag)} ft from ${focusTok.mine ? "you" : focusTok.name}`}
                 </p>
               </div>
               {canStrict(sel) && sel.dashes < 2 && (
                 <button type="button" disabled={pending} onClick={() => act(() => dashToken(sel.id), () => setNote(`Dash: +${sel.speed} ft.`))}
                   className="h-10 shrink-0 rounded-xl border border-accent-strong px-3 text-sm font-bold text-accent">Dash</button>
+              )}
+              {canStrict(sel) && !(sel.conds ?? []).includes("Disengaged") && (
+                <button type="button" disabled={pending} onClick={() => act(() => disengageToken(sel.id), () => setNote("Disengage: leaving reach this turn provokes no opportunity attacks."))}
+                  className="h-10 shrink-0 rounded-xl border border-line px-2.5 text-xs font-bold text-soft">Disengage</button>
               )}
               {isDm && !sel.characterId && (
                 <button type="button" disabled={pending} onClick={() => act(() => setTokenHidden(sel.id, !sel.hidden))}
@@ -293,6 +337,19 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             </div>
           )}
 
+          {isDm && (
+            <div className="rounded-xl border border-line bg-surface px-3 py-2" aria-label="Paint the map">
+              <p className="text-sm font-semibold">Paint the map (DM)</p>
+              <p className="text-xs text-muted">Walls block moving and sight (cover). Difficult terrain costs double. Tap squares; tap again to clear.</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {([["wall", "Wall"], ["difficult", "Difficult"], ["clear", "Erase"]] as const).map(([k, label]) => (
+                  <button key={k} type="button" aria-pressed={paint === k} onClick={() => { setPaint(paint === k ? null : k); setFree(false); }}
+                    className={`h-9 rounded-full border px-3 text-xs font-semibold ${paint === k ? "border-accent bg-accent text-accent-text" : "border-line text-soft"}`}>{label}</button>
+                ))}
+                {paint && <button type="button" onClick={() => setPaint(null)} className="h-9 px-2 text-xs text-muted underline">Done</button>}
+              </div>
+            </div>
+          )}
           {isDm && (
             <button type="button" role="switch" aria-checked={free} onClick={() => setFree(!free)}
               className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left">
