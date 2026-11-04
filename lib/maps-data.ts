@@ -9,6 +9,7 @@ import { readTerrain, type TerrainData } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
 import { characterSenses, lightMap, NO_SENSES, seesBody, sensesFromText, visibleSquares, type Senses } from "@/lib/engine/vision";
 import { characterFlight, flightFromSpeed } from "@/lib/engine/flight";
+import { cleanZones, withZones, zoneCells } from "@/lib/engine/spells";
 
 export type MapRow = { id: string; name: string; image_path: string | null; image_w: number | null; image_h: number | null; cols: number; rows: number; crop: Crop | null; stretch: boolean; feet: number; updated_at: string };
 export const MAP_COLUMNS = "id, name, image_path, image_w, image_h, cols, rows, crop, stretch, feet, updated_at";
@@ -33,12 +34,16 @@ export type Battle = {
   /** fog of war: the squares this player's characters see (null = everything: the DM, or no fog on this map) */
   visible: string[] | null;
   tokens: BattleToken[]; lastArea: BattleArea; currentCombatantId: string | null;
+  /** lasting spells on the map (SQL 39): the squares each one covers */
+  zones: BattleZone[];
 };
+
+export type BattleZone = { id: string; spell: string; by: string; cells: string[]; look: "harm" | "hold" | "hide" | "quiet"; roundsLeft: number | null; text: string; difficult: boolean };
 
 export const mapImageUrl = (m: Pick<MapRow, "id" | "image_path" | "updated_at">) => (m.image_path ? `/api/maps/${m.id}/image?v=${encodeURIComponent(m.updated_at)}` : null);
 export const portraitUrl = (kind: "character" | "monster", id: string, stamp: number | null | undefined) => (stamp ? `/api/portrait/${kind}/${id}?v=${stamp}` : null);
 
-type Combatant = { id: string; name: string; characterId: string | null; monsterId: string | null; ally?: boolean; isMine?: boolean; conditions?: string[] };
+type Combatant = { id: string; name: string; characterId: string | null; monsterId: string | null; ally?: boolean; isMine?: boolean; conditions?: string[]; effects?: { fly?: number }[] };
 
 /** DM: every fighter in this combat gets a token (new ones start along the top / bottom edge). */
 export async function ensureTokens(campaignId: string, combatId: string, cols: number, rows: number) {
@@ -88,7 +93,7 @@ function startingSpotsAround(want: { id: string; side: "party" | "enemy"; size: 
 export async function loadBattle(supabase: SupabaseClient, a: {
   campaignId: string; combatId: string; isDm: boolean; combatants: Combatant[]; currentCombatantId: string | null; myCharacterIds: string[];
 }): Promise<Battle | null> {
-  const { data: c, error } = await supabase.from("combats").select("map_id, last_area").eq("id", a.combatId).maybeSingle();
+  const { data: c, error } = await supabase.from("combats").select("*").eq("id", a.combatId).maybeSingle(); // "*": zones after 39-spell-zones.sql
   if (error || !c?.map_id) return null; // no map (or 23-battle-maps.sql not run yet)
   const [{ data: m }, { data: camp }] = await Promise.all([
     supabase.from("battle_maps").select("*").eq("id", c.map_id).maybeSingle(), // "*": terrain only after 36-map-terrain.sql
@@ -125,11 +130,30 @@ export async function loadBattle(supabase: SupabaseClient, a: {
       speed, movedFt: t.moved_ft, dashes: t.dashes, budget: moveBudget(speed, t.dashes),
       mine: !!cb.characterId && a.myCharacterIds.includes(cb.characterId),
       conds: cb.conditions ?? [],
-      z: Number(t.z) || 0, fly: Math.max(own.fly, Number(t.fly) || 0), hover: own.hover, flyExtra: t.fly ?? null,
+      // a flying speed of its own, one the DM gave it, or one from a spell (Fly)
+      z: Number(t.z) || 0, fly: Math.max(own.fly, Number(t.fly) || 0, ...(cb.effects ?? []).map((e) => e.fly ?? 0)), hover: own.hover, flyExtra: t.fly ?? null,
     });
   }
+  // lasting spells (Web, Fog Cloud, Darkness…) change the ground and the sight while they last
+  const zoneList = cleanZones((c as { zones?: unknown }).zones);
+  const zoneToks = tokens.map((t) => ({ id: t.id, x: t.x, y: t.y, size: t.size, combatant_id: t.combatantId }));
+  const zones: BattleZone[] = zoneList.map((z) => {
+    const caster = zoneToks.find((k) => k.combatant_id === z.casterCombatantId) ?? null;
+    const r = z.rule;
+    const look = r.damage || r.perSquare ? "harm" : r.conditions?.length ? "hold" : r.heavy || r.light || r.magicDark ? "hide" : "quiet";
+    const when = [r.when.includes("enter") && "entering", r.when.includes("start") && "starting a turn", r.when.includes("end") && "ending a turn"].filter(Boolean).join(" / ");
+    const text = [
+      when && `${when} in it${r.save ? `: ${r.save} save${a.isDm && z.dc ? ` DC ${z.dc}` : ""}` : ""}`,
+      z.damage && `${z.damage}${z.damageType ? ` ${z.damageType}` : ""}${r.half ? " (half on a save)" : ""}`,
+      r.perSquare && `${r.perSquare.dice} ${r.perSquare.type} per 5 ft moved`,
+      r.conditions?.length && r.conditions.join(", "),
+      r.difficult && "difficult terrain", r.heavy && "heavily obscured", r.light && "lightly obscured", r.magicDark && "magical darkness",
+      r.follows && `moves with ${z.casterName}`, r.drift && `drifts ${r.drift} ft each round`,
+    ].filter(Boolean).join(" · ");
+    return { id: z.id, spell: z.spell, by: z.casterName, cells: zoneCells(z, caster, map.cols, map.rows, map.feet), look, roundsLeft: z.roundsLeft, text, difficult: !!r.difficult };
+  });
   // Fog of war: players only get the squares their characters see, and only the creatures in them.
-  const terrain = terrainOf(map.terrain);
+  const terrain = withZones(terrainOf(map.terrain), zoneList, zoneToks, map.cols, map.rows, map.feet);
   let visible: string[] | null = null;
   let shown = tokens;
   if (terrain.fog && !a.isDm) {
@@ -149,7 +173,8 @@ export async function loadBattle(supabase: SupabaseClient, a: {
     },
     diag: (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5",
     rules: camp?.rule_set === "2014" ? "2014" : "2024",
-    tokens: shown, lastArea: (c.last_area as BattleArea) ?? null, currentCombatantId: a.currentCombatantId,
+    tokens: shown, lastArea: ((c as { last_area?: unknown }).last_area as BattleArea) ?? null, currentCombatantId: a.currentCombatantId,
+    zones,
   };
 }
 

@@ -12,7 +12,7 @@ import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat, type
 import { advanceTurn } from "@/lib/combat-turns";
 import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods } from "@/lib/engine/conditions";
 import { campaignRules, whoIs } from "@/lib/engine/server";
-import { effectAc } from "@/lib/engine/effects";
+import { effectAc, effectDice } from "@/lib/engine/effects";
 import { typesIn } from "@/lib/engine/damage";
 import { openWindow } from "@/lib/reactions-server";
 import { attackGeometry } from "@/lib/maps/server";
@@ -358,7 +358,13 @@ export async function monsterRoll(
     }
   }
   // Damage right after a critical hit: every damage die is rolled twice.
-  try { res = roll(form.expression.replace(/\s*\b(adv|dis)\b/gi, ""), { critical: form.kind === "damage" && !!form.crit, advantage: adv }); } catch (e) { return { error: (e as Error).message }; }
+  let extra = "";
+  if (combat && (form.kind === "attack" || form.kind === "save")) {
+    const meFx = await whoIs(admin, campaignId, combat.id, { monsterId });
+    extra = meFx ? effectDice(meFx.effects) : ""; // Bless / Bane on the monster
+    if (extra) reasons.push(`${extra} (${meFx!.effects.filter((e) => e.bonusDice).map((e) => e.name).join(", ")})`);
+  }
+  try { res = roll(form.expression.replace(/\s*\b(adv|dis)\b/gi, "") + extra, { critical: form.kind === "damage" && !!form.crit, advantage: adv }); } catch (e) { return { error: (e as Error).message }; }
   const tgt = await lookupTarget(admin, campaignId, { characterId: form.targetCharacterId });
   let success = form.kind === "attack" ? hitOrMiss(res.total, tgt?.ac != null ? tgt.ac + coverAc : null, res.isCrit, res.isFumble) : null;
   if (autoCrit && success !== false && form.kind === "attack" && !res.isCrit) { res = { ...res, isCrit: true }; reasons.unshift(autoCrit); }

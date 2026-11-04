@@ -5,6 +5,7 @@ import type { Admin, Target } from "../roll-service";
 import { saveBonus, type Ability, type SheetCharacter } from "../rules";
 import { monsterSave } from "./concentration";
 import { combine, saveMods, type RuleSet } from "../engine/conditions";
+import { effectDice } from "../engine/effects";
 import { whoIs } from "../engine/server";
 
 export type TargetSave = { target: Target; name: string; success: boolean | null; total: number | null; dc: number; secret: boolean; rollId: string | null; why?: string | null }; // null = secret from you
@@ -30,7 +31,8 @@ export async function rollTargetSaves(admin: Admin, a: {
     const who = await whoIs(admin, a.campaignId, a.combatId, t);
     const mods = who ? saveMods(who, a.ability, a.rules ?? "2024") : null;
     const adv = mods ? combine("normal", mods) : "normal";
-    const r = roll(`1d20${bonus + (mods?.penalty ?? 0) >= 0 ? "+" : ""}${bonus + (mods?.penalty ?? 0)}`, { advantage: adv });
+    const extra = who ? effectDice(who.effects) : ""; // Bless +1d4, Bane −1d4
+    const r = roll(`1d20${bonus + (mods?.penalty ?? 0) >= 0 ? "+" : ""}${bonus + (mods?.penalty ?? 0)}${extra}`, { advantage: adv });
     const success = mods?.autoFail ? false : r.total >= a.dc;
     const why = mods?.autoFail ?? ([...(mods?.advantage ?? []).map((x) => `advantage: ${x}`), ...(mods?.disadvantage ?? []).map((x) => `disadvantage: ${x}`)].join(", ") || null);
     const { data: saved } = await admin.from("roll_events").insert({

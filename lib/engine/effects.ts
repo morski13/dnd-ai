@@ -18,6 +18,8 @@ export type TimedEffect = {
   note?: string;
   ac?: number;                   // AC bonus while it lasts (Shield: +5)
   halveNext?: boolean;           // the next damage it takes is halved, then it ends (Uncanny Dodge)
+  bonusDice?: string;            // added to its attack rolls and saves (Bless "1d4", Bane "-1d4")
+  fly?: number;                  // a flying speed while it lasts (Fly: 60)
 };
 
 export type TurnEvent = { kind: "start" | "end"; combatantId: string };
@@ -58,6 +60,9 @@ export function endConcentration(effects: TimedEffect[], sourceId: string) {
   const ended = effects.filter((e) => e.concentration && e.source?.combatantId === sourceId);
   return { kept: effects.filter((e) => !ended.includes(e)), ended };
 }
+
+/** Dice added to attack rolls and saves (Bless +1d4, Bane −1d4), as an expression to add ("+1d4-1d4"). */
+export const effectDice = (effects: TimedEffect[]) => effects.map((e) => e.bonusDice).filter(Boolean).map((d) => (d!.startsWith("-") ? d : `+${d}`)).join("");
 
 /** AC bonus from effects (Shield +5). */
 export const effectAc = (effects: TimedEffect[]) => effects.reduce((a, e) => a + (e.ac ?? 0), 0);
@@ -130,6 +135,8 @@ export function cleanEffects(input: unknown): TimedEffect[] {
     const source = src ? { combatantId: typeof src.combatantId === "string" ? src.combatantId : null, name: String(src.name ?? "").slice(0, 60) } : null;
     const ac = Math.max(-10, Math.min(10, Math.round(Number(e.ac) || 0)));
     return [{ id, name, conditions, source, ends, save, concentration: !!e.concentration, note: typeof e.note === "string" ? e.note.slice(0, 200) : undefined,
-      ...(ac ? { ac } : {}), ...(e.halveNext ? { halveNext: true } : {}) }];
+      ...(ac ? { ac } : {}), ...(e.halveNext ? { halveNext: true } : {}),
+      ...(typeof e.bonusDice === "string" && /^-?\d{1,2}d\d{1,3}$/.test(e.bonusDice) ? { bonusDice: e.bonusDice } : {}),
+      ...(Number(e.fly) > 0 ? { fly: Math.min(300, Math.round(Number(e.fly))) } : {}) }];
   });
 }

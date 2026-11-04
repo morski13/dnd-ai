@@ -185,6 +185,8 @@ export function computeStats(
         if (d !== null) (attackD20[me.key] ??= []).push(d);
         break;
       case "damage": {
+        // hurting yourself (your own Cloudkill, Spike Growth) isn't damage dealt
+        if (r.character_id && r.target_character_id === r.character_id) break;
         const amt = landed(r, "damage");
         me.damageDealt += amt;
         if (!me.biggestHit || amt > me.biggestHit.amount) me.biggestHit = { amount: amt, source: name };

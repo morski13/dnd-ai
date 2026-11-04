@@ -6,9 +6,9 @@ import { roll } from "@/lib/dice";
 import { saveBonus, type SheetCharacter } from "@/lib/rules";
 import { monsterSave } from "@/lib/moderator/concentration";
 import { combine, saveMods } from "@/lib/engine/conditions";
-import { afterSave, cleanEffects, shownConditions, tick, withoutEffect, type TimedEffect, type TurnEvent } from "@/lib/engine/effects";
+import { afterSave, cleanEffects, effectDice, shownConditions, tick, withoutEffect, type TimedEffect, type TurnEvent } from "@/lib/engine/effects";
 import { campaignRules } from "@/lib/engine/server";
-import { checkFalls, terrainAtTurnStart } from "@/lib/maps/server";
+import { checkFalls, terrainAtTurnStart, zonesAtCasterTurn, zonesOnTurn } from "@/lib/maps/server";
 
 type Row = { id: string; name: string; initiative: number | null; initiative_hidden?: boolean; dex_mod: number; character_id: string | null; monster_id: string | null; health: string | null };
 
@@ -43,14 +43,19 @@ export async function advanceTurn(admin: Admin, combatId: string, byUser?: strin
   }
   // the turn that ends, then the one that starts: timed conditions run out, "save ends" saves are rolled
   const events: string[] = [];
+  const campaignId = (combat as { campaign_id?: string }).campaign_id;
+  // ending a turn inside Spirit Guardians, Moonbeam, Cloudkill…
+  if (ending && campaignId && byUser) events.push(...await zonesOnTurn(campaignId, ending.id, "end", byUser).catch(() => [] as string[]));
   if (ending) events.push(...await tickEffects(admin, combat, { kind: "end", combatantId: ending.id }, byUser ?? null));
   await admin.from("combats").update({ turn_index: index, round }).eq("id", combatId);
   events.push(...await tickEffects(admin, combat, { kind: "start", combatantId: order[index].id }, byUser ?? null));
   // its reaction comes back (SQL 38; fine without it)
   await admin.from("combatants").update({ reaction_used: false }).eq("id", order[index].id).then(() => undefined, () => undefined);
   // standing in fire, lava or acid when the turn starts hurts (battle map terrain)
-  const campaignId = (combat as { campaign_id?: string }).campaign_id;
   if (campaignId && byUser) events.push(...await terrainAtTurnStart(campaignId, order[index].id, byUser).catch(() => [] as string[]));
+  // its own lasting spells count down (Cloudkill drifts), then starting a turn inside one (Web, Stinking Cloud)
+  if (campaignId) events.push(...await zonesAtCasterTurn(campaignId, order[index].id).catch(() => [] as string[]));
+  if (campaignId && byUser) events.push(...await zonesOnTurn(campaignId, order[index].id, "start", byUser).catch(() => [] as string[]));
   // a Fly spell or condition ended on the way: flyers that can't stay up fall
   if (campaignId && byUser) events.push(...await checkFalls(campaignId, byUser).catch(() => [] as string[]));
   // a new turn: that creature's movement on the battle map starts fresh (fine if there's no map)
@@ -107,7 +112,7 @@ async function rollRepeatSave(
   }
   const conds = shownConditions(who.conditions ?? [], cleanEffects(who.effects));
   const mods = saveMods({ name: who.name, conds }, due.ability, rules);
-  const r = roll(`1d20${bonus + mods.penalty >= 0 ? "+" : ""}${bonus + mods.penalty}`, { advantage: combine("normal", mods) });
+  const r = roll(`1d20${bonus + mods.penalty >= 0 ? "+" : ""}${bonus + mods.penalty}${effectDice(cleanEffects(who.effects))}`, { advantage: combine("normal", mods) });
   const success = mods.autoFail ? false : r.total >= due.dc;
   if (byUser) {
     await admin.from("roll_events").insert({

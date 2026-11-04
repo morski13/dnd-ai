@@ -77,7 +77,10 @@ export function attackMods(attacker: Side, target: Side, o: { ranged: boolean; w
   if (has(t, "Paralyzed")) m.advantage.push(`${it} is Paralyzed`);
   if (has(t, "Unconscious")) m.advantage.push(`${it} is Unconscious`);
   if (has(t, "Petrified")) m.advantage.push(`${it} is Petrified`);
-  if (has(t, "Invisible")) m.disadvantage.push(`${it} is Invisible`);
+  // Faerie Fire / Guiding Bolt: outlined creatures can't hide in invisibility, and attacks against them have advantage
+  if (has(t, "Outlined")) m.advantage.push(`${it} is outlined (Faerie Fire / Guiding Bolt)`);
+  else if (has(t, "Invisible")) m.disadvantage.push(`${it} is Invisible`);
+  if (has(t, "Blurred")) m.disadvantage.push(`${it} is blurred (Blur)`);
   if (has(t, "Dodging") && !incapacitated(t)) m.disadvantage.push(`${it} is Dodging`);
   if (has(t, "Prone")) {
     if (o.within5 && !o.ranged) m.advantage.push(`${it} is Prone (you're next to it)`);
@@ -96,6 +99,8 @@ export function saveMods(saver: Side, ability: Ability, rules: RuleSet): Mods {
   }
   if (ability === "DEX" && has(c, "Restrained")) m.disadvantage.push(`${me} is Restrained`);
   if (ability === "DEX" && has(c, "Dodging") && !incapacitated(c)) m.advantage.push(`${me} is Dodging`);
+  if (ability === "DEX" && has(c, "Hasted")) m.advantage.push(`${me} is Hasted`);
+  if (ability === "DEX" && has(c, "Slowed")) m.penalty -= 2;
   exhaustionOnD20(m, c, rules, "save", me);
   return m;
 }
@@ -117,10 +122,12 @@ export function checkMods(who: Side, rules: RuleSet, ability?: Ability): Mods {
 export function speedOf(base: number, c: Conds, rules: RuleSet): { speed: number; why: string | null } {
   for (const n of ["Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned", "Unconscious"]) if (has(c, n)) return { speed: 0, why: `${n}: speed 0` };
   const lvl = exhaustion(c);
+  if (has(c, "Hasted") && !has(c, "Slowed")) base *= 2;
+  if (has(c, "Slowed") && !has(c, "Hasted")) base = Math.floor(base / 2);
   if (rules === "2024" && lvl) return { speed: Math.max(0, base - 5 * lvl), why: `Exhaustion ${lvl}: −${5 * lvl} ft` };
   if (rules === "2014" && lvl >= 5) return { speed: 0, why: `Exhaustion ${lvl}: speed 0` };
   if (rules === "2014" && lvl >= 2) return { speed: Math.floor(base / 2), why: `Exhaustion ${lvl}: half speed` };
-  return { speed: base, why: null };
+  return { speed: base, why: has(c, "Hasted") && !has(c, "Slowed") ? "Hasted: speed doubled" : has(c, "Slowed") && !has(c, "Hasted") ? "Slowed: half speed" : null };
 }
 
 /** What a creature can do on its turn. */

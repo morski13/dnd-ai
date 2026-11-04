@@ -28,7 +28,7 @@ export type Combatant = {
   deathSaves: DeathSaves | null; // dying characters (hidden from players if death saves are secret)
   out: boolean;                // down monster or dead character: skipped in the turn order
   concentration: string | null; // spell being concentrated on (monsters: DM only)
-  effects: { id: string; name: string; conditions: string[]; text: string }[]; // timed conditions (SQL 35)
+  effects: { id: string; name: string; conditions: string[]; text: string; fly?: number }[]; // timed conditions (SQL 35)
 };
 
 const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
@@ -149,7 +149,7 @@ export async function getSessionData(focusParam?: string | null) {
         ally: (r.monsters as unknown as { kind?: string } | null)?.kind === "npc",
         hp, hpMax, temp: ch?.temp_hp ?? 0, health,
         conditions: (r.conditions as string[] | null) ?? [],
-        effects: cleanEffects((r as { effects?: unknown }).effects).map((e) => ({ id: e.id, name: e.name, conditions: e.conditions, text: describeEffect(e, (id) => shortName((rows ?? []).find((x) => x.id === id)?.name ?? "someone")) })),
+        effects: cleanEffects((r as { effects?: unknown }).effects).map((e) => ({ id: e.id, name: e.name, conditions: e.conditions, ...(e.fly ? { fly: e.fly } : {}), text: describeEffect(e, (id) => shortName((rows ?? []).find((x) => x.id === id)?.name ?? "someone")) })),
         deathSaves: saves && (isDm || !base.deathSavesSecret) ? saves : null,
         out: r.monster_id ? health === "down" : !!(r.character_id && ds.get(r.character_id)?.dead),
         concentration: ((ch as { concentration?: { spell?: string } | null } | null)?.concentration ?? (mo as { concentration?: { spell?: string } | null } | null)?.concentration)?.spell ?? null,

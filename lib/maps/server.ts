@@ -7,6 +7,10 @@ import { walkSpeed } from "./move";
 import { coverOf, distanceFt, reachOf, terrainOf, type Diagonals, type MoveCtx } from "@/lib/engine/space";
 import { monsterReach } from "@/lib/engine/damage";
 import { cleanEffects, shownConditions } from "@/lib/engine/effects";
+import { cleanZones, withZones, zoneAtCasterTurn, zoneSpares, zoneTouches, type Zone } from "@/lib/engine/spells";
+import { makeEffect } from "@/lib/engine/effects";
+import { putEffect } from "@/lib/engine/server";
+import { rollTargetSaves } from "@/lib/moderator/saves";
 import { fallDice, KINDS } from "@/lib/engine/terrain";
 import { characterSenses, lightMap, lightNote, seesBody, sensesFromText, type Senses } from "@/lib/engine/vision";
 import { characterFlight, falls, flightFromSpeed, type Flight } from "@/lib/engine/flight";
@@ -38,7 +42,7 @@ export async function battleState(campaignId: string) {
   const admin = createAdminClient();
   const { combat } = await liveState(admin, campaignId);
   if (!combat) return null;
-  const { data: c } = await admin.from("combats").select("map_id").eq("id", combat.id).maybeSingle();
+  const { data: c } = await admin.from("combats").select("*").eq("id", combat.id).maybeSingle(); // "*": zones after 39-spell-zones.sql
   if (!c?.map_id) return null;
   const [{ data: map }, { data: toks }, { data: cbs }, { data: camp }] = await Promise.all([
     admin.from("battle_maps").select("*").eq("id", c.map_id).maybeSingle(), // "*": terrain only after 36-map-terrain.sql
@@ -70,7 +74,8 @@ export async function battleState(campaignId: string) {
       flight: (() => {
         const own = c1 ? characterFlight(c1) : flightFromSpeed(m1?.stat_block?.speed);
         const extra = Number((t as { fly?: number | null }).fly) || 0;
-        return { fly: Math.max(own.fly, extra), hover: own.hover };
+        const spell = Math.max(0, ...cleanEffects((k as { effects?: unknown } | undefined)?.effects).map((e) => e.fly ?? 0)); // Fly
+        return { fly: Math.max(own.fly, extra, spell), hover: own.hover };
       })(),
       character_id: (k?.character_id as string) ?? null, monster_id: (k?.monster_id as string) ?? null,
       owner: c1?.owner_user_id ?? null, speed: c1 ? walkSpeed(c1.speed) : walkSpeed(m1?.stat_block?.speed),
@@ -84,8 +89,12 @@ export async function battleState(campaignId: string) {
   const current = order.length ? order[combat.turn_index % order.length]?.id ?? null : null;
   const rules = ((camp?.rule_set as string) === "2014" ? "2014" : "2024") as "2014" | "2024";
   const diag: Diagonals = (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5";
-  const terrain = terrainOf((map as { terrain?: unknown }).terrain);
-  return { admin, combat, map: map as { id: string; cols: number; rows: number; feet: number }, tokens, currentCombatantId: current, terrain, terrainRaw: (map as { terrain?: unknown }).terrain, diag, rules };
+  const zones = cleanZones((c as { zones?: unknown }).zones);
+  const mp = map as { id: string; cols: number; rows: number; feet: number };
+  const ground = terrainOf((map as { terrain?: unknown }).terrain);
+  // lasting spells change the ground while they last (Web, Spike Growth, Fog Cloud, Darkness)
+  const terrain = withZones(ground, zones, tokens, mp.cols, mp.rows, mp.feet);
+  return { admin, combat, map: mp, tokens, currentCombatantId: current, terrain, terrainRaw: (map as { terrain?: unknown }).terrain, diag, rules, zones };
 }
 
 /** The battle state as the movement rules need it, for one creature (who is friend and who is foe). */
@@ -196,4 +205,121 @@ export async function checkFalls(campaignId: string, byUser: string): Promise<st
     out.push(`${t.name} falls ${z} ft (${why}).`, ...await terrainHarm(b, { ...t, z: 0 }, { squares: [], when: "enter", fallFt: z }, byUser));
   }
   return out;
+}
+
+/**
+ * Lasting spells on the map (Spirit Guardians, Moonbeam, Cloudkill, Spike Growth, Web…): a creature entering one,
+ * or starting / ending its turn in one, makes the save and takes the damage or the condition. Once per zone per
+ * round, except Spike Growth (every 5 ft moved inside). `path`: the squares it moved through (enter).
+ */
+export async function zoneHarm(
+  b: NonNullable<Awaited<ReturnType<typeof battleState>>>, t: FullToken,
+  what: { when: "enter" | "start" | "end" | "appear"; path?: { x: number; y: number }[]; zoneId?: string }, byUser: string,
+): Promise<string[]> {
+  if (!b.zones.length) return [];
+  const out: string[] = [];
+  const feet = b.map.feet;
+  const { session } = await liveState(b.admin, b.combat.campaign_id as string);
+  const round = b.combat.round ?? 0;
+  let zones = b.zones;
+  let changed = false;
+  for (const z of b.zones) {
+    if (what.zoneId && z.id !== what.zoneId) continue;
+    if ((what.when === "appear" ? false : !z.rule.when.includes(what.when)) || zoneSpares(z, t)) continue;
+    if (z.rule.perSquare && (t.z ?? 0) > 0) continue; // flying over Spike Growth
+    const caster = b.tokens.find((k) => k.combatant_id === z.casterCombatantId) ?? null;
+    const at = (sq: { x: number; y: number }) => zoneTouches(z, caster, { id: t.id, x: sq.x, y: sq.y, size: t.size }, feet);
+    let times = 0;
+    if (what.when === "enter") {
+      const path = what.path ?? [];
+      if (z.rule.perSquare) times = path.slice(1).filter(at).length; // Spike Growth: every square moved inside
+      else if (path.length > 1 && !at(path[0]) && path.slice(1).some(at)) times = 1;
+    } else if (at({ x: t.x, y: t.y })) times = 1;
+    if (what.when === "appear" && z.rule.perSquare) times = 0; // Spike Growth only hurts when moving
+    if (!times) continue;
+    // once per round (Spike Growth hurts every step)
+    if (!z.rule.perSquare) {
+      if (z.hit?.[t.combatant_id] === round) continue;
+      zones = zones.map((x) => (x.id === z.id ? { ...x, hit: { ...(x.hit ?? {}), [t.combatant_id]: round } } : x));
+      changed = true;
+    }
+    const target = { characterId: t.character_id, monsterId: t.monster_id };
+    if (z.rule.perSquare) {
+      const r = roll(Array.from({ length: times }, () => z.rule.perSquare!.dice).join("+"));
+      await logZoneDamage(b, t, z, r, z.rule.perSquare.type, session?.id ?? null, byUser);
+      const applied = await applyHp(b.admin, { campaignId: b.combat.campaign_id as string, sessionId: session?.id ?? null, combatId: b.combat.id, round, kind: "damage", total: r.total, target, createdBy: byUser, hidden: t.hidden, damageType: z.rule.perSquare.type, magical: true });
+      out.push(`${t.name}: ${z.spell}, ${times * 5} ft through it, ${applied ? applied.amount : r.total} ${z.rule.perSquare.type}.`);
+      continue;
+    }
+    let saved: boolean | null = null;
+    if (z.rule.save && z.dc) {
+      const [s] = await rollTargetSaves(b.admin, {
+        campaignId: b.combat.campaign_id as string, sessionId: session?.id ?? null, combatId: b.combat.id, round, createdBy: byUser,
+        parentRollId: null, ability: z.rule.save, dc: z.dc, spell: z.spell, targets: [target], rules: b.rules,
+      });
+      saved = s?.success ?? null;
+    }
+    // a monster's save stays the DM's secret (the roll is logged hidden); the result shows in its HP and conditions
+    const word = saved == null || t.monster_id ? "" : saved ? " saves" : " fails the save";
+    if (z.rule.damage && z.damage && !(saved && !z.rule.half)) {
+      const r = roll(z.damage);
+      await logZoneDamage(b, t, z, r, z.damageType, session?.id ?? null, byUser);
+      const applied = await applyHp(b.admin, { campaignId: b.combat.campaign_id as string, sessionId: session?.id ?? null, combatId: b.combat.id, round, kind: "damage", total: r.total, factor: saved ? "half" : "full", target, createdBy: byUser, hidden: t.hidden, damageType: z.damageType ?? undefined, magical: true });
+      out.push(`${t.name}${word}: ${z.spell}, ${applied ? applied.amount : r.total}${z.damageType ? ` ${z.damageType}` : ""}.`);
+    } else if (z.rule.conditions?.length && saved === false) {
+      // Stinking Cloud: lost this turn; Web, Entangle: held until it breaks free or the spell ends; Grease: Prone
+      const plain = z.rule.conditions.every((c) => c === "Prone");
+      if (plain) {
+        const { data: c } = await b.admin.from("combatants").select("conditions").eq("id", t.combatant_id).maybeSingle();
+        const cond = (c?.conditions as string[] | null) ?? [];
+        if (!cond.includes("Prone")) await b.admin.from("combatants").update({ conditions: [...cond, "Prone"] }).eq("id", t.combatant_id);
+      } else {
+        const short = z.rule.conditions.includes("Incapacitated") && z.rule.when.includes("start");
+        await putEffect(b.admin, b.combat.campaign_id as string, b.combat.id, target, makeEffect({
+          id: crypto.randomUUID(), name: z.spell, conditions: z.rule.conditions, source: { combatantId: z.casterCombatantId, name: z.casterName },
+          duration: short ? "end_of_next_turn" : "removed", turnsOf: t.combatant_id, target: t.combatant_id, concentration: z.concentration,
+        }));
+      }
+      out.push(`${t.name}${word}: ${z.spell}, ${z.rule.conditions.join(" and ")}.`);
+    } else if (saved != null && !t.monster_id) out.push(`${t.name}${word} against ${z.spell}.`);
+  }
+  if (changed) await b.admin.from("combats").update({ zones }).eq("id", b.combat.id);
+  return out;
+}
+
+async function logZoneDamage(b: NonNullable<Awaited<ReturnType<typeof battleState>>>, t: FullToken, z: Zone, r: ReturnType<typeof roll>, type: string | null, sessionId: string | null, byUser: string) {
+  const spell = z.spell;
+  // counted as the caster's damage in the stats
+  const by = b.tokens.find((k) => k.combatant_id === z.casterCombatantId);
+  await b.admin.from("roll_events").insert({
+    character_id: by?.character_id ?? null, monster_id: by?.character_id ? null : by?.monster_id ?? null,
+    campaign_id: b.combat.campaign_id, session_id: sessionId, combat_id: b.combat.id, round: b.combat.round, rolled_by: byUser,
+    roll_type: "damage", source: `${spell} (area)`, expression: r.expression, dice: r.dice, dice_all: r.diceAll, modifier: r.modifier, total: r.total,
+    damage_type: type, target_character_id: t.character_id, target_monster_id: t.monster_id, hidden: t.hidden,
+  });
+}
+
+/** The start of the zone caster's turn: zones count down a round and Cloudkill drifts away. */
+export async function zonesAtCasterTurn(campaignId: string, combatantId: string): Promise<string[]> {
+  const b = await battleState(campaignId);
+  if (!b || !b.zones.some((z) => z.casterCombatantId === combatantId)) return [];
+  const caster = b.tokens.find((k) => k.combatant_id === combatantId) ?? null;
+  const out: string[] = [];
+  const kept = b.zones.flatMap((z) => {
+    if (z.casterCombatantId !== combatantId) return [z];
+    const next = zoneAtCasterTurn(z, caster, b.map.feet);
+    if (!next) out.push(`${z.spell} ends.`);
+    else if (z.rule.drift) out.push(`${z.spell} drifts ${z.rule.drift} ft away from ${z.casterName}.`);
+    return next ? [next] : [];
+  });
+  await b.admin.from("combats").update({ zones: kept }).eq("id", b.combat.id);
+  return out;
+}
+
+/** A creature's turn starts or ends: is it standing in a lasting spell? */
+export async function zonesOnTurn(campaignId: string, combatantId: string, when: "start" | "end", byUser: string): Promise<string[]> {
+  const b = await battleState(campaignId);
+  if (!b?.zones.length) return [];
+  const t = b.tokens.find((k) => k.combatant_id === combatantId);
+  return t ? zoneHarm(b, t, { when }, byUser) : [];
 }

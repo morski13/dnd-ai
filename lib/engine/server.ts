@@ -46,6 +46,14 @@ export async function endConcentrationEffects(admin: Admin, combatId: string, so
   const { data: rows, error } = await admin.from("combatants").select("*").eq("combat_id", combatId);
   if (error || !rows?.length || !("effects" in rows[0])) return [];
   const out: string[] = [];
+  // lasting spell areas it kept up (SQL 39)
+  const { data: cz } = await admin.from("combats").select("*").eq("id", combatId).maybeSingle();
+  const zones = (cz as { zones?: unknown } | null)?.zones;
+  if (Array.isArray(zones) && zones.some((z) => (z as { casterCombatantId?: string; concentration?: boolean }).casterCombatantId === src.id && (z as { concentration?: boolean }).concentration)) {
+    const kept = zones.filter((z) => !((z as { casterCombatantId?: string }).casterCombatantId === src.id && (z as { concentration?: boolean }).concentration));
+    await admin.from("combats").update({ zones: kept }).eq("id", combatId);
+    out.push(...zones.filter((z) => !kept.includes(z)).map((z) => `${(z as { spell: string }).spell} ends.`));
+  }
   for (const r of rows as { id: string; name: string; conditions: string[] | null; effects: unknown }[]) {
     const all = cleanEffects(r.effects);
     const { kept, ended } = endConcentration(all, src.id as string);
@@ -54,4 +62,22 @@ export async function endConcentrationEffects(admin: Admin, combatId: string, so
     out.push(...ended.map((e) => `${r.name}: ${e.name} ends.`));
   }
   return out;
+}
+
+/**
+ * Put a timed effect on a creature in the fight (a spell's condition or buff). A monster immune to one of its
+ * conditions doesn't get those. Returns the conditions it now has (or null if it isn't in the fight).
+ */
+export async function putEffect(admin: Admin, campaignId: string, combatId: string, target: Target, e: TimedEffect): Promise<{ name: string; added: string[]; immune: string[] } | null> {
+  const who = await whoIs(admin, campaignId, combatId, target);
+  if (!who?.combatantId) return null;
+  const immune = e.conditions.filter((c) => who.defenses.conditionImmune.includes(c.replace(/\s+\d$/, "")));
+  const effect = { ...e, conditions: e.conditions.filter((c) => !immune.includes(c)) };
+  if (!effect.conditions.length && !effect.ac && !effect.bonusDice && !effect.fly && e.conditions.length) return { name: who.name, added: [], immune };
+  const { data: row } = await admin.from("combatants").select("*").eq("id", who.combatantId).maybeSingle();
+  // the same spell from the same caster again replaces the old one (Bless twice doesn't stack)
+  const fx = [...cleanEffects((row as { effects?: unknown } | null)?.effects).filter((x) => !(x.name === e.name && x.source?.combatantId && x.source.combatantId === e.source?.combatantId)), effect];
+  const conditions = shownConditions((row as { conditions?: string[] } | null)?.conditions ?? [], fx);
+  await admin.from("combatants").update({ effects: fx, conditions }).eq("id", who.combatantId);
+  return { name: who.name, added: effect.conditions, immune };
 }

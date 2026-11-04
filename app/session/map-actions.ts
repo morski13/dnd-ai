@@ -5,7 +5,7 @@ import { loadCharacter } from "@/lib/character-data";
 import { inRange, parseArea, place, tokensIn } from "@/lib/maps/area";
 import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
-import { battleState, checkFalls, moveCtx, terrainHarm, who } from "@/lib/maps/server";
+import { battleState, checkFalls, moveCtx, terrainHarm, who, zoneHarm } from "@/lib/maps/server";
 import { climbCost, TALL } from "@/lib/engine/flight";
 import { openWindow } from "@/lib/reactions-server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
@@ -13,7 +13,9 @@ import { moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space"
 import { addEffect } from "./effect-actions";
 import { liveState } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { allOptions } from "@/lib/rules";
+import { allOptions, damageExpression, saveDCFor, type Attack, type SheetCharacter, type SpellInfo } from "@/lib/rules";
+import { durationRounds, spellRule, type Zone } from "@/lib/engine/spells";
+import type { AreaSpec, Placed } from "@/lib/maps/area";
 import type { Advantage } from "@/lib/dice";
 import { rollForCharacter, type RollResponse } from "../characters/[id]/actions";
 
@@ -62,6 +64,8 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
     if (drop >= 10) fallFt = Math.max(fallFt, drop);
   }
   const harm = (t.z ?? 0) > 0 && !fallFt ? [] : await terrainHarm(b, t, { squares: path.slice(1), when: "enter", fallFt }, me.userId);
+  // lasting spells on the way: Spirit Guardians, Moonbeam, Spike Growth, Web…
+  harm.push(...await zoneHarm(b, { ...t, x: nx, y: ny }, { when: "enter", path }, me.userId).catch(() => [] as string[]));
   // leaving reach: the pop-up asks the ones it provokes (5 s)
   if (prov.length) {
     await openWindow(b.admin, { campaignId: me.campaignId, combatId: b.combat.id, rules: b.rules,
@@ -186,7 +190,11 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   if (!inRange(spec, caster, aim, b.map.feet)) return { error: `Out of range (${spec.range} ft).` };
   const placed = place(spec, caster, aim, b.map.feet);
   let inside = tokensIn(placed, b.tokens, caster.id, spec.shape);
-  if (spec.pick === "choose") {
+  // a lasting area with nothing to roll now (Spirit Guardians, Web, Fog Cloud): it just goes on the map
+  const lasting = sp ? spellRule(sp as SpellInfo) : null;
+  const zoneOnly = !!lasting?.zone && (!!lasting.noCastDamage || !(sp as SpellInfo).roll);
+  if (zoneOnly) inside = [];
+  else if (spec.pick === "choose") {
     const allowedIds = new Set(inside.filter((t) => me.isDm || !t.hidden).map((t) => t.combatant_id));
     const pick = [...new Set(chosen)].filter((id) => allowedIds.has(id));
     if (spec.max && pick.length > spec.max) return { error: `${opt.name} affects up to ${spec.max} creatures.` };
@@ -197,6 +205,20 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   const res = await rollForCharacter(characterId, { kind: "use", key: optionKey }, advantage, targets[0] ?? null, targets.slice(1));
   if ("error" in res) return res;
   await b.admin.from("combats").update({ last_area: { by: character.name, spell: opt.name, placed, at: new Date().toISOString() } }).eq("id", b.combat.id);
+  // a spell that stays on the map (Spirit Guardians, Moonbeam, Web, Spike Growth, Fog Cloud…)
+  const zoneNote = await keepZone(b, character, opt, spec, placed, caster, (res.roll as { followUp?: { slot?: number } }).followUp?.slot ?? opt.level ?? undefined);
+  if (zoneNote) res.roll = { ...res.roll, reasons: [...(res.roll.reasons ?? []), zoneNote] };
+  // creatures inside when it appears: Web, Entangle, Grease, Stinking Cloud make their save now (not Spirit Guardians)
+  if (zoneNote && zoneOnly && lasting?.zone?.save && !lasting.zone.follows) {
+    const nb = await battleState(me.campaignId);
+    const z = nb?.zones.find((x) => x.spell === opt.name && x.casterCombatantId === caster.combatant_id);
+    if (nb && z) {
+      const lines: string[] = [];
+      for (const t of tokensIn(placed, nb.tokens, caster.id, spec.shape)) lines.push(...await zoneHarm(nb, t, { when: "appear", zoneId: z.id }, me.userId).catch(() => [] as string[]));
+      const shown = me.isDm ? lines : lines.filter((l) => !b.tokens.some((t) => t.hidden && l.startsWith(`${t.name}`)));
+      if (shown.length) res.roll = { ...res.roll, reasons: [...(res.roll.reasons ?? []), ...shown] };
+    }
+  }
   // players must not learn about creatures they can't see
   const hiddenMonsters = new Set(b.tokens.filter((t) => t.hidden && t.monster_id).map((t) => t.monster_id));
   if (!me.isDm && hiddenMonsters.size) {
@@ -208,6 +230,31 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
 
 
 
+
+/** Stores a lasting spell area with the fight (SQL 39). Returns a line for the roll, or null. */
+async function keepZone(
+  b: NonNullable<Awaited<ReturnType<typeof battleState>>>, character: SheetCharacter, opt: Attack & { fromSpell?: SpellInfo }, spec: AreaSpec, placed: Placed,
+  caster: { combatant_id: string; side: "party" | "enemy"; name: string }, slot: number | undefined,
+): Promise<string | null> {
+  const sp = opt.fromSpell;
+  const rule = sp ? spellRule(sp)?.zone : null;
+  if (!sp || !rule) return null;
+  const rounds = durationRounds(sp.duration);
+  if (rounds == null && !sp.concentration) return null;
+  const r = sp.roll;
+  const damage = rule.damage && r?.damage ? damageExpression(character, { ...opt, damage: r.damage, per_level: r.per_level, cantrip_scaling: r.cantrip_scaling, add_mod: r.add_mod ?? false }, slot) : null;
+  const zone: Zone = {
+    id: crypto.randomUUID(), spell: sp.name, casterCombatantId: caster.combatant_id, casterName: caster.name,
+    rule, spec, placed, damage, damageType: r?.damage_type ?? null, dc: rule.save ? saveDCFor(character, opt) : null,
+    roundsLeft: rounds, concentration: !!sp.concentration, side: caster.side,
+  };
+  // concentrating on it again (or a new concentration spell) replaces the old area
+  const kept = b.zones.filter((z) => !(z.casterCombatantId === caster.combatant_id && (z.concentration && zone.concentration || z.spell === zone.spell)));
+  const { error } = await b.admin.from("combats").update({ zones: [...kept, zone] }).eq("id", b.combat.id);
+  if (error) return /column/.test(error.message) ? "Run supabase/39-spell-zones.sql to keep spell areas on the map." : null;
+  const when = [rule.when.includes("enter") && "entering", rule.when.includes("start") && "starting a turn", rule.when.includes("end") && "ending a turn"].filter(Boolean).join(" / ");
+  return `${sp.name} stays on the map${rounds ? ` (${rounds} rounds)` : ""}${when ? `: ${when} in it${rule.save ? ` = ${rule.save} save DC ${zone.dc}` : ""}${damage ? `, ${damage}${zone.damageType ? ` ${zone.damageType}` : ""}` : ""}` : ""}.`;
+}
 
 /**
  * Fly up, down, or land (z = 0): 5 ft of movement per 5 ft of height. Needs a flying speed. Over a tree or a boulder

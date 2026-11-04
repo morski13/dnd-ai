@@ -9,10 +9,11 @@ import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods,
 import { checkRange, reachOf } from "@/lib/engine/space";
 import { attackGeometry } from "@/lib/maps/server";
 import { campaignRules, endConcentrationEffects, whoIs } from "@/lib/engine/server";
-import { effectAc } from "@/lib/engine/effects";
+import { effectAc, effectDice } from "@/lib/engine/effects";
 import { openWindow } from "@/lib/reactions-server";
+import { applySpellRules } from "@/lib/spell-effects";
 import { replayRng } from "@/lib/offline-rolls";
-import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
+import { ABILITIES, allOptions, planRoll, rowKey, saveDCFor, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
 import { cleanBonuses, cleanCustomAction, cleanHomebrew, type Bonuses, type Homebrew } from "@/lib/homebrew";
 import { loadCharacter, SPELL_COLUMNS, type Resource } from "@/lib/character-data";
@@ -178,7 +179,7 @@ export async function rollForCharacter(
   // automatic failures and crits). Each reason is shown with the roll.
   const early = createAdminClient();
   const livePromise = liveState(early, c.campaign_id);
-  let rules: { mods: Mods; ruleSet: string; coverAc?: number; dist?: number | null } | null = null;
+  let rules: { mods: Mods; ruleSet: string; coverAc?: number; dist?: number | null; extra?: string } | null = null;
   if (plan.d20) {
     const r = await conditionRules(early, c, plan, opt, request, parentTarget ?? target, (await livePromise).combat?.id ?? null);
     if (r && "block" in r) return { error: r.block! };
@@ -190,7 +191,8 @@ export async function rollForCharacter(
     const chosen: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
     // typed-in real dice already show how many d20s were rolled: the rules only add their reasons then
     const adv: Advantage = rules && !replay ? combineAdvantage(chosen, rules.mods) : chosen;
-    const expression = rules?.mods.penalty ? combine(plan.expression, String(rules.mods.penalty)) : plan.expression;
+    let expression = rules?.mods.penalty ? combine(plan.expression, String(rules.mods.penalty)) : plan.expression;
+    if (expression && rules?.extra && !replay) expression += rules.extra; // Bless +1d4, Bane −1d4
     result = expression ? roll(expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode, rng: replay?.rng }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
@@ -320,11 +322,13 @@ export async function rollForCharacter(
 
   // A save spell: the app rolls every target's save now (monster saves secretly).
   let saves: TargetSave[] | undefined;
+  let rawSaves: TargetSave[] | undefined; // before hiding monster results from players (the spell's effects need them)
   if (plan.rollType === "save_dc" && session && plan.dc && plan.ability) {
     const all = [target, ...(moreTargets ?? [])].filter((t): t is Target => !!(t?.characterId || t?.monsterId));
     const unique = all.filter((t, i) => all.findIndex((x) => x.characterId === t.characterId && x.monsterId === t.monsterId) === i);
     if (unique.length) {
-      saves = maskSaves(await rollTargetSaves(admin, { ...base, parentRollId: saved.id, ability: plan.ability, dc: plan.dc, spell: plan.source, targets: unique, rules: await campaignRules(admin, c.campaign_id, c.rule_set) }), viewerIsDm);
+      rawSaves = await rollTargetSaves(admin, { ...base, parentRollId: saved.id, ability: plan.ability, dc: plan.dc, spell: plan.source, targets: unique, rules: await campaignRules(admin, c.campaign_id, c.rule_set) });
+      saves = maskSaves(rawSaves, viewerIsDm);
     }
   }
 
@@ -403,6 +407,23 @@ export async function rollForCharacter(
     aimedAt = [tgt.name, ...rest.filter((x): x is NonNullable<typeof x> => !!x && x.name !== tgt.name).map((x) => x.name)];
   }
 
+  // casting a new concentration spell: the old one's effects end (before the new spell's own go on)
+  if (endedConcentration && combat) await endConcentrationEffects(admin, combat.id, { characterId: c.id });
+
+  // What the spell does beyond its dice: conditions on a failed save, buffs on the creatures picked, a mark on a hit
+  let spellNotes: string[] = [];
+  if (combat && opt?.fromSpell && depth === 0) {
+    try {
+      spellNotes = await applySpellRules(admin, {
+        campaignId: c.campaign_id, combatId: combat.id, caster: { characterId: c.id }, casterName: c.name, spell: opt.fromSpell,
+        dc: plan.dc ?? saveDCFor(c, opt), failed: (rawSaves ?? []).filter((x) => x.success === false).map((x) => x.target),
+        buffed: request.kind === "use" && !rawSaves ? [target, ...(moreTargets ?? [])].filter((x): x is Target => !!(x?.characterId || x?.monsterId)) : null,
+        hit: plan.rollType === "attack" && success === true && tgt ? { characterId: tgt.characterId, monsterId: tgt.monsterId } : null,
+      });
+      if (spellNotes.length) reasons.push(...spellNotes.map((n) => (viewerIsDm ? n : n.replace(/\(immune\)/, "")))); 
+    } catch { spellNotes = []; }
+  }
+
   // Reactions: an attack on a monster (its own reactions, the DM decides), a spell (Counterspell)
   let window: { id: string; closesAt: string; who: string[] } | null = null;
   if (combat && depth === 0 && !replay?.offline && (plan.rollType === "attack" || (request.kind === "use" && opt?.fromSpell))) {
@@ -421,8 +442,6 @@ export async function rollForCharacter(
     } catch { window = null; }
   }
 
-  // casting a new concentration spell: the old one's effects end
-  if (endedConcentration && combat) await endConcentrationEffects(admin, combat.id, { characterId: c.id });
 
   if (plan.rollType === "initiative" && combat && result) {
     await recordInitiative(admin, combat.id, { characterId: c.id }, result.total);
@@ -524,9 +543,16 @@ async function conditionRules(admin: ReturnType<typeof createAdminClient>, c: { 
     // Shield and the like: AC bonuses from effects on the target
     const fxAc = them ? effectAc(them.effects) : 0;
     if (fxAc) mods.notes.push(`${them?.name}: +${fxAc} AC (${them?.effects.filter((e) => e.ac).map((e) => e.name).join(", ")})`);
-    return { mods, ruleSet, coverAc: (geo?.cover.ac ?? 0) + fxAc, dist: geo?.dist ?? null };
+    const extra = effectDice(me.effects);
+    if (extra) mods.notes.push(`${extra} (${me.effects.filter((e) => e.bonusDice).map((e) => e.name).join(", ")})`);
+    return { mods, ruleSet, coverAc: (geo?.cover.ac ?? 0) + fxAc, dist: geo?.dist ?? null, extra };
   }
-  if (plan.rollType === "save" && plan.ability) return { mods: saveMods(me, plan.ability, ruleSet), ruleSet };
+  if (plan.rollType === "save" && plan.ability) {
+    const mods = saveMods(me, plan.ability, ruleSet);
+    const extra = effectDice(me.effects);
+    if (extra) mods.notes.push(`${extra} (${me.effects.filter((e) => e.bonusDice).map((e) => e.name).join(", ")})`);
+    return { mods, ruleSet, extra };
+  }
   if (plan.rollType === "check") return { mods: checkMods(me, ruleSet, plan.ability), ruleSet };
   void request;
   return null;
@@ -542,19 +568,33 @@ function cleanName(n?: string | null) {
  * Fights played at the table: the enemy's AC is a secret, so after an attack roll the player says
  * whether it hit (the DM tells them). A natural 20 always hits and a natural 1 always misses, so those stay.
  */
-export async function markAttack(characterId: string, rollId: string, hit: boolean): Promise<Fail | { success: boolean }> {
-  const { userId, character: c, canEdit } = await loadCharacter(characterId);
+export async function markAttack(characterId: string, rollId: string, hit: boolean): Promise<Fail | { success: boolean; notes?: string[] }> {
+  const { userId, character: c, canEdit, library } = await loadCharacter(characterId);
   if (!c || !canEdit || !userId) return { error: "You can only mark your own character's attacks." };
   const admin = createAdminClient();
-  const { data: r } = await admin.from("roll_events").select("id, character_id, roll_type, is_crit, is_fumble").eq("id", rollId).maybeSingle();
+  const { data: r } = await admin.from("roll_events").select("*").eq("id", rollId).maybeSingle();
   if (!r || r.character_id !== c.id || (r.roll_type !== "attack" && r.roll_type !== "save_dc")) return { error: "That roll wasn't found." };
   // save spells: `hit` = the target made its save (the DM says so)
-  if (r.roll_type === "attack" && r.is_crit) return { success: true };
-  if (r.roll_type === "attack" && r.is_fumble) return { success: false };
+  if (r.roll_type === "attack" && r.is_crit && !hit) return { success: true };
+  if (r.roll_type === "attack" && r.is_fumble && hit) return { success: false };
   const { error } = await admin.from("roll_events").update({ success: hit }).eq("id", rollId);
   if (error) return { error: error.message };
+  // the spell's effects on a creature the app knows: Hold Person when it failed, Guiding Bolt when it hit
+  let notes: string[] = [];
+  const t: Target = { characterId: r.target_character_id ?? null, monsterId: r.target_monster_id ?? null };
+  const sp = allOptions(c, library).find((o) => o.fromSpell && o.name === String(r.source ?? "").replace(/ (attack|save)$/i, ""))?.fromSpell;
+  if (sp && r.combat_id && (t.characterId || t.monsterId) && r.success !== hit) {
+    const failed = r.roll_type === "save_dc" && !hit;
+    const landed = r.roll_type === "attack" && hit;
+    if (failed || landed) {
+      notes = await applySpellRules(admin, {
+        campaignId: c.campaign_id, combatId: r.combat_id, caster: { characterId: c.id }, casterName: c.name, spell: sp,
+        dc: Number(r.dc) || 10, failed: failed ? [t] : [], buffed: null, hit: landed ? t : null,
+      }).catch(() => []);
+    }
+  }
   refresh();
-  return { success: hit };
+  return { success: hit, ...(notes.length ? { notes } : {}) };
 }
 
 /**

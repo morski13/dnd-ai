@@ -47,7 +47,13 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); }
   const tData = map.terrain;
   const visibleSet = useMemo(() => (battle.visible ? new Set(battle.visible) : null), [battle.visible]);
-  const terrain = useMemo(() => terrainOf(tData), [tData]);
+  const zones = useMemo(() => battle.zones ?? [], [battle.zones]);
+  const terrain = useMemo(() => {
+    const t = terrainOf(tData);
+    // Web, Spike Growth, Entangle: difficult while they last (the server counts the same)
+    for (const z of zones) if (z.difficult) for (const k of z.cells) t.difficult.add(k);
+    return t;
+  }, [tData, zones]);
   const tokens = useMemo(() => battle.tokens.map((t) => (optimistic[t.id] ? { ...t, ...optimistic[t.id] } : t)), [battle.tokens, optimistic]);
   const byCombatant = useMemo(() => new Map(combatants.map((c) => [c.id, c])), [combatants]);
   const current = tokens.find((t) => t.combatantId === currentCombatantId) ?? null;
@@ -145,7 +151,10 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     if (at && at.id !== selId) { setSelId(at.id); setError(null); return; }
     if (at && at.id === selId) { setSelId(null); return; }
     // nothing picked: say what's on that square (height, terrain, object)
-    if (!sel) { setError(null); setNote(`(${sq.x + 1}, ${sq.y + 1}) ${describeSquare(tData, sq.x, sq.y, map.feet)}`); return; }
+    if (!sel) {
+      const here = zones.filter((z) => z.cells.includes(`${sq.x},${sq.y}`)).map((z) => `${z.spell} (${z.by}${z.roundsLeft ? `, ${z.roundsLeft} rounds left` : ""}): ${z.text}.`);
+      setError(null); setNote(`(${sq.x + 1}, ${sq.y + 1}) ${describeSquare(tData, sq.x, sq.y, map.feet)}${here.length ? ` ${here.join(" ")}` : ""}`); return;
+    }
     if (free && isDm) {
       if (!freeAt(sel, sq.x, sq.y, tokens, map.cols, map.rows)) return setError("Someone is already there.");
       setOptimistic({ [sel.id]: sq });
@@ -187,6 +196,8 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       onTap={tap} onHover={aim ? setHover : undefined}>
       {/* terrain the DM painted */}
       <TerrainLayer data={tData} />
+      {/* lasting spells: Spirit Guardians, Moonbeam, Web, Fog Cloud… */}
+      <ZoneLayer zones={zones} />
       {/* the last area spell, for everyone */}
       {lastSquares.map((s) => <rect key={`l${s.x},${s.y}`} x={s.x} y={s.y} width={1} height={1} fill="#F0703C" opacity={0.28} />)}
       {/* squares you can move to */}
@@ -387,5 +398,43 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
         </div>
       )}
     </section>
+  );
+}
+
+const ZONE_COLORS = { harm: "#E2553A", hold: "#C9A227", hide: "#8E99A3", quiet: "#6F8FD8" } as const;
+
+/** Lasting spells on the map: a tint over their squares, an outline, and the spell's name. Tap a square for what it does. */
+function ZoneLayer({ zones }: { zones: Battle["zones"] }) {
+  if (!zones.length) return null;
+  return (
+    <g aria-hidden pointerEvents="none" data-zones="">
+      {zones.map((z) => {
+        if (!z.cells.length) return null;
+        const set = new Set(z.cells);
+        const pts = z.cells.map((k) => k.split(",").map(Number) as [number, number]);
+        const color = ZONE_COLORS[z.look];
+        // the label goes on the square nearest the middle
+        const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, my = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const mid = pts.reduce((b, p) => (Math.hypot(p[0] - mx, p[1] - my) < Math.hypot(b[0] - mx, b[1] - my) ? p : b), pts[0]);
+        return (
+          <g key={z.id} data-zone={z.spell}>
+            {pts.map(([x, y]) => <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} fill={color} opacity={z.look === "hide" ? 0.45 : 0.22} />)}
+            {/* outline: edges with no zone square on the other side */}
+            <g stroke={color} strokeWidth={0.06} strokeDasharray="0.25 0.12">
+              {pts.flatMap(([x, y]) => [
+                !set.has(`${x},${y - 1}`) && <line key={`t${x},${y}`} x1={x} y1={y} x2={x + 1} y2={y} />,
+                !set.has(`${x},${y + 1}`) && <line key={`b${x},${y}`} x1={x} y1={y + 1} x2={x + 1} y2={y + 1} />,
+                !set.has(`${x - 1},${y}`) && <line key={`l${x},${y}`} x1={x} y1={y} x2={x} y2={y + 1} />,
+                !set.has(`${x + 1},${y}`) && <line key={`r${x},${y}`} x1={x + 1} y1={y} x2={x + 1} y2={y + 1} />,
+              ])}
+            </g>
+            <g transform={`translate(${mid[0] + 0.5} ${mid[1] + 0.5})`}>
+              <rect x={-Math.min(2.4, z.spell.length * 0.095 + 0.2)} y={-0.17} width={Math.min(4.8, z.spell.length * 0.19 + 0.4)} height={0.34} rx={0.1} fill="#16120e" opacity={0.78} />
+              <text textAnchor="middle" dy="0.07" fontSize={0.2} fontWeight={700} fill="#fff">{z.spell}{z.roundsLeft ? ` · ${z.roundsLeft}` : ""}</text>
+            </g>
+          </g>
+        );
+      })}
+    </g>
   );
 }

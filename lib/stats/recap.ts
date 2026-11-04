@@ -84,7 +84,7 @@ export function buildRecap(
   }
   // the biggest hit by the party
   let big: StatRoll | null = null;
-  for (const r of ordered) if (r.roll_type === "damage" && isChar(keyOf(r.character_id, null)) && (!big || landed(r) > landed(big))) big = r;
+  for (const r of ordered) if (r.roll_type === "damage" && isChar(keyOf(r.character_id, null)) && r.target_character_id !== r.character_id && (!big || landed(r) > landed(big))) big = r;
   if (big && landed(big) > 0 && !crits.some((c) => childOf.get(c.id)?.id === big!.id)) {
     const who = keyOf(big.character_id, null), target = keyOf(big.target_character_id, big.target_monster_id);
     moments.push({ at: big.created_at, kind: "big-hit", who, text: `The biggest hit: ${name(who)}'s ${baseName(big.source)} for ${landed(big)} damage${target ? ` on ${name(target)}` : ""}.` });

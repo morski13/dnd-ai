@@ -1,5 +1,6 @@
 // D&D 5e rules math (from 03-rules-math-reference.md).
 // Turns a character's data (+ the spell library) into bonuses, options and dice expressions.
+import { spellRule } from "./engine/spells";
 import { combine, signed, timesDice } from "./dice";
 import { activeToggles, critRules, type Homebrew } from "./homebrew";
 
@@ -163,11 +164,15 @@ export function allOptions(c: SheetCharacter, library: SpellInfo[]): Option[] {
   for (const name of c.spells?.known ?? []) {
     const s = byName.get(name);
     if (!s || taken.has(name)) continue;
+    // what the spell does beyond its dice: a save with no damage (Hold Person), no damage on casting (Web)
+    const rule = spellRule(s);
+    const roll = rule?.noCastDamage ? null : s.roll;
+    const saveOnly = !roll && rule?.save ? rule.save : null;
     spells.push({
       key: `spell:${name}`, name, fromSpell: s, level: s.level, ability: "spell", action: s.action,
-      kind: s.roll?.kind ?? "boost", damage: s.roll?.damage, damage_type: s.roll?.damage_type,
-      add_mod: s.roll?.add_mod ?? false, save_ability: s.roll?.save_ability, half_on_save: s.roll?.half_on_save,
-      per_level: s.roll?.per_level, cantrip_scaling: s.roll?.cantrip_scaling, range: s.range, note: s.roll?.note,
+      kind: saveOnly ? "save" : roll?.kind ?? "boost", damage: roll?.damage, damage_type: roll?.damage_type,
+      add_mod: roll?.add_mod ?? false, save_ability: saveOnly ?? roll?.save_ability, half_on_save: roll?.half_on_save,
+      per_level: roll?.per_level, cantrip_scaling: roll?.cantrip_scaling, range: s.range, note: roll?.note,
     });
   }
   return [...sheet, ...spells];
