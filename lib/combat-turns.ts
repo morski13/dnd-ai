@@ -8,6 +8,7 @@ import { monsterSave } from "@/lib/moderator/concentration";
 import { combine, saveMods } from "@/lib/engine/conditions";
 import { afterSave, cleanEffects, effectDice, shownConditions, tick, withoutEffect, type TimedEffect, type TurnEvent } from "@/lib/engine/effects";
 import { campaignRules } from "@/lib/engine/server";
+import { atTurnStart, cleanState, featuresOf } from "@/lib/engine/monster";
 import { checkFalls, terrainAtTurnStart, zonesAtCasterTurn, zonesOnTurn } from "@/lib/maps/server";
 
 type Row = { id: string; name: string; initiative: number | null; initiative_hidden?: boolean; dex_mod: number; character_id: string | null; monster_id: string | null; health: string | null };
@@ -49,6 +50,8 @@ export async function advanceTurn(admin: Admin, combatId: string, byUser?: strin
   if (ending) events.push(...await tickEffects(admin, combat, { kind: "end", combatantId: ending.id }, byUser ?? null));
   await admin.from("combats").update({ turn_index: index, round }).eq("id", combatId);
   events.push(...await tickEffects(admin, combat, { kind: "start", combatantId: order[index].id }, byUser ?? null));
+  // a monster's turn: recharge rolls (Fire Breath 5–6), legendary actions back (SQL 40; the DM sees the rolls on its card)
+  if (order[index].monster_id) await monsterTurnStart(admin, order[index].id, order[index].monster_id!).catch(() => undefined);
   // its reaction comes back (SQL 38; fine without it)
   await admin.from("combatants").update({ reaction_used: false }).eq("id", order[index].id).then(() => undefined, () => undefined);
   // standing in fire, lava or acid when the turn starts hurts (battle map terrain)
@@ -138,4 +141,16 @@ export function chipsFor(order: Row[], current: Row | null, characterId: string,
     current: current?.id === r.id,
     out: !!r.monster_id && r.health === "down",
   }));
+}
+
+async function monsterTurnStart(admin: Admin, combatantId: string, monsterId: string) {
+  const [{ data: row }, { data: m }] = await Promise.all([
+    admin.from("combatants").select("*").eq("id", combatantId).maybeSingle(),
+    admin.from("monsters").select("stat_block").eq("id", monsterId).maybeSingle(),
+  ]);
+  if (!row || !("monster_state" in row)) return;
+  const st = cleanState((row as { monster_state?: unknown }).monster_state);
+  if (!st.spent.length && !st.legendaryUsed && !st.note) return;
+  const next = atTurnStart(st, featuresOf(m?.stat_block).saves, () => roll("1d6").total);
+  await admin.from("combatants").update({ monster_state: next }).eq("id", combatantId);
 }

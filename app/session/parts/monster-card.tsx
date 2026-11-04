@@ -10,6 +10,7 @@ import { ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, HpBar } from "./moderator";
 import { dmChangeHp, setMonsterConcentration } from "../moderator-actions";
 import type { Applied } from "@/lib/moderator/apply";
+import { MonsterTurn } from "./monster-turn";
 
 const KINDS = [
   { key: "attack", label: "Attack" }, { key: "damage", label: "Damage" },
@@ -100,9 +101,11 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
         </div>
       )}
 
+      <MonsterTurn monsterId={monster.id} party={party} targetId={targetId} setTargetId={setTargetId} hidden={hidden} onRolled={setLast} isTurn={isTurn} />
+
       {!!monster.actions?.length && (
         <div className="mt-3">
-          <p className="text-xs text-muted">From its stat block (tap to fill in)</p>
+          <p className="text-xs text-muted">Or by hand: from its stat block (tap to fill in)</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {monster.actions.flatMap((a) => a.kind === "attack" ? [
               <Segment key={a.name + "a"} active={label === a.name && kind === "attack"} onClick={() => { setKind("attack"); setLabel(a.name); setExpression(`1d20${(a.bonus ?? 0) >= 0 ? "+" : ""}${a.bonus ?? 0}`); }}>

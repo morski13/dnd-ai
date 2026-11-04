@@ -1,0 +1,3 @@
+-- 40: battle engine phase 5, monster turns (2026-11-04). Safe to run again.
+-- combatants.monster_state: recharge actions used, per-day uses and legendary actions used this round.
+-- The app works without it; the monster card then can't keep track of those.

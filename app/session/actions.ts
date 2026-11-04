@@ -317,7 +317,7 @@ export async function endCombat(combatId: string): Promise<Fail | void> {
 // ---------------------------------------------------------------- monster + free rolls
 export async function monsterRoll(
   monsterId: string,
-  form: { label: string; expression: string; kind: "attack" | "damage" | "save" | "check" | "other"; hidden: boolean; targetCharacterId: string | null; crit?: boolean }
+  form: { label: string; expression: string; kind: "attack" | "damage" | "save" | "check" | "other"; hidden: boolean; targetCharacterId: string | null; crit?: boolean; damageType?: string | null }
 ): Promise<Fail | QuickRoll> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
   const { userId, campaignId, isDm } = await me();
@@ -374,7 +374,7 @@ export async function monsterRoll(
     rolled_by: userId, monster_id: monster.id, roll_type: form.kind, source: form.label.trim() || "Roll",
     expression: res.expression, dice: res.dice, dice_all: res.diceAll, modifier: res.modifier, total: res.total,
     is_crit: form.kind === "attack" && res.isCrit, is_fumble: form.kind === "attack" && res.isFumble, success,
-    target_character_id: tgt?.characterId ?? null, hidden: form.hidden,
+    target_character_id: tgt?.characterId ?? null, hidden: form.hidden, damage_type: form.kind === "damage" ? form.damageType ?? null : null,
   }).select("id").single();
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
 
@@ -385,6 +385,7 @@ export async function monsterRoll(
       campaignId, sessionId: session.id, combatId: combat?.id ?? null, round: combat?.round ?? null,
       kind: "damage", total: res.total, crit: !!form.crit, rollId: saved.id,
       actor: { monsterId: monster.id }, target: { characterId: tgt.characterId }, createdBy: userId!, hidden: form.hidden,
+      damageType: form.damageType ?? undefined, magical: false, // resistances (a monster's natural weapons aren't magical)
     });
     if (applied) applied.canAdjust = true;
   }
