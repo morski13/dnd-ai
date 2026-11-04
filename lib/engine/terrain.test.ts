@@ -42,3 +42,24 @@ describe("terrain kinds", () => {
     expect(fallDice(500)).toBe("20d6");
   });
 });
+
+describe("objects", () => {
+  it("a 10-ft tree takes 4 squares and blocks them all; fly over at its height", async () => {
+    const { placeObject, objectAt, removeObject } = await import("./terrain");
+    const { terrainOf, moveCosts } = await import("./space");
+    let t = placeObject(readTerrain({}), { id: "t1", k: "tree", x: 2, y: 2, size: 2, tall: 30 }, 10, 10);
+    expect(objectAt(t, 3, 3)?.id).toBe("t1");
+    const tt = terrainOf(t);
+    expect(["2,2", "3,2", "2,3", "3,3"].every((k) => tt.walls.has(k))).toBe(true);
+    expect(tt.tall.get("3,3")).toBe(30);
+    const ctx = { cols: 10, rows: 10, feet: 5, diag: "5" as const, terrain: tt, others: [], rules: "2014" as const };
+    expect(moveCosts({ id: "b", x: 1, y: 2, size: 1, z: 20 }, ctx).costFt(2, 2)).toBeNull();   // 20 ft up: still under its top
+    expect(moveCosts({ id: "b", x: 1, y: 2, size: 1, z: 30 }, ctx).costFt(2, 2)).toBe(5);
+    // a new object on top replaces it; removing works; it stays inside the map
+    t = placeObject(t, { id: "b1", k: "barrel", x: 3, y: 3, size: 1 }, 10, 10);
+    expect(t.objects?.map((o) => o.id)).toEqual(["b1"]);
+    expect(removeObject(t, "b1").objects).toEqual([]);
+    expect(placeObject(readTerrain({}), { id: "x", k: "boulder", x: 9, y: 9, size: 3 }, 10, 10).objects?.[0]).toMatchObject({ x: 7, y: 7 });
+    expect(readTerrain({ objects: [{ id: "z", k: "lava", x: 1, y: 1, size: 2 }] }).objects).toBeUndefined(); // not an object kind
+  });
+});

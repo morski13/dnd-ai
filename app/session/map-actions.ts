@@ -10,9 +10,8 @@ import { climbCost, TALL } from "@/lib/engine/flight";
 import { openWindow } from "@/lib/reactions-server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
 import { moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
-import { isKind, paint, readTerrain, type Kind } from "@/lib/engine/terrain";
 import { addEffect } from "./effect-actions";
-import { liveState, touchCombat } from "@/lib/roll-service";
+import { liveState } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { allOptions } from "@/lib/rules";
 import type { Advantage } from "@/lib/dice";
@@ -207,36 +206,8 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   return { ...res, hit: targets.length };
 }
 
-/** DM: paint squares of the fight's map: a kind of terrain, a height, or clear them. */
-export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear"; height?: number }): Promise<Fail | { ok: true }> {
-  const me = await who();
-  if (!me.campaignId || !me.isDm) return { error: "Only the DM can paint the map." };
-  const b = await battleState(me.campaignId);
-  if (!b) return NO_MAP;
-  if (what.kind && what.kind !== "clear" && !isKind(what.kind)) return { error: "Unknown terrain." };
-  const ok = cells.filter((k) => /^\d+,\d+$/.test(k)).slice(0, 4000).filter((k) => { const [x, y] = k.split(",").map(Number); return x < b.map.cols && y < b.map.rows; });
-  const next = paint(readTerrain(b.terrainRaw), ok, what);
-  const { error } = await b.admin.from("battle_maps").update({ terrain: next }).eq("id", b.map.id);
-  if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
-  await touchCombat(b.admin, b.combat.id);
-  return { ok: true };
-}
 
 
-/** DM: the map's light (bright day, dim cave, dark dungeon) and fog of war for the players. */
-export async function setMapLight(light: "bright" | "dim" | "dark", fog: boolean): Promise<Fail | { ok: true }> {
-  const me = await who();
-  if (!me.campaignId || !me.isDm) return { error: "Only the DM can change the light." };
-  const b = await battleState(me.campaignId);
-  if (!b) return NO_MAP;
-  const t = readTerrain(b.terrainRaw);
-  const next = { ...t, light, ...(fog ? { fog: true } : {}) };
-  if (!fog) delete (next as { fog?: boolean }).fog;
-  const { error } = await b.admin.from("battle_maps").update({ terrain: next }).eq("id", b.map.id);
-  if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
-  await touchCombat(b.admin, b.combat.id);
-  return { ok: true };
-}
 
 /**
  * Fly up, down, or land (z = 0): 5 ft of movement per 5 ft of height. Needs a flying speed. Over a tree or a boulder
@@ -258,8 +229,10 @@ export async function flyTo(tokenId: string, z: number): Promise<Fail | { z: num
   // the top of whatever is under it
   let floor = 0;
   for (let j = 0; j < t.size; j++) for (let i = 0; i < t.size; i++) {
-    const kind = b.terrain.kinds.get(`${t.x + i},${t.y + j}`);
-    if (kind && b.terrain.walls.has(`${t.x + i},${t.y + j}`)) floor = Math.max(floor, TALL[kind] === Infinity ? 0 : TALL[kind] ?? 0);
+    const k = `${t.x + i},${t.y + j}`;
+    const kind = b.terrain.kinds.get(k);
+    const tall = b.terrain.tall.get(k) ?? (kind ? TALL[kind] : 0) ?? 0;
+    if (kind && b.terrain.walls.has(k)) floor = Math.max(floor, tall === Infinity ? 0 : tall);
   }
   if (want < floor) return { error: `There's something ${floor} ft tall under ${t.name}: land next to it.` };
   const cost = climbCost(t.z ?? 0, want);

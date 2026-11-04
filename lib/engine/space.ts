@@ -1,7 +1,7 @@
 // Battle engine, part 4: space on the battle map. Distance between creatures, range and reach, cover,
 // moving through difficult terrain and around walls and enemies, and the opportunity attacks a move provokes.
 // Pure, tested. Grid units: one square = `feet` (5); a token's x/y is its top-left square, `size` squares wide.
-import { KINDS, readTerrain, type HazardRule, type Kind } from "./terrain";
+import { DEFAULT_TALL, KINDS, objectSquares, readTerrain, type HazardRule, type Kind } from "./terrain";
 import { flyOver } from "./flight";
 
 export type Diagonals = "5" | "5-10-5";
@@ -24,6 +24,7 @@ export type Terrain = {
   ambient: "bright" | "dim" | "dark";
   fog: boolean;            // fog of war for the players
   kinds: Map<string, Kind>; // what each painted square is (for flying over it)
+  tall: Map<string, number>; // how tall the object on a square is (feet), for flying over it
 };
 export const key = (x: number, y: number) => `${x},${y}`;
 
@@ -32,7 +33,7 @@ export function terrainOf(raw: unknown): Terrain {
   const d = readTerrain(raw);
   const t: Terrain = {
     walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set(),
-    heavy: new Set(), magicDark: new Set(), lights: [], ambient: d.light ?? "bright", fog: !!d.fog, kinds: new Map(),
+    heavy: new Set(), magicDark: new Set(), lights: [], ambient: d.light ?? "bright", fog: !!d.fog, kinds: new Map(), tall: new Map(),
   };
   for (const [k, c] of Object.entries(d.cells)) {
     const r = KINDS[c.k];
@@ -49,6 +50,22 @@ export function terrainOf(raw: unknown): Terrain {
     if (r.heavilyObscured) t.heavy.add(k);
     if (r.magicalDark) t.magicDark.add(k);
     if (r.light) { const [x, y] = k.split(",").map(Number); t.lights.push({ x, y, ...r.light }); }
+  }
+  // objects: their rules on every square they take; a torch lights from its middle
+  for (const o of d.objects ?? []) {
+    const r = KINDS[o.k];
+    const tall = o.tall ?? DEFAULT_TALL[o.k] ?? 0;
+    for (const k of objectSquares(o)) {
+      if (r.blocksMove) t.walls.add(k);
+      if (r.difficult) t.difficult.add(k);
+      if (r.blocksSight && r.cover === "total") t.sight.add(k);
+      if (r.blocksSight && r.cover === "three-quarters") t.capped.add(k);
+      if (r.cover === "half") t.half.add(k);
+      if (r.lightlyObscured) t.obscured.add(k);
+      t.kinds.set(k, o.k);
+      t.tall.set(k, tall);
+    }
+    if (r.light) t.lights.push({ x: o.x + Math.floor(o.size / 2), y: o.y + Math.floor(o.size / 2), ...r.light });
   }
   return t;
 }
@@ -219,7 +236,8 @@ export function moveCosts(me: Body, ctx: MoveCtx, maxFt = Infinity) {
       const cells = footprint(x, y, me.size);
       // in the air: over trees and boulders if high enough, never through walls; the ground doesn't slow you
       const air = (me.z ?? 0) > 0;
-      if (cells.some(([cx, cy]) => ctx.terrain.walls.has(key(cx, cy)) && !(air && flyOver(ctx.terrain.kinds.get(key(cx, cy)), me.z!)))) continue;
+      const over = (k: string) => { const tall = ctx.terrain.tall.get(k); return tall != null ? me.z! >= tall : flyOver(ctx.terrain.kinds.get(k), me.z!); };
+      if (cells.some(([cx, cy]) => ctx.terrain.walls.has(key(cx, cy)) && !(air && over(key(cx, cy))))) continue;
       let hard = !air && cells.some(([cx, cy]) => ctx.terrain.difficult.has(key(cx, cy)));
       let blocked = false;
       for (const o of ctx.others) {

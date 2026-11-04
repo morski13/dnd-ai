@@ -43,7 +43,15 @@ export const isKind = (k: unknown): k is Kind => typeof k === "string" && k in K
 export type Cell = { k: Kind; h?: number };         // h: height in feet (+ hill, ledge; − pit)
 /** light: the map's light (outdoors by day = bright; a dim cave; a dark dungeon). fog: players only see what their characters see. */
 export type Light = "bright" | "dim" | "dark";
-export type TerrainData = { v: 2; cells: Record<string, Cell>; light?: Light; fog?: boolean };
+/**
+ * Objects placed on the map: a tree, a boulder, barrels… as big as the DM wants (1 square = 5 ft, up to 6×6 =
+ * 30 ft) and as tall as the DM wants (for flying over them). Their rules cover every square they take.
+ */
+export type MapObject = { id: string; k: Kind; x: number; y: number; size: number; tall?: number };
+export const OBJECT_KINDS: Kind[] = ["tree", "boulder", "bush", "rocks", "barrel", "crate", "torch"];
+/** How tall an object is by default (feet). */
+export const DEFAULT_TALL: Partial<Record<Kind, number>> = { tree: 20, boulder: 10, bush: 5, rocks: 0, barrel: 5, crate: 5, torch: 5 };
+export type TerrainData = { v: 2; cells: Record<string, Cell>; objects?: MapObject[]; light?: Light; fog?: boolean };
 
 const okKey = (s: string) => /^\d+,\d+$/.test(s);
 
@@ -64,13 +72,23 @@ export function readTerrain(raw: unknown): TerrainData {
     cells[k] = h ? { k: kind, h } : { k: kind };
   }
   const light: Light | undefined = r.light === "dim" || r.light === "dark" || r.light === "bright" ? r.light : undefined;
-  return { v: 2, cells, ...(light ? { light } : {}), ...(r.fog ? { fog: true } : {}) };
+  const objects: MapObject[] = [];
+  for (const raw of (Array.isArray(r.objects) ? r.objects : []).slice(0, 2000)) {
+    const o = (raw ?? {}) as Record<string, unknown>;
+    if (!isKind(o.k) || !OBJECT_KINDS.includes(o.k)) continue;
+    const x = Math.floor(Number(o.x)), y = Math.floor(Number(o.y));
+    if (!(x >= 0 && y >= 0 && x < 200 && y < 200)) continue;
+    const size = Math.max(1, Math.min(6, Math.round(Number(o.size) || 1)));
+    const tall = o.tall == null ? undefined : Math.max(0, Math.min(500, Math.round(Number(o.tall) || 0)));
+    objects.push({ id: String(o.id ?? `${x},${y}`).slice(0, 40), k: o.k, x, y, size, ...(tall !== undefined ? { tall } : {}) });
+  }
+  return { v: 2, cells, ...(objects.length ? { objects } : {}), ...(light ? { light } : {}), ...(r.fog ? { fog: true } : {}) };
 }
 
 /** Paint squares: a kind (keeps the height), a height (keeps the kind), or clear. */
 export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "clear"; height?: number }): TerrainData {
   const cells = { ...t.cells };
-  const keep = { ...(t.light ? { light: t.light } : {}), ...(t.fog ? { fog: true } : {}) };
+  const keep = { ...(t.objects?.length ? { objects: t.objects } : {}), ...(t.light ? { light: t.light } : {}), ...(t.fog ? { fog: true } : {}) };
   for (const k of keys) {
     if (!okKey(k)) continue;
     const old = cells[k];
@@ -98,4 +116,31 @@ export function strokeSquares(a: { x: number; y: number }, b: { x: number; y: nu
 export function fallDice(feet: number): string | null {
   const n = Math.min(20, Math.floor(Math.max(0, feet) / 10));
   return n ? `${n}d6` : null;
+}
+
+/** The squares an object takes up. */
+export function objectSquares(o: MapObject): string[] {
+  const out: string[] = [];
+  for (let j = 0; j < o.size; j++) for (let i = 0; i < o.size; i++) out.push(`${o.x + i},${o.y + j}`);
+  return out;
+}
+
+/** Put an object on the map (objects it would overlap are replaced). */
+export function placeObject(t: TerrainData, o: MapObject, cols: number, rows: number): TerrainData {
+  const size = Math.max(1, Math.min(6, Math.round(o.size)));
+  const x = Math.max(0, Math.min(cols - size, Math.floor(o.x))), y = Math.max(0, Math.min(rows - size, Math.floor(o.y)));
+  const placed = { ...o, x, y, size };
+  const overlaps = (a: MapObject) => a.x < x + size && x < a.x + a.size && a.y < y + size && y < a.y + a.size;
+  return { ...t, objects: [...(t.objects ?? []).filter((a) => !overlaps(a)), placed] };
+}
+
+/** The object at a square, if any (the topmost). */
+export function objectAt(t: TerrainData, x: number, y: number): MapObject | null {
+  const list = t.objects ?? [];
+  for (let i = list.length - 1; i >= 0; i--) { const o = list[i]; if (x >= o.x && x < o.x + o.size && y >= o.y && y < o.y + o.size) return o; }
+  return null;
+}
+
+export function removeObject(t: TerrainData, id: string): TerrainData {
+  return { ...t, objects: (t.objects ?? []).filter((o) => o.id !== id) };
 }

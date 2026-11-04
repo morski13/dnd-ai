@@ -45,6 +45,21 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
           </g>
         );
       })}
+      {/* objects: one picture over all the squares they take (a 10-ft tree is 2×2) */}
+      {(data.objects ?? []).map((o) => {
+        const r = KINDS[o.k];
+        const pic = r.image && TERRAIN_PICTURES.has(r.image) ? r.image : null;
+        return (
+          <g key={`o${o.id}`} data-object={o.k} data-size={o.size}>
+            {pic
+              ? <image href={`/terrain/${r.image}.png`} x={o.x} y={o.y} width={o.size} height={o.size} preserveAspectRatio="xMidYMid meet" style={{ imageRendering: "pixelated" }} />
+              : <>
+                <circle cx={o.x + o.size / 2} cy={o.y + o.size / 2} r={o.size * 0.46} fill={r.color} opacity={0.85} stroke="#00000066" strokeWidth={0.04} />
+                <text x={o.x + o.size / 2} y={o.y + o.size / 2} dy="0.35em" textAnchor="middle" fontSize={0.42 * o.size}>{GLYPH[o.k] ?? ""}</text>
+              </>}
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -98,6 +113,9 @@ export function LightTools({ light, fog, pending, onChange }: { light: "bright" 
   );
 }
 
+/** Placed as objects (any size), not painted square by square. */
+const OBJECT_ONLY = new Set<Kind>(["tree", "boulder", "bush", "barrel", "crate", "torch"]);
+
 /** The DM's paint tools: what to paint, a height, brush size. */
 export function PaintTools({ brush, setBrush }: { brush: Brush | null; setBrush: (b: Brush | null) => void }) {
   const [h, setH] = useState("10");
@@ -110,9 +128,9 @@ export function PaintTools({ brush, setBrush }: { brush: Brush | null; setBrush:
         <p className="text-sm font-semibold">Paint the map (DM)</p>
         {on && <button type="button" onClick={() => setBrush(null)} className="h-9 rounded-lg bg-accent px-3 text-xs font-bold text-accent-text">Done</button>}
       </div>
-      <p className="text-xs text-muted">Pick what to paint, then drag a finger over the map (two fingers zoom). {on ? "" : "Tap a kind to start."}</p>
+      <p className="text-xs text-muted">Pick what to paint, then drag a finger over the map (two fingers zoom). Trees, boulders, bushes, barrels, crates and lights are objects: place them with Objects. {on ? "" : "Tap a kind to start."}</p>
       <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Terrain">
-        {KIND_LIST.filter((k) => k !== "ground").map((k) => (
+        {KIND_LIST.filter((k) => k !== "ground" && !OBJECT_ONLY.has(k)).map((k) => (
           <button key={k} type="button" role="radio" aria-checked={b.kind === k && on} onClick={() => pick({ kind: k, height: null })}
             className={`flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs ${b.kind === k && on ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`}>
             <span aria-hidden className="inline-block h-3 w-3 rounded-sm" style={{ background: KINDS[k].color === "transparent" ? "none" : KINDS[k].color }} />{KINDS[k].label}

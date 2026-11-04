@@ -7,11 +7,14 @@ import { load, toBlob } from "../campaign/parts/upload";
 import { setFightMap } from "../session/map-actions";
 import { createPlainMap, deleteMap, updateMap } from "./actions";
 import { GridEditor, type Picture } from "./grid-editor";
+import { TerrainEditor } from "./terrain-editor";
+import type { TerrainData } from "@/lib/engine/terrain";
 
-type Item = MapRow & { image: string | null };
+type Item = MapRow & { image: string | null; terrain: TerrainData };
 type Editing =
   | { kind: "new"; picture: Picture | null; blob: Blob | null; name: string }
-  | { kind: "edit"; map: Item; picture: Picture | null };
+  | { kind: "edit"; map: Item; picture: Picture | null }
+  | { kind: "terrain"; map: Item };
 
 export function MapLibrary({ maps, fightId, inFight }: { maps: Item[]; fightId: string | null; inFight: string | null }) {
   const router = useRouter();
@@ -44,6 +47,18 @@ export function MapLibrary({ maps, fightId, inFight }: { maps: Item[]; fightId: 
       done?.();
       router.refresh();
     });
+  }
+
+  if (editing?.kind === "terrain") {
+    const m = editing.map;
+    return (
+      <div ref={top} className="mt-6 scroll-mt-4">
+        <TerrainEditor mapId={m.id} name={m.name} cols={m.cols} rows={m.rows} feet={m.feet} initial={m.terrain}
+          image={m.image && m.image_w && m.image_h ? { src: m.image, w: m.image_w, h: m.image_h } : null}
+          fit={m.crop ? { cols: m.cols, rows: m.rows, crop: m.crop, stretch: m.stretch } : null}
+          onClose={() => { setEditing(null); router.refresh(); }} />
+      </div>
+    );
   }
 
   if (editing) {
@@ -125,6 +140,8 @@ export function MapLibrary({ maps, fightId, inFight }: { maps: Item[]; fightId: 
                 )}
                 <button type="button" onClick={() => setEditing({ kind: "edit", map: m, picture: m.image && m.image_w && m.image_h ? { src: m.image, w: m.image_w, h: m.image_h } : null })}
                   className="h-10 rounded-xl border border-line px-3 text-sm text-soft">Edit grid</button>
+                <button type="button" onClick={() => setEditing({ kind: "terrain", map: m })}
+                  className="h-10 rounded-xl border border-accent-line px-3 text-sm font-semibold text-accent">Terrain</button>
                 <button type="button" disabled={pending} onClick={() => { if (confirm(`Delete ${m.name}?`)) act(() => deleteMap(m.id)); }}
                   className="h-10 rounded-xl border border-danger-line px-3 text-sm text-danger">Delete</button>
               </div>

@@ -1,17 +1,12 @@
-Battle engine phase 3: the reaction pop-up (5 seconds, only for those who can react)
+Battle maps: terrain is set up in the map editor; objects of any size and height
 
-- lib/engine/react.ts: who can react to what. An attack hits: Shield (says when it makes it miss),
-  Uncanny Dodge, Defensive Duelist, Parry, a monster's own reactions; friends: Silvery Barbs (60 ft),
-  Interception (next to the target), Sentinel. A spell: Counterspell within 60 ft. Leaving reach:
-  Opportunity Attack (War Caster). Damage: Hellish Rebuke, Absorb Elements.
-- reaction_windows (SQL 38) opened by: the DM's monster attacks and damage on characters, players'
-  attacks on monsters, players' spells (monsters with Counterspell), moves that leave reach.
-  combatants.reaction_used: used for the round, back at the start of the creature's turn.
-- Pop-up on the Session screen and the sheet: countdown, options with why, Pass. Shield adds +5 AC
-  (later attacks too) and can turn the hit into a miss; Uncanny Dodge halves the next damage;
-  Absorb Elements turns the damage to resisted; Opportunity Attack, Counterspell, Hellish Rebuke…
-  are rolled from the sheet at whoever set it off. The DM answers for monsters.
-- Monster card waits for the reactions before the next roll and shows what was used.
+- Battle maps → Terrain: Objects (tree, boulder, bush, rocks, barrels, crates, light) placed by
+  tapping, 5 ft to 30 ft wide (1×1 to 6×6 squares) and as tall as you want; tap one to resize,
+  change its height or remove it. Ground: the brush (walls, grass, water, hazards, smoke, darkness,
+  heights). Light: bright / dim / dark and fog of war. Save terrain; fights on the map see it at once.
+- Objects' rules cover every square they take (a 10-ft tree blocks 2×2), a light shines from its
+  middle, flying over uses the object's own height.
+- The session map no longer paints; the DM gets a link to the map editor.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

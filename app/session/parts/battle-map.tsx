@@ -11,10 +11,10 @@ import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, disengageToken, flyTo, moveToken, paintTerrain, setFlySpeed, setMapLight, setTokenHidden, teleportToken } from "../map-actions";
-import { paint as paintCells, strokeSquares, type TerrainData } from "@/lib/engine/terrain";
+import { castArea, dashToken, disengageToken, flyTo, moveToken, setFlySpeed, setTokenHidden, teleportToken } from "../map-actions";
 import { terrainOf } from "@/lib/engine/space";
-import { LightLayer, LightTools, PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
+import { LightLayer, TerrainLayer } from "./terrain-layer";
+import Link from "next/link";
 import { useMapAim } from "./map-aim";
 
 export type Teleport = { key: string; name: string; range: number };
@@ -39,20 +39,13 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const [note, setNote] = useState<string | null>(null);
   const [big, setBig] = useState(false);
   const [hideArea, setHideArea] = useState<string | null>(null);
-  // DM: painting terrain with a brush (squares change at once, the server keeps them)
-  const [brush, setBrush] = useState<Brush | null>(null);
-  const paint = brush && (brush.kind || brush.height !== null) ? brush : null;
-  const [localT, setLocalT] = useState<TerrainData | null>(null);
-  const pendingCells = useRef<Set<string>>(new Set());
-  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [unsaved, setUnsaved] = useState(false); // strokes not saved yet: keep showing them over the server's copy
   const [pending, start] = useTransition();
   const wrap = useRef<HTMLDivElement>(null);
 
   // fresh data from the server replaces the guesses
   const [seenBattle, setSeenBattle] = useState(battle);
-  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); if (!unsaved) setLocalT(null); }
-  const tData = localT ?? map.terrain;
+  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); }
+  const tData = map.terrain;
   const visibleSet = useMemo(() => (battle.visible ? new Set(battle.visible) : null), [battle.visible]);
   const terrain = useMemo(() => terrainOf(tData), [tData]);
   const tokens = useMemo(() => battle.tokens.map((t) => (optimistic[t.id] ? { ...t, ...optimistic[t.id] } : t)), [battle.tokens, optimistic]);
@@ -81,7 +74,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const standing = sel && !airborne && (sel.conds ?? []).includes("Prone") ? standUpCost(selSpeed!.speed) : 0;
   const left = sel && selSpeed ? Math.max(0, selSpeed.speed * (1 + sel.dashes) - sel.movedFt - standing) : 0;
   const reach = useMemo(() => {
-    if (!sel || aim || tele || paint) return [];
+    if (!sel || aim || tele) return [];
     if (free && isDm) return [];
     if (!canStrict(sel)) return [];
     const party = (t: BattleToken) => t.kind !== "monster";
@@ -90,7 +83,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       others: tokens.filter((t) => t.id !== sel.id).map((t) => ({ id: t.id, x: t.x, y: t.y, size: t.size, hostile: party(t) !== party(sel) })),
     };
     return reachableSquares(sel, ctx, left);
-  }, [sel, tokens, map, left, free, isDm, aim, tele, paint, terrain, battle.diag, battle.rules]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sel, tokens, map, left, free, isDm, aim, tele, terrain, battle.diag, battle.rules]); // eslint-disable-line react-hooks/exhaustive-deps
   const reachSet = useMemo(() => new Set(reach.map((p) => `${p.x},${p.y}`)), [reach]);
   const myToken = teleportCharacterId ? tokens.find((t) => t.characterId === teleportCharacterId) ?? null : null;
   const teleSquares = useMemo(() => {
@@ -122,35 +115,9 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     });
   }
 
-  /** What the brush paints, as the server understands it. */
-  const brushWhat = (b: Brush) => ({
-    ...(b.kind ? { kind: b.kind } : {}), ...(b.height !== null ? { height: b.height } : {}),
-  });
-  function brushStroke(from: Pt, to: Pt) {
-    if (!paint || !isDm) return;
-    const keys = strokeSquares(from, to, paint.size).filter((k) => { const [x, y] = k.split(",").map(Number); return x < map.cols && y < map.rows; });
-    if (!keys.length) return;
-    const what = brushWhat(paint);
-    setLocalT((t) => paintCells(t ?? map.terrain, keys, what));
-    for (const k of keys) pendingCells.current.add(k);
-    setUnsaved(true);
-    if (flushTimer.current) clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => {
-      const cells = [...pendingCells.current];
-      pendingCells.current.clear();
-      start(async () => {
-        const r = await paintTerrain(cells, what);
-        if ("error" in r) setError(r.error);
-        if (!pendingCells.current.size) setUnsaved(false);
-        router.refresh();
-      });
-    }, 350);
-  }
-
   function tap(p: Pt) {
     if (Object.keys(optimistic).length) return; // the last move is still on its way
     const sq = { x: Math.floor(p.x), y: Math.floor(p.y) };
-    if (paint && isDm) return; // painting happens on the brush strokes
     const at = tokens.find((t) => sq.x >= t.x && sq.x < t.x + t.size && sq.y >= t.y && sq.y < t.y + t.size) ?? null;
     if (aim) {
       if (aim.spec.shape === "targets") {
@@ -216,7 +183,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       fit={map.crop ? { cols: map.cols, rows: map.rows, crop: map.crop, stretch: map.stretch } : null}
       focus={focusTok ? { x: focusTok.x, y: focusTok.y } : null}
       height={big ? "max(220px, calc(100dvh - 210px))" : "min(64dvh, 520px)"}
-      onTap={tap} onHover={aim ? setHover : undefined} onBrush={paint && isDm ? brushStroke : undefined}>
+      onTap={tap} onHover={aim ? setHover : undefined}>
       {/* terrain the DM painted */}
       <TerrainLayer data={tData} />
       {/* the last area spell, for everyone */}
@@ -398,8 +365,12 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             </div>
           )}
 
-          {isDm && <LightTools light={tData.light ?? "bright"} fog={!!tData.fog} pending={pending} onChange={(l, f) => act(() => setMapLight(l, f))} />}
-          {isDm && <PaintTools brush={brush} setBrush={(b) => { setBrush(b); if (b) setFree(false); }} />}
+          {isDm && (
+            <Link href="/maps" className="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface px-3 text-sm">
+              <span><b>Terrain, objects and light</b> <span className="text-xs text-muted">are set in Battle maps → Terrain</span></span>
+              <span aria-hidden className="text-accent">›</span>
+            </Link>
+          )}
           {isDm && (
             <button type="button" role="switch" aria-checked={free} onClick={() => setFree(!free)}
               className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left">

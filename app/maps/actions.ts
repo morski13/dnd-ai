@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cleanFit, plainGrid, type GridFit } from "@/lib/maps/grid";
 import { who } from "@/lib/maps/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readTerrain } from "@/lib/engine/terrain";
 
 type Fail = { error: string };
 const hint = (m?: string) => (/battle_maps/.test(m ?? "") ? "Run supabase/23-battle-maps.sql in Supabase first." : m ?? "Something went wrong.");
@@ -61,4 +62,25 @@ export async function deleteMap(mapId: string): Promise<Fail | void> {
   if (error) return { error: hint(error.message) };
   if (m.image_path) await createAdminClient().storage.from("vault").remove([m.image_path]).then(() => undefined, () => undefined);
   revalidatePath("/maps");
+}
+
+/** The map's terrain (painted ground, objects, light, fog of war), as the DM set it in the map editor. */
+export async function saveMapTerrain(mapId: string, terrain: unknown): Promise<Fail | { ok: true }> {
+  const me = await who();
+  if (!me.campaignId || !me.isDm) return { error: "Only the DM can change battle maps." };
+  const { data: m } = await me.supabase.from("battle_maps").select("id, cols, rows").eq("id", mapId).eq("campaign_id", me.campaignId).maybeSingle();
+  if (!m) return { error: "Map not found." };
+  const clean = readTerrain(terrain);
+  // nothing outside the map
+  const inside = (k: string) => { const [x, y] = k.split(",").map(Number); return x < m.cols && y < m.rows; };
+  const cells = Object.fromEntries(Object.entries(clean.cells).filter(([k]) => inside(k)));
+  const objects = (clean.objects ?? []).filter((o) => o.x + o.size <= m.cols && o.y + o.size <= m.rows);
+  const { error } = await me.supabase.from("battle_maps").update({ terrain: { ...clean, cells, objects }, updated_at: new Date().toISOString() }).eq("id", mapId);
+  if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : hint(error.message) };
+  // a fight on this map sees it at once
+  const admin = createAdminClient();
+  const { data: fights } = await admin.from("combats").select("id, round").eq("map_id", mapId).is("ended_at", null);
+  for (const f of fights ?? []) await admin.from("combats").update({ round: f.round }).eq("id", f.id);
+  revalidatePath("/maps");
+  return { ok: true };
 }

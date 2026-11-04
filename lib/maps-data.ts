@@ -158,15 +158,16 @@ export async function listMaps() {
   await connection(); // depends on who is logged in
   const { who } = await import("@/lib/maps/server");
   const me = await who();
-  if (!me.userId) return { isDm: false, maps: [] as (MapRow & { image: string | null })[], fightId: null as string | null, inFight: null as string | null, ready: true };
+  if (!me.userId) return { isDm: false, maps: [] as (MapRow & { image: string | null; terrain: TerrainData })[], fightId: null as string | null, inFight: null as string | null, ready: true };
   if (!me.campaignId || !me.isDm) return { isDm: false, maps: [], fightId: null, inFight: null, ready: true };
-  const { data, error } = await me.supabase.from("battle_maps").select(MAP_COLUMNS).eq("campaign_id", me.campaignId).order("created_at", { ascending: false });
+  // "*": the terrain only exists after 36-map-terrain.sql
+  const { data, error } = await me.supabase.from("battle_maps").select("*").eq("campaign_id", me.campaignId).order("created_at", { ascending: false });
   const { liveState } = await import("@/lib/roll-service");
   const { combat } = await liveState(createAdminClient(), me.campaignId);
   const { data: c } = combat ? await me.supabase.from("combats").select("map_id").eq("id", combat.id).maybeSingle() : { data: null };
   return {
     isDm: true, ready: !error,
-    maps: ((data ?? []) as MapRow[]).map((m) => ({ ...m, image: mapImageUrl(m) })),
+    maps: ((data ?? []) as (MapRow & { terrain?: unknown })[]).map((m) => ({ ...m, image: mapImageUrl(m), terrain: readTerrain(m.terrain) })),
     fightId: combat?.id ?? null, inFight: (c as { map_id?: string } | null)?.map_id ?? null,
   };
 }
