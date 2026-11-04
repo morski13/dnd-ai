@@ -1,0 +1,101 @@
+// Battle engine, part 5: what each kind of terrain does (pure, tested).
+// The DM paints squares with a kind (tree, water, barrels…), a height, doors and windows, and hazards.
+// Stored on the map as terrain v2: { v: 2, cells: { "3,4": { k: "tree", h: 10 } }, doors: { "5,5": { open: false } } }.
+// The old format ({ walls: [...], difficult: [...] }) still reads.
+
+export type Kind =
+  | "wall" | "tree" | "boulder" | "bush" | "grass" | "rocks" | "water" | "deep-water" | "barrel" | "crate" | "difficult"
+  | "fire" | "lava" | "spikes" | "acid" | "ground";
+
+export type HazardRule = { dice: string; type: string; when: "enter" | "start" | "both"; note: string };
+
+/** The rules of each kind. `cover`: what it gives when it's between attacker and target. */
+export const KINDS: Record<Kind, {
+  label: string; blocksMove: boolean; difficult: boolean; blocksSight: boolean; cover: "half" | "three-quarters" | "total" | null;
+  lightlyObscured?: boolean; swim?: boolean; hazard?: HazardRule; image: string; color: string;
+}> = {
+  wall:         { label: "Wall", blocksMove: true, difficult: false, blocksSight: true, cover: "total", image: "wall", color: "#16120e" },
+  tree:         { label: "Tree", blocksMove: true, difficult: false, blocksSight: true, cover: "three-quarters", image: "tree", color: "#2f5d2a" },
+  boulder:      { label: "Boulder", blocksMove: true, difficult: false, blocksSight: true, cover: "three-quarters", image: "boulder", color: "#6d6a63" },
+  bush:         { label: "Bush", blocksMove: false, difficult: true, blocksSight: false, cover: "half", lightlyObscured: true, image: "bush", color: "#4f7a3a" },
+  grass:        { label: "Tall grass", blocksMove: false, difficult: true, blocksSight: false, cover: null, lightlyObscured: true, image: "grass", color: "#7f9a3c" },
+  rocks:        { label: "Rocks", blocksMove: false, difficult: true, blocksSight: false, cover: null, image: "rocks", color: "#8a847a" },
+  water:        { label: "Shallow water", blocksMove: false, difficult: true, blocksSight: false, cover: null, image: "water-shallow", color: "#3f7fa8" },
+  "deep-water": { label: "Deep water", blocksMove: false, difficult: true, blocksSight: false, cover: null, swim: true, image: "water-deep", color: "#1f4f7a" },
+  barrel:       { label: "Barrels", blocksMove: false, difficult: true, blocksSight: false, cover: "half", image: "barrel", color: "#8a5a2b" },
+  crate:        { label: "Crates", blocksMove: false, difficult: true, blocksSight: false, cover: "half", image: "crate", color: "#9b7442" },
+  difficult:    { label: "Difficult", blocksMove: false, difficult: true, blocksSight: false, cover: null, image: "", color: "#C9A05A" },
+  fire:         { label: "Fire", blocksMove: false, difficult: false, blocksSight: false, cover: null, hazard: { dice: "1d10", type: "fire", when: "both", note: "entering or starting a turn in it" }, image: "fire", color: "#e0662a" },
+  lava:         { label: "Lava", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "10d10", type: "fire", when: "both", note: "entering or starting a turn in it" }, image: "lava", color: "#c43b12" },
+  spikes:       { label: "Spikes", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "2d4", type: "piercing", when: "enter", note: "for every 5 ft moved through it" }, image: "spikes", color: "#7a6a5a" },
+  acid:         { label: "Acid", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "2d6", type: "acid", when: "both", note: "entering or starting a turn in it" }, image: "acid", color: "#6fae2a" },
+  ground:       { label: "Ground (height only)", blocksMove: false, difficult: false, blocksSight: false, cover: null, image: "", color: "transparent" },
+};
+export const KIND_LIST = Object.keys(KINDS) as Kind[];
+export const isKind = (k: unknown): k is Kind => typeof k === "string" && k in KINDS;
+
+export type Cell = { k: Kind; h?: number };         // h: height in feet (+ hill, ledge; − pit)
+export type Door = { open: boolean; window?: boolean };
+export type TerrainData = { v: 2; cells: Record<string, Cell>; doors: Record<string, Door> };
+
+const okKey = (s: string) => /^\d+,\d+$/.test(s);
+
+/** Reads any stored terrain (old walls/difficult lists, or v2). */
+export function readTerrain(raw: unknown): TerrainData {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const cells: Record<string, Cell> = {};
+  const doors: Record<string, Door> = {};
+  for (const k of (Array.isArray(r.walls) ? r.walls : []).map(String)) if (okKey(k)) cells[k] = { k: "wall" };
+  for (const k of (Array.isArray(r.difficult) ? r.difficult : []).map(String)) if (okKey(k) && !cells[k]) cells[k] = { k: "difficult" };
+  const rc = (r.cells && typeof r.cells === "object" ? r.cells : {}) as Record<string, unknown>;
+  let n = 0;
+  for (const [k, v] of Object.entries(rc)) {
+    if (!okKey(k) || ++n > 20000) continue;
+    const c = (v ?? {}) as Record<string, unknown>;
+    const kind = isKind(c.k) ? c.k : "ground";
+    const h = Math.max(-200, Math.min(200, Math.round(Number(c.h) || 0)));
+    if (kind === "ground" && !h) continue;
+    cells[k] = h ? { k: kind, h } : { k: kind };
+  }
+  const rd = (r.doors && typeof r.doors === "object" ? r.doors : {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(rd)) {
+    if (!okKey(k)) continue;
+    const d = (v ?? {}) as Record<string, unknown>;
+    doors[k] = { open: !!d.open, ...(d.window ? { window: true } : {}) };
+  }
+  return { v: 2, cells, doors };
+}
+
+/** Paint squares: a kind (keeps the height), a height (keeps the kind), or clear. Doors and windows too. */
+export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "clear"; height?: number; door?: "door" | "window" | "none" }): TerrainData {
+  const cells = { ...t.cells }, doors = { ...t.doors };
+  for (const k of keys) {
+    if (!okKey(k)) continue;
+    const old = cells[k];
+    if (what.kind === "clear") { delete cells[k]; delete doors[k]; continue; }
+    const kind = what.kind ?? old?.k ?? "ground";
+    const h = what.height !== undefined ? Math.max(-200, Math.min(200, Math.round(what.height))) : old?.h ?? 0;
+    if (kind === "ground" && !h) delete cells[k]; else cells[k] = h ? { k: kind, h } : { k: kind };
+    if (what.door === "none") delete doors[k];
+    else if (what.door) doors[k] = { open: false, ...(what.door === "window" ? { window: true } : {}) };
+  }
+  return { v: 2, cells, doors };
+}
+
+/** The squares of a brush stroke between two points (a straight line of squares, `size` wide). */
+export function strokeSquares(a: { x: number; y: number }, b: { x: number; y: number }, size = 1): string[] {
+  const out = new Set<string>();
+  const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 3));
+  const r = Math.max(0, Math.floor((size - 1) / 2));
+  for (let i = 0; i <= n; i++) {
+    const x = Math.floor(a.x + ((b.x - a.x) * i) / n), y = Math.floor(a.y + ((b.y - a.y) * i) / n);
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (x + dx >= 0 && y + dy >= 0) out.add(`${x + dx},${y + dy}`);
+  }
+  return [...out];
+}
+
+/** Falling: 1d6 bludgeoning per 10 ft, at most 20d6. */
+export function fallDice(feet: number): string | null {
+  const n = Math.min(20, Math.floor(Math.max(0, feet) / 10));
+  return n ? `${n}d6` : null;
+}

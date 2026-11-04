@@ -7,13 +7,15 @@ import { imagePlacement, type GridFit } from "@/lib/maps/grid";
 export type Pt = { x: number; y: number };
 type View = { x: number; y: number; w: number };
 
-export function Board({ cols, rows, image, fit, children, onTap, onHover, focus, gridLines = true, height = "min(68dvh, 560px)", label = "Battle map", toolbar }: {
+export function Board({ cols, rows, image, fit, children, onTap, onHover, onBrush, focus, gridLines = true, height = "min(68dvh, 560px)", label = "Battle map", toolbar }: {
   cols: number; rows: number;
   image?: { src: string; w: number; h: number } | null;
   fit?: GridFit | null;                 // where the picture sits under the grid
   children?: ReactNode;                 // drawn in grid units, above the picture and grid
   onTap?: (p: Pt) => void;
   onHover?: (p: Pt | null) => void;
+  /** painting: one finger draws (from the last point to this one) instead of moving the view; two fingers still zoom */
+  onBrush?: (from: Pt, to: Pt) => void;
   focus?: Pt | null;                    // centre here when it first appears (e.g. your token)
   gridLines?: boolean;
   height?: string;
@@ -72,15 +74,19 @@ export function Board({ cols, rows, image, fit, children, onTap, onHover, focus,
 
   // pointers: one finger drags, two pinch; a press that barely moves is a tap
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
-  const gesture = useRef<{ moved: boolean; startX: number; startY: number; pinch?: number } | null>(null);
+  const gesture = useRef<{ moved: boolean; startX: number; startY: number; pinch?: number; brushAt?: Pt | null } | null>(null);
   const onDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (ptrs.current.size === 1) gesture.current = { moved: false, startX: e.clientX, startY: e.clientY };
+    if (ptrs.current.size === 1) {
+      gesture.current = { moved: false, startX: e.clientX, startY: e.clientY };
+      if (onBrush) { const p = toGrid(e.clientX, e.clientY); if (p) { gesture.current.brushAt = p; gesture.current.moved = true; onBrush(p, p); } }
+    }
     if (ptrs.current.size === 2 && gesture.current) {
       const [a, b] = [...ptrs.current.values()];
       gesture.current.pinch = Math.hypot(a.x - b.x, a.y - b.y);
       gesture.current.moved = true;
+      gesture.current.brushAt = null; // two fingers: zoom, not paint
     }
   };
   const onMove = (e: React.PointerEvent) => {
@@ -95,6 +101,11 @@ export function Board({ cols, rows, image, fit, children, onTap, onHover, focus,
       const r = box.current!.getBoundingClientRect();
       zoomAt(g.pinch / Math.max(1, d), ((a.x + b.x) / 2 - r.left) / r.width, ((a.y + b.y) / 2 - r.top) / r.height);
       g.pinch = d;
+      return;
+    }
+    if (onBrush && g.brushAt) {
+      const p = toGrid(e.clientX, e.clientY);
+      if (p) { onBrush(g.brushAt, p); g.brushAt = p; }
       return;
     }
     if (!g.moved && Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < 7) return;

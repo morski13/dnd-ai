@@ -5,9 +5,10 @@ import { loadCharacter } from "@/lib/character-data";
 import { inRange, parseArea, place, tokensIn } from "@/lib/maps/area";
 import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
-import { battleState, moveCtx, who } from "@/lib/maps/server";
+import { battleState, moveCtx, terrainHarm, who } from "@/lib/maps/server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
-import { moveCosts, provoked, standUpCost } from "@/lib/engine/space";
+import { distanceFt, moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
+import { isKind, paint, readTerrain, type Kind } from "@/lib/engine/terrain";
 import { addEffect } from "./effect-actions";
 import { liveState, touchCombat } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,7 +20,7 @@ type Fail = { error: string };
 const NO_MAP = { error: "There's no battle map in this fight." };
 
 /** Move a token to (x, y). `free`: DM only, ignores turns and distance (for setting up). */
-export async function moveToken(tokenId: string, x: number, y: number, free = false): Promise<Fail | { movedFt: number; provoked?: string[]; stood?: boolean }> {
+export async function moveToken(tokenId: string, x: number, y: number, free = false): Promise<Fail | { movedFt: number; provoked?: string[]; stood?: boolean; harm?: string[] }> {
   const me = await who();
   if (!me.userId || !me.campaignId) return { error: "Log in first." };
   const b = await battleState(me.campaignId);
@@ -51,8 +52,15 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
   const prov = provoked(path, t, threats, { feet: b.map.feet, diag: b.diag, disengaged: t.conds.includes("Disengaged") });
   await b.admin.from("map_tokens").update({ x: nx, y: ny, moved_ft: t.moved_ft + standing + cost, updated_at: new Date().toISOString() }).eq("id", t.id);
   if (prone) await standUp(b.admin, t);
+  // the ground on the way: fire, lava, spikes, acid; and dropping 10 ft or more is a fall
+  let fallFt = 0;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const drop = standingZ({ ...t, ...path[i], z: 0 }, b.terrain) - standingZ({ ...t, ...path[i + 1], z: 0 }, b.terrain);
+    if (drop >= 10) fallFt = Math.max(fallFt, drop);
+  }
+  const harm = (t.z ?? 0) > 0 && !fallFt ? [] : await terrainHarm(b, t, { squares: path.slice(1), when: "enter", fallFt }, me.userId);
   return {
-    movedFt: t.moved_ft + standing + cost, stood: prone,
+    movedFt: t.moved_ft + standing + cost, stood: prone, harm: harm.length ? harm : undefined,
     provoked: prov.map((o) => (o.hidden && !me.isDm ? "Something unseen" : o.name)),
   };
 }
@@ -190,21 +198,38 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   return { ...res, hit: targets.length };
 }
 
-/** DM: paint squares of the fight's map as walls or difficult terrain, or clear them. */
-export async function paintTerrain(cells: string[], kind: "wall" | "difficult" | "clear"): Promise<Fail | { walls: number; difficult: number }> {
+/** DM: paint squares of the fight's map: a kind of terrain, a height, a door or window, or clear them. */
+export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear"; height?: number; door?: "door" | "window" | "none" }): Promise<Fail | { ok: true }> {
   const me = await who();
   if (!me.campaignId || !me.isDm) return { error: "Only the DM can paint the map." };
   const b = await battleState(me.campaignId);
   if (!b) return NO_MAP;
-  const ok = cells.filter((k) => /^\d+,\d+$/.test(k)).slice(0, 2000).filter((k) => { const [x, y] = k.split(",").map(Number); return x < b.map.cols && y < b.map.rows; });
-  const walls = new Set(b.terrain.walls), difficult = new Set(b.terrain.difficult);
-  for (const k of ok) {
-    walls.delete(k); difficult.delete(k);
-    if (kind === "wall") walls.add(k);
-    if (kind === "difficult") difficult.add(k);
-  }
-  const { error } = await b.admin.from("battle_maps").update({ terrain: { walls: [...walls], difficult: [...difficult] } }).eq("id", b.map.id);
+  if (what.kind && what.kind !== "clear" && !isKind(what.kind)) return { error: "Unknown terrain." };
+  const ok = cells.filter((k) => /^\d+,\d+$/.test(k)).slice(0, 4000).filter((k) => { const [x, y] = k.split(",").map(Number); return x < b.map.cols && y < b.map.rows; });
+  const next = paint(readTerrain(b.terrainRaw), ok, what);
+  const { error } = await b.admin.from("battle_maps").update({ terrain: next }).eq("id", b.map.id);
   if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
   await touchCombat(b.admin, b.combat.id);
-  return { walls: walls.size, difficult: difficult.size };
+  return { ok: true };
+}
+
+/** Open or close a door: the DM any time; a player on their turn, standing next to it. */
+export async function toggleDoor(cell: string): Promise<Fail | { open: boolean }> {
+  const me = await who();
+  if (!me.userId || !me.campaignId) return { error: "Log in first." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const t = readTerrain(b.terrainRaw);
+  const door = t.doors[cell];
+  if (!door || door.window) return { error: "There's no door there." };
+  if (!me.isDm) {
+    const mine = b.tokens.find((k) => k.owner === me.userId && k.combatant_id === b.currentCombatantId);
+    if (!mine) return { error: "You can open doors on your turn." };
+    const [x, y] = cell.split(",").map(Number);
+    if (distanceFt(mine, { id: "door", x, y, size: 1 }, b.map.feet, b.diag) > 5) return { error: "Stand next to the door to open it." };
+  }
+  t.doors[cell] = { ...door, open: !door.open };
+  await b.admin.from("battle_maps").update({ terrain: t }).eq("id", b.map.id);
+  await touchCombat(b.admin, b.combat.id);
+  return { open: !door.open };
 }

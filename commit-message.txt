@@ -1,17 +1,17 @@
-Battle engine phase 2: the battle map follows the rules (distance, range, cover, terrain, opportunity attacks)
+Battle map terrain: kinds, height, brush, doors and windows, hazards, falling
 
-- lib/engine/space.ts: distance between creatures (Large ones too), 5 ft or 5-10-5 diagonals,
-  reach and range of weapons and spells (reach weapons, thrown, long range), cover from walls and
-  creatures (half +2, three-quarters +5, total), movement costs around walls and enemies through
-  difficult terrain (allies passable; 2024: their space is difficult), opportunity attacks along a path.
-- DM paints walls and difficult terrain on the fight's map; house rule for diagonals in DM tools.
-- Moving: real path costs, speed after conditions, standing up from Prone first, Disengage button;
-  "leaving reach: Ogre can make an opportunity attack".
-- Attacks from the sheet and the DM's monster attacks: out of reach / range refused, long range =
-  disadvantage, melee next to the target for Prone / auto-crit, cover added to AC, total cover refused;
-  the monster's and target's conditions now apply to DM rolls too.
-- Dodge / Disengage from the sheet reach the fight. 2024 stat blocks' condition immunities read.
-- SQL 36-map-terrain.sql.
+- lib/engine/terrain.ts: wall, tree, boulder, bush, tall grass, rocks, shallow / deep water, barrels,
+  crates, difficult, fire, lava, spikes, acid; heights in feet; doors and windows; terrain v2 storage
+  (the old walls / difficult lists still read); brush strokes; falling dice.
+- space.ts: trees and boulders block moving and give up to three-quarters cover; bushes, barrels,
+  crates and windows half cover; closed doors block sight; climbing costs a foot per foot; height
+  counts in distance; ground higher than both creatures blocks the view; a solid wall along a grid
+  line blocks too.
+- DM brush (drag to paint, 1×1 or 3×3), paint height, doors and windows; doors open and close
+  (players on their turn, next to it).
+- Fire, lava, acid hurt when entering or starting a turn there, spikes for every square; a drop of
+  10 ft or more is a fall (1d6 per 10 ft, Prone). Damage uses resistances and is logged.
+- public/terrain/ waits for the DM's own pictures (TERRAIN_PICTURES switch); colours until then.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

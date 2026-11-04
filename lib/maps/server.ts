@@ -7,6 +7,9 @@ import { walkSpeed } from "./move";
 import { coverOf, distanceFt, reachOf, terrainOf, type Diagonals, type MoveCtx } from "@/lib/engine/space";
 import { monsterReach } from "@/lib/engine/damage";
 import { cleanEffects, shownConditions } from "@/lib/engine/effects";
+import { fallDice, KINDS } from "@/lib/engine/terrain";
+import { roll } from "@/lib/dice";
+import { applyHp } from "@/lib/moderator/apply";
 
 export async function who() {
   const supabase = await createClient();
@@ -22,6 +25,7 @@ export type FullToken = {
   id: string; combatant_id: string; x: number; y: number; size: number; hidden: boolean; moved_ft: number; dashes: number;
   character_id: string | null; monster_id: string | null; owner: string | null; speed: number;
   name: string; side: "party" | "enemy"; conds: string[]; reach: number;
+  z?: number; // flying height (feet)
 };
 
 /** The running fight's map and every token in it (hidden ones too: only for the server's own checks). */
@@ -69,7 +73,7 @@ export async function battleState(campaignId: string) {
   const rules = ((camp?.rule_set as string) === "2014" ? "2014" : "2024") as "2014" | "2024";
   const diag: Diagonals = (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5";
   const terrain = terrainOf((map as { terrain?: unknown }).terrain);
-  return { admin, combat, map: map as { id: string; cols: number; rows: number; feet: number }, tokens, currentCombatantId: current, terrain, diag, rules };
+  return { admin, combat, map: map as { id: string; cols: number; rows: number; feet: number }, tokens, currentCombatantId: current, terrain, terrainRaw: (map as { terrain?: unknown }).terrain, diag, rules };
 }
 
 /** The battle state as the movement rules need it, for one creature (who is friend and who is foe). */
@@ -92,7 +96,69 @@ export async function attackGeometry(campaignId: string, from: { characterId?: s
     b.tokens.find((t) => (w.characterId ? t.character_id === w.characterId : !!w.monsterId && t.monster_id === w.monsterId)) ?? null;
   const a = find(from), t = find(to);
   if (!a || !t) return null;
-  const dist = distanceFt(a, t, b.map.feet, b.diag);
+  const dist = distanceFt(a, t, b.map.feet, b.diag, b.terrain);
   const cover = coverOf(a, t, b.terrain, b.tokens.filter((k) => k.id !== a.id && k.id !== t.id));
   return { dist, cover, feet: b.map.feet };
+}
+
+/**
+ * Terrain that hurts: fire, lava, acid (entering or starting a turn there), spikes (every square moved through),
+ * and falling (a drop of 10 ft or more on the way: 1d6 per 10 ft, then Prone). Rolls the damage, takes it off HP
+ * with the creature's resistances, and logs it. Returns what happened, in words.
+ */
+export async function terrainHarm(
+  b: NonNullable<Awaited<ReturnType<typeof battleState>>>, t: FullToken,
+  what: { squares: { x: number; y: number }[]; when: "enter" | "start"; fallFt?: number }, byUser: string,
+): Promise<string[]> {
+  const out: string[] = [];
+  const hits: { dice: string; type: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const sq of what.squares) {
+    for (let j = 0; j < t.size; j++) for (let i = 0; i < t.size; i++) {
+      const k = `${sq.x + i},${sq.y + j}`;
+      const h = b.terrain.hazards.get(k);
+      if (!h) continue;
+      const fits = h.when === "both" || h.when === what.when;
+      if (!fits) continue;
+      // spikes hurt for every square walked; the others once per move or turn start
+      const once = h.kind !== "spikes" ? h.kind : `${h.kind}:${sq.x},${sq.y}`;
+      if (seen.has(once)) continue;
+      seen.add(once);
+      hits.push({ dice: h.dice, type: h.type, label: KINDS[h.kind].label });
+    }
+  }
+  const fall = fallDice(what.fallFt ?? 0);
+  if (fall) hits.push({ dice: fall, type: "bludgeoning", label: `Falling ${what.fallFt} ft` });
+  if (!hits.length) return out;
+  const { session } = await liveState(b.admin, b.combat.campaign_id as string);
+  for (const h of hits) {
+    const r = roll(h.dice);
+    await b.admin.from("roll_events").insert({
+      campaign_id: b.combat.campaign_id, session_id: session?.id ?? null, combat_id: b.combat.id, round: b.combat.round, rolled_by: byUser,
+      roll_type: "damage", source: `${h.label} (terrain)`, expression: r.expression, dice: r.dice, dice_all: r.diceAll, modifier: r.modifier, total: r.total,
+      damage_type: h.type, target_character_id: t.character_id, target_monster_id: t.monster_id, hidden: t.hidden,
+    });
+    const applied = await applyHp(b.admin, {
+      campaignId: b.combat.campaign_id as string, sessionId: session?.id ?? null, combatId: b.combat.id, round: b.combat.round,
+      kind: "damage", total: r.total, target: { characterId: t.character_id, monsterId: t.monster_id }, createdBy: byUser, hidden: t.hidden,
+      damageType: h.type, magical: false,
+    });
+    out.push(`${t.name}: ${h.label}, ${applied ? applied.amount : r.total} ${h.type}${applied?.defense ? ` (${applied.defense})` : ""}.`);
+  }
+  if (fall) {
+    const { data: c } = await b.admin.from("combatants").select("conditions").eq("id", t.combatant_id).maybeSingle();
+    const cond = (c?.conditions as string[] | null) ?? [];
+    if (!cond.includes("Prone")) await b.admin.from("combatants").update({ conditions: [...cond, "Prone"] }).eq("id", t.combatant_id);
+    out.push(`${t.name} lands Prone.`);
+  }
+  return out;
+}
+
+/** The start of a creature's turn on the map: does the ground it stands on hurt? */
+export async function terrainAtTurnStart(campaignId: string, combatantId: string, byUser: string): Promise<string[]> {
+  const b = await battleState(campaignId);
+  if (!b) return [];
+  const t = b.tokens.find((k) => k.combatant_id === combatantId);
+  if (!t || (t.z ?? 0) > 0) return [];
+  return terrainHarm(b, t, { squares: [{ x: t.x, y: t.y }], when: "start" }, byUser);
 }

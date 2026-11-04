@@ -1,19 +1,54 @@
 // Battle engine, part 4: space on the battle map. Distance between creatures, range and reach, cover,
 // moving through difficult terrain and around walls and enemies, and the opportunity attacks a move provokes.
 // Pure, tested. Grid units: one square = `feet` (5); a token's x/y is its top-left square, `size` squares wide.
+import { KINDS, readTerrain, type HazardRule, type Kind } from "./terrain";
 
 export type Diagonals = "5" | "5-10-5";
 export type Pos = { x: number; y: number };
-export type Body = Pos & { id: string; size: number };
-export type Terrain = { walls: Set<string>; difficult: Set<string> };
+/** z: feet above the ground it stands on (flying); the ground's own height comes from the terrain. */
+export type Body = Pos & { id: string; size: number; z?: number };
+export type Terrain = {
+  walls: Set<string>;      // can't move through (walls, trees, boulders, closed doors, windows)
+  difficult: Set<string>;  // costs double
+  sight: Set<string>;      // blocks sight completely (walls, closed doors)
+  capped: Set<string>;     // blocks sight, but gives three-quarters cover at most (trees, boulders)
+  half: Set<string>;       // half cover (bushes, barrels, crates, windows)
+  height: Map<string, number>; // feet above (or below) the floor
+  obscured: Set<string>;   // lightly obscured (tall grass, bushes)
+  hazards: Map<string, HazardRule & { kind: Kind }>;
+  swim: Set<string>;       // deep water
+};
 export const key = (x: number, y: number) => `${x},${y}`;
 
-/** Terrain as stored with a map ({ walls: ["3,4"], difficult: [...] }). */
+/** Terrain as stored with a map (old { walls, difficult } lists, or v2 cells / doors). */
 export function terrainOf(raw: unknown): Terrain {
-  const r = (raw && typeof raw === "object" ? raw : {}) as { walls?: unknown; difficult?: unknown };
-  const list = (v: unknown) => new Set((Array.isArray(v) ? v : []).map(String).filter((s) => /^\d+,\d+$/.test(s)).slice(0, 20000));
-  return { walls: list(r.walls), difficult: list(r.difficult) };
+  const d = readTerrain(raw);
+  const t: Terrain = { walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set() };
+  for (const [k, c] of Object.entries(d.cells)) {
+    const r = KINDS[c.k];
+    if (r.blocksMove) t.walls.add(k);
+    if (r.difficult) t.difficult.add(k);
+    if (r.blocksSight && r.cover === "total") t.sight.add(k);
+    if (r.blocksSight && r.cover === "three-quarters") t.capped.add(k);
+    if (r.cover === "half") t.half.add(k);
+    if (r.lightlyObscured) t.obscured.add(k);
+    if (r.swim) t.swim.add(k);
+    if (r.hazard) t.hazards.set(k, { ...r.hazard, kind: c.k });
+    if (c.h) t.height.set(k, c.h);
+  }
+  for (const [k, door] of Object.entries(d.doors)) {
+    if (door.window) { t.walls.add(k); t.half.add(k); continue; }
+    if (!door.open) { t.walls.add(k); t.sight.add(k); }
+  }
+  return t;
 }
+
+/** How high a creature stands: the highest ground under it, plus how high it flies. */
+export const standingZ = (b: Body, t: Terrain) => {
+  let h = -Infinity;
+  for (let j = 0; j < b.size; j++) for (let i = 0; i < b.size; i++) h = Math.max(h, t.height.get(key(b.x + i, b.y + j)) ?? 0);
+  return (Number.isFinite(h) ? h : 0) + (b.z ?? 0);
+};
 
 /** Steps between two creatures' spaces along each axis (next to each other = 1, overlapping = 0). */
 function steps(a: Body, b: Body) {
@@ -24,10 +59,18 @@ function steps(a: Body, b: Body) {
 const diagSquares = (dx: number, dy: number, diag: Diagonals) =>
   diag === "5-10-5" ? Math.max(dx, dy) + Math.floor(Math.min(dx, dy) / 2) : Math.max(dx, dy);
 
-/** Distance between two creatures in feet (side by side = 5 ft). */
-export function distanceFt(a: Body, b: Body, feet = 5, diag: Diagonals = "5") {
+/**
+ * Distance between two creatures in feet (side by side = 5 ft). With `terrain`, height counts too
+ * (a creature on a 15-ft ledge right above you is 15 ft away).
+ */
+export function distanceFt(a: Body, b: Body, feet = 5, diag: Diagonals = "5", terrain?: Terrain) {
   const { dx, dy } = steps(a, b);
-  return diagSquares(dx, dy, diag) * feet;
+  const za = terrain ? standingZ(a, terrain) : a.z ?? 0, zb = terrain ? standingZ(b, terrain) : b.z ?? 0;
+  const dz = Math.round(Math.abs(za - zb) / feet);
+  if (!dz) return diagSquares(dx, dy, diag) * feet;
+  // three directions: the longest counts, the others like diagonals
+  const [m, ...rest] = [dx, dy, dz].sort((p, q) => q - p);
+  return (diag === "5-10-5" ? m + Math.floor((rest[0] + rest[1]) / 2) : m) * feet;
 }
 
 // ---------------------------------------------------------------- range and reach
@@ -77,7 +120,11 @@ function lineHits(p: Pos, q: Pos, cells: (x: number, y: number) => boolean) {
   for (let i = 1; i < n; i++) {
     const x = p.x + ((q.x - p.x) * i) / n, y = p.y + ((q.y - p.y) * i) / n;
     const fx = x - Math.floor(x), fy = y - Math.floor(y);
-    if (fx < 0.03 || fx > 0.97 || fy < 0.03 || fy > 0.97) continue; // running along a grid line or a corner: not through
+    const onX = fx < 0.03 || fx > 0.97, onY = fy < 0.03 || fy > 0.97;
+    if (onX && onY) continue; // a corner: never blocks by itself
+    // along a grid line: blocked only when the squares on both sides block (a solid wall, not its edge)
+    if (onX) { const gx = Math.round(x); if (cells(gx - 1, Math.floor(y)) && cells(gx, Math.floor(y))) return true; continue; }
+    if (onY) { const gy = Math.round(y); if (cells(Math.floor(x), gy - 1) && cells(Math.floor(x), gy)) return true; continue; }
     if (cells(Math.floor(x), Math.floor(y))) return true;
   }
   return false;
@@ -98,18 +145,23 @@ export function coverOf(from: Body, to: Body, terrain: Terrain, others: Body[]):
     if (d < best) { best = d; tx = x; ty = y; }
   }
   const corners: Pos[] = [{ x: tx, y: ty }, { x: tx + 1, y: ty }, { x: tx, y: ty + 1 }, { x: tx + 1, y: ty + 1 }];
-  const wall = (x: number, y: number) => terrain.walls.has(key(x, y));
+  // ground higher than both of them is in the way like a wall (a ridge between them)
+  const top = Math.max(standingZ(from, terrain), standingZ(to, terrain));
+  const ridge = (x: number, y: number) => (terrain.height.get(key(x, y)) ?? 0) >= top + 5;
+  const wall = (x: number, y: number) => terrain.sight.has(key(x, y)) || ridge(x, y);
+  const capped = (x: number, y: number) => terrain.capped.has(key(x, y));
   const inWay = others.filter((o) => o.id !== from.id && o.id !== to.id);
-  const creature = (x: number, y: number) => inWay.some((o) => x >= o.x && x < o.x + o.size && y >= o.y && y < o.y + o.size);
-  let bestWalls = 5, bestCreatures = 5;
+  const low = (x: number, y: number) => terrain.half.has(key(x, y)) || inWay.some((o) => x >= o.x && x < o.x + o.size && y >= o.y && y < o.y + o.size);
+  let pick = { w: 5, c: 5, l: 5 };
   for (const c of fromCorners) {
     const w = corners.filter((k) => lineHits(c, k, wall)).length;
-    const cr = corners.filter((k) => lineHits(c, k, creature)).length;
-    if (w < bestWalls || (w === bestWalls && cr < bestCreatures)) { bestWalls = w; bestCreatures = cr; }
+    const cp = corners.filter((k) => lineHits(c, k, (x, y) => wall(x, y) || capped(x, y))).length;
+    const l = corners.filter((k) => lineHits(c, k, low)).length;
+    if (cp < pick.c || (cp === pick.c && (w < pick.w || (w === pick.w && l < pick.l)))) pick = { w, c: cp, l };
   }
-  if (bestWalls === 4) return { level: "total", ac: 0, why: "total cover: no clear line to it" };
-  if (bestWalls === 3) return { level: "three-quarters", ac: 5, why: "three-quarters cover (+5 AC)" };
-  if (bestWalls >= 1 || bestCreatures >= 1) return { level: "half", ac: 2, why: `half cover (+2 AC)${bestWalls ? "" : ": someone is in the way"}` };
+  if (pick.w === 4) return { level: "total", ac: 0, why: "total cover: no clear line to it" };
+  if (pick.c >= 3) return { level: "three-quarters", ac: 5, why: "three-quarters cover (+5 AC)" };
+  if (pick.c >= 1 || pick.l >= 1) return { level: "half", ac: 2, why: `half cover (+2 AC)${pick.c ? "" : ": something low or someone is in the way"}` };
   return { level: "none", ac: 0, why: null };
 }
 
@@ -167,7 +219,10 @@ export function moveCosts(me: Body, ctx: MoveCtx, maxFt = Infinity) {
       const diagonal = !!dx && !!dy;
       let step = 1, parity = n.parity;
       if (diagonal && ctx.diag === "5-10-5") { step = n.parity ? 2 : 1; parity = n.parity ? 0 : 1; }
-      const cost = n.cost + step * (hard ? 2 : 1);
+      // climbing up: every foot of height costs a foot more (going down is free; a big drop is a fall)
+      const rise = standingZ({ ...me, x, y, z: 0 }, ctx.terrain) - standingZ({ ...me, x: n.x, y: n.y, z: 0 }, ctx.terrain);
+      const climb = rise > 0 ? Math.ceil(rise / ctx.feet) : 0;
+      const cost = n.cost + step * (hard ? 2 : 1) + climb;
       if (cost > max) continue;
       const s = { x, y, parity };
       if (cost >= (seen.get(sk(s)) ?? Infinity)) continue;

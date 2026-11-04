@@ -29,7 +29,7 @@ export async function liveState(admin: Admin, campaignId: string) {
     .from("combats").select("*") // "mode" (played at the table) only exists after 34-table-combat.sql
     .eq("session_id", session.id).is("ended_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
-  return { session, combat: combat as { id: string; round: number; turn_index: number; mode?: string } | null };
+  return { session, combat: combat as { id: string; campaign_id: string; session_id: string | null; round: number; turn_index: number; mode?: string } | null };
 }
 
 /** Name and AC of a target in this campaign (null if it isn't one). */

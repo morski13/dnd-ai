@@ -11,7 +11,10 @@ import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken } from "../map-actions";
+import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken, toggleDoor } from "../map-actions";
+import { paint as paintCells, strokeSquares, type TerrainData } from "@/lib/engine/terrain";
+import { terrainOf } from "@/lib/engine/space";
+import { PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
 import { useMapAim } from "./map-aim";
 
 export type Teleport = { key: string; name: string; range: number };
@@ -36,20 +39,21 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const [note, setNote] = useState<string | null>(null);
   const [big, setBig] = useState(false);
   const [hideArea, setHideArea] = useState<string | null>(null);
-  // DM: painting walls and difficult terrain (squares change at once, the server keeps them)
-  const [paint, setPaint] = useState<"wall" | "difficult" | "clear" | null>(null);
-  const [painted, setPainted] = useState<Record<string, "wall" | "difficult" | "clear">>({});
+  // DM: painting terrain with a brush (squares change at once, the server keeps them)
+  const [brush, setBrush] = useState<Brush | null>(null);
+  const paint = brush && (brush.kind || brush.door || brush.height !== null) ? brush : null;
+  const [localT, setLocalT] = useState<TerrainData | null>(null);
+  const pendingCells = useRef<Set<string>>(new Set());
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [unsaved, setUnsaved] = useState(false); // strokes not saved yet: keep showing them over the server's copy
   const [pending, start] = useTransition();
   const wrap = useRef<HTMLDivElement>(null);
 
   // fresh data from the server replaces the guesses
   const [seenBattle, setSeenBattle] = useState(battle);
-  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); setPainted({}); }
-  const terrain = useMemo(() => {
-    const walls = new Set(map.walls ?? []), difficult = new Set(map.difficult ?? []);
-    for (const [k, v] of Object.entries(painted)) { walls.delete(k); difficult.delete(k); if (v === "wall") walls.add(k); if (v === "difficult") difficult.add(k); }
-    return { walls, difficult };
-  }, [map.walls, map.difficult, painted]);
+  if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); if (!unsaved) setLocalT(null); }
+  const tData = localT ?? map.terrain;
+  const terrain = useMemo(() => terrainOf(tData), [tData]);
   const tokens = useMemo(() => battle.tokens.map((t) => (optimistic[t.id] ? { ...t, ...optimistic[t.id] } : t)), [battle.tokens, optimistic]);
   const byCombatant = useMemo(() => new Map(combatants.map((c) => [c.id, c])), [combatants]);
   const current = tokens.find((t) => t.combatantId === currentCombatantId) ?? null;
@@ -116,16 +120,40 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     });
   }
 
+  /** What the brush paints, as the server understands it. */
+  const brushWhat = (b: Brush) => ({
+    ...(b.kind ? { kind: b.kind } : {}), ...(b.height !== null ? { height: b.height } : {}), ...(b.door ? { door: b.door } : {}),
+  });
+  function brushStroke(from: Pt, to: Pt) {
+    if (!paint || !isDm) return;
+    const keys = strokeSquares(from, to, paint.size).filter((k) => { const [x, y] = k.split(",").map(Number); return x < map.cols && y < map.rows; });
+    if (!keys.length) return;
+    const what = brushWhat(paint);
+    setLocalT((t) => paintCells(t ?? map.terrain, keys, what));
+    for (const k of keys) pendingCells.current.add(k);
+    setUnsaved(true);
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(() => {
+      const cells = [...pendingCells.current];
+      pendingCells.current.clear();
+      start(async () => {
+        const r = await paintTerrain(cells, what);
+        if ("error" in r) setError(r.error);
+        if (!pendingCells.current.size) setUnsaved(false);
+        router.refresh();
+      });
+    }, 350);
+  }
+
   function tap(p: Pt) {
     if (Object.keys(optimistic).length) return; // the last move is still on its way
     const sq = { x: Math.floor(p.x), y: Math.floor(p.y) };
-    if (paint && isDm) {
-      const k = sqKey(sq.x, sq.y);
-      const now = terrain.walls.has(k) ? "wall" : terrain.difficult.has(k) ? "difficult" : "clear";
-      const to = now === paint ? "clear" : paint; // tapping the same kind again clears it
-      setPainted((x) => ({ ...x, [k]: to }));
-      start(async () => { const r = await paintTerrain([k], to); if ("error" in r) setError(r.error); });
-      return;
+    if (paint && isDm) return; // painting happens on the brush strokes
+    // a door: open or close it (players: on their turn, standing next to it)
+    const doorKey = sqKey(sq.x, sq.y);
+    const door = tData.doors[doorKey];
+    if (door && !door.window && !aim && !tele) {
+      return act(() => toggleDoor(doorKey), (r) => setNote(r.open ? "The door is open." : "The door is closed."));
     }
     const at = tokens.find((t) => sq.x >= t.x && sq.x < t.x + t.size && sq.y >= t.y && sq.y < t.y + t.size) ?? null;
     if (aim) {
@@ -165,7 +193,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     const who = sel.mine ? "You" : sel.name;
     act(() => moveToken(sel.id, sq.x, sq.y), (r) => {
       const bits = [r.stood ? `${who} stood up first (half the speed).` : null,
-        r.provoked?.length ? `Leaving reach: ${r.provoked.join(", ")} can make an opportunity attack.` : null].filter(Boolean);
+        r.provoked?.length ? `Leaving reach: ${r.provoked.join(", ")} can make an opportunity attack.` : null, ...(r.harm ?? [])].filter(Boolean);
       if (bits.length) setNote(bits.join(" "));
     });
   }
@@ -192,15 +220,9 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
       fit={map.crop ? { cols: map.cols, rows: map.rows, crop: map.crop, stretch: map.stretch } : null}
       focus={focusTok ? { x: focusTok.x, y: focusTok.y } : null}
       height={big ? "max(220px, calc(100dvh - 210px))" : "min(64dvh, 520px)"}
-      onTap={tap} onHover={aim ? setHover : undefined}>
-      {/* terrain the DM painted: walls block moving and sight, difficult terrain costs double */}
-      <defs>
-        <pattern id="difficult-hatch" width={0.25} height={0.25} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1={0} y1={0} x2={0} y2={0.25} stroke="#C9A05A" strokeWidth={0.06} />
-        </pattern>
-      </defs>
-      {[...terrain.difficult].map((k) => { const [x, y] = k.split(",").map(Number); return <rect key={`d${k}`} x={x} y={y} width={1} height={1} fill="url(#difficult-hatch)" opacity={0.75} data-difficult="" />; })}
-      {[...terrain.walls].map((k) => { const [x, y] = k.split(",").map(Number); return <rect key={`w${k}`} x={x} y={y} width={1} height={1} fill="#16120e" opacity={0.85} stroke="#6b5a45" strokeWidth={0.03} data-wall="" />; })}
+      onTap={tap} onHover={aim ? setHover : undefined} onBrush={paint && isDm ? brushStroke : undefined}>
+      {/* terrain the DM painted */}
+      <TerrainLayer data={tData} />
       {/* the last area spell, for everyone */}
       {lastSquares.map((s) => <rect key={`l${s.x},${s.y}`} x={s.x} y={s.y} width={1} height={1} fill="#F0703C" opacity={0.28} />)}
       {/* squares you can move to */}
@@ -337,19 +359,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             </div>
           )}
 
-          {isDm && (
-            <div className="rounded-xl border border-line bg-surface px-3 py-2" aria-label="Paint the map">
-              <p className="text-sm font-semibold">Paint the map (DM)</p>
-              <p className="text-xs text-muted">Walls block moving and sight (cover). Difficult terrain costs double. Tap squares; tap again to clear.</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {([["wall", "Wall"], ["difficult", "Difficult"], ["clear", "Erase"]] as const).map(([k, label]) => (
-                  <button key={k} type="button" aria-pressed={paint === k} onClick={() => { setPaint(paint === k ? null : k); setFree(false); }}
-                    className={`h-9 rounded-full border px-3 text-xs font-semibold ${paint === k ? "border-accent bg-accent text-accent-text" : "border-line text-soft"}`}>{label}</button>
-                ))}
-                {paint && <button type="button" onClick={() => setPaint(null)} className="h-9 px-2 text-xs text-muted underline">Done</button>}
-              </div>
-            </div>
-          )}
+          {isDm && <PaintTools brush={brush} setBrush={(b) => { setBrush(b); if (b) setFree(false); }} />}
           {isDm && (
             <button type="button" role="switch" aria-checked={free} onClick={() => setFree(!free)}
               className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left">

@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Crop } from "@/lib/maps/grid";
 import { moveBudget, sizeSquares, startingSpots, walkSpeed } from "@/lib/maps/move";
-import { terrainOf } from "@/lib/engine/space";
+import { readTerrain, type TerrainData } from "@/lib/engine/terrain";
 
 export type MapRow = { id: string; name: string; image_path: string | null; image_w: number | null; image_h: number | null; cols: number; rows: number; crop: Crop | null; stretch: boolean; feet: number; updated_at: string };
 export const MAP_COLUMNS = "id, name, image_path, image_w, image_h, cols, rows, crop, stretch, feet, updated_at";
@@ -20,7 +20,7 @@ export type BattleArea = { by: string; spell: string; placed: unknown; at: strin
 export type Battle = {
   map: {
     id: string; name: string; cols: number; rows: number; feet: number; crop: Crop | null; stretch: boolean; image: string | null; imageW: number | null; imageH: number | null;
-    walls: string[]; difficult: string[];  // painted by the DM (SQL 36): "x,y" squares
+    terrain: TerrainData;  // painted by the DM (SQL 36): kinds, heights, doors
   };
   diag: "5" | "5-10-5"; rules: "2014" | "2024";
   tokens: BattleToken[]; lastArea: BattleArea; currentCombatantId: string | null;
@@ -85,7 +85,7 @@ export async function loadBattle(supabase: SupabaseClient, a: {
     supabase.from("battle_maps").select("*").eq("id", c.map_id).maybeSingle(), // "*": terrain only after 36-map-terrain.sql
     supabase.from("campaigns").select("rule_set, settings").eq("id", a.campaignId).maybeSingle(),
   ]);
-  const map = m as (MapRow & { terrain?: { walls?: string[]; difficult?: string[] } }) | null;
+  const map = m as (MapRow & { terrain?: unknown }) | null;
   if (!map) return null;
   if (a.isDm) await ensureTokens(a.campaignId, a.combatId, map.cols, map.rows);
   const { data: rows } = await supabase.from("map_tokens").select("id, combatant_id, x, y, size, hidden, moved_ft, dashes").eq("combat_id", a.combatId);
@@ -118,7 +118,7 @@ export async function loadBattle(supabase: SupabaseClient, a: {
   return {
     map: {
       id: map.id, name: map.name, cols: map.cols, rows: map.rows, feet: map.feet, crop: map.crop, stretch: map.stretch, image: mapImageUrl(map), imageW: map.image_w, imageH: map.image_h,
-      walls: [...terrainOf(map.terrain).walls], difficult: [...terrainOf(map.terrain).difficult],
+      terrain: readTerrain(map.terrain),
     },
     diag: (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5",
     rules: camp?.rule_set === "2014" ? "2014" : "2024",
