@@ -7,6 +7,7 @@ import { monsterSave } from "@/lib/moderator/concentration";
 import { isThemeId, type ThemeId } from "@/lib/themes";
 import { healthOf, type DeathSaves, type Health } from "@/lib/moderator/hp";
 import { loadBattle, type Battle } from "@/lib/maps-data";
+import { cleanEffects, describe as describeEffect } from "@/lib/engine/effects";
 
 export type Combatant = {
   id: string;
@@ -27,6 +28,7 @@ export type Combatant = {
   deathSaves: DeathSaves | null; // dying characters (hidden from players if death saves are secret)
   out: boolean;                // down monster or dead character: skipped in the turn order
   concentration: string | null; // spell being concentrated on (monsters: DM only)
+  effects: { id: string; name: string; conditions: string[]; text: string }[]; // timed conditions (SQL 35)
 };
 
 const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
@@ -121,7 +123,8 @@ export async function getSessionData(focusParam?: string | null) {
   let combatants: Combatant[] = [];
   if (combat) {
     const [{ data: rows }, { data: saves }] = await Promise.all([
-      supabase.from("combatants").select("id, name, character_id, monster_id, initiative, initiative_hidden, dex_mod, conditions, health, monsters(kind)")
+      // "*": timed effects (SQL 35) only exist once it's run
+      supabase.from("combatants").select("*, monsters(kind)")
         .eq("combat_id", combat.id),
       supabase.from("death_saves").select("character_id, successes, failures, stable, dead").eq("campaign_id", campaign.id),
     ]);
@@ -145,6 +148,7 @@ export async function getSessionData(focusParam?: string | null) {
         ally: (r.monsters as unknown as { kind?: string } | null)?.kind === "npc",
         hp, hpMax, temp: ch?.temp_hp ?? 0, health,
         conditions: (r.conditions as string[] | null) ?? [],
+        effects: cleanEffects((r as { effects?: unknown }).effects).map((e) => ({ id: e.id, name: e.name, conditions: e.conditions, text: describeEffect(e, (id) => shortName((rows ?? []).find((x) => x.id === id)?.name ?? "someone")) })),
         deathSaves: saves && (isDm || !base.deathSavesSecret) ? saves : null,
         out: r.monster_id ? health === "down" : !!(r.character_id && ds.get(r.character_id)?.dead),
         concentration: ((ch as { concentration?: { spell?: string } | null } | null)?.concentration ?? (mo as { concentration?: { spell?: string } | null } | null)?.concentration)?.spell ?? null,

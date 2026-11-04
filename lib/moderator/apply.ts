@@ -4,6 +4,8 @@
 import type { Admin, Target } from "@/lib/roll-service";
 import { touchCombat } from "@/lib/roll-service";
 import { checkConcentration, type ConcentrationCheck } from "./concentration";
+import { factorFor, typesIn } from "../engine/damage";
+import { endConcentrationEffects, whoIs } from "../engine/server";
 import { adjusted, applyDamage, applyHeal, healthOf, NO_SAVES, type DeathSaves, type Factor, type Health, type HpState } from "./hp";
 
 export type Applied = {
@@ -26,6 +28,7 @@ export type Applied = {
   canAdjust: boolean;      // filled in by the caller for the viewer
   undone?: boolean;
   concentration?: ConcentrationCheck | null; // the CON save to keep a spell going
+  defense?: string | null;  // why the damage changed: "resistant to fire" (resistance, immunity, vulnerability)
 };
 
 type Loaded = { kind: "character" | "monster"; id: string; campaignId: string; name: string; state: HpState };
@@ -88,14 +91,23 @@ export type ApplyArgs = {
   target: Target;
   createdBy: string;
   hidden?: boolean;
+  damageType?: string | null; // "fire", "slashing": the target's resistances / immunities / vulnerabilities apply
+  magical?: boolean;          // counts as magical (beats "nonmagical" resistances)
 };
 
 /** Apply damage or healing to a target and record it. Returns null if the target isn't found. */
 export async function applyHp(admin: Admin, a: ApplyArgs): Promise<Applied | null> {
   const t = await loadTarget(admin, a.campaignId, a.target);
   if (!t) return null;
-  const factor: Factor = a.kind === "damage" ? (a.factor ?? "full") : "full";
-  const amount = a.kind === "damage" ? adjusted(a.total, factor) : Math.max(0, Math.floor(a.total));
+  // the target's defenses against this damage type (a save's half comes first, then resistance)
+  let defense: { factor: Factor; why: string | null } = { factor: "full", why: null };
+  if (a.kind === "damage" && a.damageType && !a.factor?.match(/resist|double|immune/)) {
+    const who = await whoIs(admin, a.campaignId, a.combatId, a.target);
+    if (who) defense = factorFor(typesIn(a.damageType), who.defenses, { magical: !!a.magical, conds: who.conds });
+  }
+  const saveFactor: Factor = a.kind === "damage" ? (a.factor ?? "full") : "full";
+  const factor: Factor = defense.factor !== "full" ? defense.factor : saveFactor;
+  const amount = a.kind === "damage" ? adjusted(adjusted(a.total, saveFactor), defense.factor) : Math.max(0, Math.floor(a.total));
   const change = a.kind === "damage"
     ? applyDamage(t.state, amount, { isCharacter: t.kind === "character", crit: a.crit })
     : applyHeal(t.state, amount);
@@ -123,6 +135,10 @@ export async function applyHp(admin: Admin, a: ApplyArgs): Promise<Applied | nul
     })
     : null;
 
+  // lost concentration: what it kept up ends
+  if (concentration && !concentration.kept && a.combatId) {
+    await endConcentrationEffects(admin, a.combatId, { characterId: t.kind === "character" ? t.id : null, monsterId: t.kind === "monster" ? t.id : null });
+  }
   return {
     effectId: eff?.id ?? "",
     kind: a.kind,
@@ -134,6 +150,7 @@ export async function applyHp(admin: Admin, a: ApplyArgs): Promise<Applied | nul
     health: healthOf(change.next.hp, t.state.max || null),
     canAdjust: false,
     concentration,
+    defense: defense.why,
   };
 }
 

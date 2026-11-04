@@ -5,14 +5,15 @@
 // your conditions, and "End turn", which hands the turn to the next one in the order.
 import Link from "next/link";
 import { useState } from "react";
-import { CONDITIONS } from "@/lib/moderator/hp";
 import { actionsLeft, moveBudget, STANDARD_ACTIONS, type Turn } from "@/lib/turn";
+import { canAct, speedOf } from "@/lib/engine/conditions";
+import { DurationPick, type PickedEffect } from "../../../session/parts/duration-pick";
 import type { SheetCombat } from "../combat-actions";
 
 export type ReactionChoice = { id: string; name: string; why: string; roll: boolean };
 
 export function CombatPanel({ combat, t, perAction, speed, canEdit, pending, warning, canSurge, bonusStd, reactions, conditions, note,
-  onRollInit, onEndTurn, onAction, onMove, onSurge, onDrop, onReaction, onConditions, saveHelper, onSaveHelper, onEndFight }: {
+  onRollInit, onEndTurn, onAction, onMove, onSurge, onDrop, onReaction, onConditions, saveHelper, onSaveHelper, onEndFight, onTimed, onRemoveTimed }: {
   combat: NonNullable<SheetCombat>; t: Turn; perAction: number; speed: number; canEdit: boolean; pending: boolean;
   warning: string | null; canSurge: boolean; bonusStd: Set<string>;
   reactions: ReactionChoice[]; conditions: string[]; note: string | null;
@@ -21,11 +22,19 @@ export function CombatPanel({ combat, t, perAction, speed, canEdit, pending, war
   saveHelper: React.ReactNode | null; onSaveHelper: () => void;
   /** players running the game themselves (or the DM): end the whole fight here */
   onEndFight?: () => void;
+  /** a condition with a duration, on you in this fight; and taking one off */
+  onTimed: (p: PickedEffect) => void;
+  onRemoveTimed: (effectId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const myTurn = !!combat.current?.me;
   const left = actionsLeft(t);
-  const budget = moveBudget(t, speed);
+  // the rules: what your conditions allow
+  const allConds = [...new Set([...conditions, ...combat.fightConditions])];
+  const act = canAct(allConds, combat.rules);
+  const sp = speedOf(speed, allConds, combat.rules);
+  const budget = moveBudget(t, sp.speed);
+  const timed = combat.myEffects;
   const actionText = !myTurn ? "on your turn" : t.attacksLeft > 0 ? `${t.attacksLeft} more ${t.attacksLeft === 1 ? "attack" : "attacks"}` : left > 0 ? (left > 1 ? `${left} actions` : perAction > 1 ? `ready · ${perAction} attacks` : "ready") : "used";
   const next = (() => {
     const i = combat.order.findIndex((c) => c.current);
@@ -88,6 +97,11 @@ export function CombatPanel({ combat, t, perAction, speed, canEdit, pending, war
         </div>
       )}
 
+      {(!act.actions || sp.why) && (
+        <p role="alert" className="mt-2 rounded-lg border border-danger-line bg-danger-bg px-3 py-2 text-xs font-semibold text-danger">
+          {act.why ?? ""}{act.why && sp.why ? " · " : ""}{sp.why ?? ""}
+        </p>
+      )}
       {still.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted">Still on:</span>
@@ -150,7 +164,13 @@ export function CombatPanel({ combat, t, perAction, speed, canEdit, pending, war
       <div className="mt-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">Conditions</span>
-          {conditions.length === 0 && <span className="text-xs text-muted">none</span>}
+          {conditions.length === 0 && timed.length === 0 && <span className="text-xs text-muted">none</span>}
+          {timed.map((e) => (
+            <button key={e.id} type="button" disabled={!canEdit} onClick={() => onRemoveTimed(e.id)} aria-label={`Remove ${e.name}`} title={e.text}
+              className="inline-flex min-h-8 items-center gap-1 rounded-full border border-danger-line bg-danger-bg px-2.5 text-left text-xs font-bold text-danger">
+              {e.conditions.join(", ")}<span className="font-normal text-soft"> · {e.text}</span> <span aria-hidden>✕</span>
+            </button>
+          ))}
           {conditions.map((c) => (
             <button key={c} type="button" disabled={!canEdit} onClick={() => onConditions(conditions.filter((x) => x !== c))} aria-label={`Remove ${c}`}
               className="inline-flex h-8 items-center gap-1 rounded-full border border-danger-line bg-danger-bg px-2.5 text-xs font-bold text-danger">{c} <span aria-hidden>✕</span></button>
@@ -158,11 +178,16 @@ export function CombatPanel({ combat, t, perAction, speed, canEdit, pending, war
           {canEdit && !adding && <button type="button" onClick={() => setAdding(true)} className="h-8 rounded-full border border-line px-2.5 text-xs text-soft">+ Add</button>}
         </div>
         {adding && (
-          <select autoFocus aria-label="Add a condition" defaultValue="" onChange={(e) => { if (e.target.value) onConditions([...conditions, e.target.value]); setAdding(false); }} onBlur={() => setAdding(false)}
-            className="mt-1.5 h-11 w-full rounded-lg border border-line bg-bg px-3 text-sm">
-            <option value="">Pick a condition…</option>
-            {CONDITIONS.filter((c) => !conditions.includes(c) && c !== "Concentrating").map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <>
+            <DurationPick have={allConds} pending={pending} onClose={() => setAdding(false)}
+              others={combat.order.filter((o) => !o.me).map((o) => ({ id: o.id, name: o.name }))}
+              onPick={(p) => {
+                // "until removed" stays on the sheet after the fight; anything with a duration lives in this fight
+                if (p.duration === "removed" && !p.sourceCombatantId && !p.name) onConditions([...conditions, ...p.conditions]); else onTimed(p);
+                setAdding(false);
+              }} />
+            <p className="mt-1 text-[11px] text-muted">&quot;Until removed&quot; stays after the fight (until a long rest). With a duration, the app takes it off when the time comes.</p>
+          </>
         )}
       </div>
 

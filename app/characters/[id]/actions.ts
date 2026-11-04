@@ -4,7 +4,9 @@ import { refresh } from "next/cache";
 // Dice are rolled HERE on the server, every bonus comes from the character's data, and only
 // the server (with the secret key) may save rolls, so a roll can't be faked from the browser.
 import { cleanSheetStyle, type SheetStyle } from "@/lib/themes";
-import { roll, type Advantage, type Rng } from "@/lib/dice";
+import { combine, roll, type Advantage, type Rng } from "@/lib/dice";
+import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods } from "@/lib/engine/conditions";
+import { campaignRules, endConcentrationEffects, whoIs } from "@/lib/engine/server";
 import { replayRng } from "@/lib/offline-rolls";
 import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
@@ -43,6 +45,8 @@ export type SavedRoll = {
   appliedAll?: Applied[];                    // healing on several creatures (Mass Healing Word): one HP change each
   aimedAt?: string[];                        // everyone it was aimed at (a buff on several friends)
   missed?: boolean;                          // damage after a missed attack: not applied
+  autoSaves?: boolean;                       // a save spell whose targets' saves the app rolled itself
+  reasons?: string[];                        // why the rules changed this roll ("Advantage: Ogre is Prone")
   table?: { row: string; text?: string };    // a roll table: the row it landed on
   next?: { key: string; label: string; many?: boolean }; // a table row with something to roll: offer it next
   self?: SelfResult | null;                  // what happened to the roller afterwards (temp HP, damage)
@@ -143,6 +147,7 @@ export async function rollForCharacter(
   let parentTarget: Target | null = null;
   let parentMissed = false;
   let parentIsSave = false;
+  let parentSaved = false;
   let parentTargetName: string | null = null; // an enemy that isn't in the app, typed by the player ("Goblin")
   if (request.kind === "damage" && request.parentRollId) {
     const { data: parent } = await supabase
@@ -152,21 +157,40 @@ export async function rollForCharacter(
       parentTargetName = (parent as { target_name?: string | null }).target_name ?? null;
       parentRollId = parent.id;
       critical = !!parent.is_crit;
-      parentMissed = parent.success === false;
+      parentMissed = parent.roll_type === "attack" && parent.success === false;
       parentIsSave = parent.roll_type === "save_dc";
+      // a save spell at the table: the player said the target saved (the DM knows its save)
+      parentSaved = parent.roll_type === "save_dc" && parent.success === true;
       parentTarget = { characterId: parent.target_character_id, monsterId: parent.target_monster_id };
     }
   }
   // a missed attack (only attacks have hit / miss) has no damage to roll
   if (parentMissed) return { error: "That attack missed, so there's no damage to roll." };
+  // they made the save: half damage, or none for spells without "half on a save"
+  if (parentSaved && request.kind === "damage" && !opt?.half_on_save) return { error: "They made the save: this spell does no damage on a success." };
+
+  // The rules: conditions on you and on your target change the d20 (advantage, disadvantage, 2024 Exhaustion,
+  // automatic failures and crits). Each reason is shown with the roll.
+  const early = createAdminClient();
+  const livePromise = liveState(early, c.campaign_id);
+  let rules: Awaited<ReturnType<typeof conditionRules>> = null;
+  if (plan.d20) rules = await conditionRules(early, c, plan, opt, request, parentTarget ?? target, (await livePromise).combat?.id ?? null);
 
   let result: ReturnType<typeof roll> | null = null;
   try {
-    const adv: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
-    result = plan.expression ? roll(plan.expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode, rng: replay?.rng }) : null;
+    const chosen: Advantage = plan.d20 && (advantage === "advantage" || advantage === "disadvantage") ? advantage : "normal";
+    // typed-in real dice already show how many d20s were rolled: the rules only add their reasons then
+    const adv: Advantage = rules && !replay ? combineAdvantage(chosen, rules.mods) : chosen;
+    const expression = rules?.mods.penalty ? combine(plan.expression, String(rules.mods.penalty)) : plan.expression;
+    result = expression ? roll(expression, { advantage: adv, critical, critOn: plan.critOn, critExtra: plan.critExtra, critMode: plan.critMode, rng: replay?.rng }) : null;
   } catch (e) {
     return { error: `Can't roll "${plan.expression}": ${(e as Error).message}` };
   }
+  const reasons = rules ? rollWith("normal", rules.mods).reasons.concat(rules.mods.notes) : [];
+  if (rules?.mods.autoFail) reasons.unshift(rules.mods.autoFail);
+
+  const halvedFrom = parentSaved && result && request.kind === "damage" ? result.total : null;
+  if (halvedFrom != null && result) result = { ...result, total: Math.floor(result.total / 2) };
 
   // Magic Reserves: spends as many uses as the roll shows (no more than are left)
   if (request.kind === "use" && opt?.spend_rolled && plan.resource && result) {
@@ -197,7 +221,7 @@ export async function rollForCharacter(
   };
   const [saveError, { session, combat }, tgtFound, viewerIsDm, autoApply] = await Promise.all([
     saveChanges(),
-    liveState(admin, c.campaign_id),
+    livePromise,
     lookupTarget(admin, c.campaign_id, parentTarget ?? target),
     isCampaignDm(admin, c.campaign_id, userId),
     campaignAutoApply(admin, c.campaign_id),
@@ -226,9 +250,16 @@ export async function rollForCharacter(
   }
   // against the target's AC, or the AC typed on the sheet when there's no target
   const vsAc = plan.rollType === "attack" ? tgt?.ac ?? typedAc(request) : null;
-  const success = plan.rollType === "attack" && result
+  let success = plan.rollType === "attack" && result
     ? hitOrMiss(result.total, vsAc, result.isCrit, result.isFumble)
     : null;
+  // a hit on a Paralyzed or Unconscious creature from within 5 ft is a critical hit
+  if (plan.rollType === "attack" && result && rules?.mods.autoCrit && success !== false && !result.isCrit) {
+    result = { ...result, isCrit: true };
+    reasons.unshift(rules.mods.autoCrit);
+  }
+  // your own save while Paralyzed, Stunned…: it fails, whatever the dice say
+  if (plan.rollType === "save" && rules?.mods.autoFail) success = false;
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
   // no creature in the app to aim at: the name the player typed (fights played at the table)
   const targetName = tgt ? null : parentTargetName ?? cleanName(target?.name);
@@ -282,7 +313,7 @@ export async function rollForCharacter(
     const all = [target, ...(moreTargets ?? [])].filter((t): t is Target => !!(t?.characterId || t?.monsterId));
     const unique = all.filter((t, i) => all.findIndex((x) => x.characterId === t.characterId && x.monsterId === t.monsterId) === i);
     if (unique.length) {
-      saves = maskSaves(await rollTargetSaves(admin, { ...base, parentRollId: saved.id, ability: plan.ability, dc: plan.dc, spell: plan.source, targets: unique }), viewerIsDm);
+      saves = maskSaves(await rollTargetSaves(admin, { ...base, parentRollId: saved.id, ability: plan.ability, dc: plan.dc, spell: plan.source, targets: unique, rules: await campaignRules(admin, c.campaign_id, c.rule_set) }), viewerIsDm);
     }
   }
 
@@ -295,7 +326,7 @@ export async function rollForCharacter(
     for (const r of rows ?? []) {
       if (r.success && !opt?.half_on_save) continue; // saved completely
       const one = await applyHp(admin, {
-        ...base, sessionId: session.id, kind: "damage", total: result.total, crit: false, rollId: saved.id, factor: r.success ? "half" : "full",
+        ...base, sessionId: session.id, kind: "damage", total: result.total, crit: false, rollId: saved.id, factor: r.success ? "half" : "full", damageType: plan.damageType ?? null, magical: true,
         actor: { characterId: c.id }, target: { characterId: r.character_id, monsterId: r.monster_id },
       });
       if (!one) continue;
@@ -314,7 +345,7 @@ export async function rollForCharacter(
       && autoApply) {
     applied = await applyHp(admin, {
       campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null,
-      kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id,
+      kind: plan.rollType, total: result.total, crit: critical, rollId: saved.id, damageType: plan.damageType ?? null, magical: magicalHit(opt),
       actor: { characterId: c.id }, target: { characterId: tgt.characterId, monsterId: tgt.monsterId }, createdBy: userId,
     });
     if (applied && plan.rollType === "damage") dealt.push(applied.amount);
@@ -330,7 +361,7 @@ export async function rollForCharacter(
       if (!session && !healFriend(t)) continue; // outside a session only the party can be healed
       if (tgt && t.characterId === tgt.characterId && t.monsterId === tgt.monsterId) continue;
       const kind = plan.rollType === "heal" ? "heal" : "damage";
-      const one = await applyHp(admin, { ...base, sessionId: session?.id ?? null, kind, total: result.total, crit: false, rollId: saved.id,
+      const one = await applyHp(admin, { ...base, sessionId: session?.id ?? null, kind, total: result.total, crit: false, rollId: saved.id, damageType: plan.damageType ?? null, magical: magicalHit(opt),
         actor: { characterId: c.id }, target: { characterId: t.characterId ?? null, monsterId: t.monsterId ?? null } });
       if (!one) continue;
       if (kind === "damage") dealt.push(one.amount);
@@ -361,13 +392,16 @@ export async function rollForCharacter(
     aimedAt = [tgt.name, ...rest.filter((x): x is NonNullable<typeof x> => !!x && x.name !== tgt.name).map((x) => x.name)];
   }
 
+  // casting a new concentration spell: the old one's effects end
+  if (endedConcentration && combat) await endConcentrationEffects(admin, combat.id, { characterId: c.id });
+
   if (plan.rollType === "initiative" && combat && result) {
     await recordInitiative(admin, combat.id, { characterId: c.id }, result.total);
   }
 
   const label =
     plan.rollType === "attack" ? `${plan.source} attack`
-    : plan.rollType === "damage" ? `${plan.source} damage${critical ? (result?.doubled ? " (crit! dice ×2)" : " (crit!)") : ""}`
+    : plan.rollType === "damage" ? `${plan.source} damage${critical ? (result?.doubled ? " (crit! dice ×2)" : " (crit!)") : ""}${halvedFrom != null ? ` (they saved: half of ${halvedFrom})` : ""}`
     : plan.rollType === "heal" ? `${plan.source} healing`
     : plan.rollType === "other" ? (row ? `${plan.source}: ${result?.total} · ${row.name}` : result ? plan.source : `${plan.source}: used`)
     : plan.source;
@@ -403,6 +437,8 @@ export async function rollForCharacter(
       request,
       followUp: plan.followUp && request.kind === "use" ? { key: request.key, slot: plan.spellSlot } : undefined,
       success,
+      autoSaves: !!saves?.length,
+      reasons: reasons.length ? reasons : undefined,
       // a fight played at the table: players don't learn an enemy's AC (the DM typed it in to check hits)
       vsAc: !viewerIsDm && combat?.mode === "table" && tgt?.monsterId ? null : vsAc,
       target: tgt?.name ?? targetName,
@@ -422,6 +458,29 @@ export async function rollForCharacter(
   };
 }
 
+/** Counts as magical against "nonmagical" resistances: spells, and weapons with a magic bonus or "+1" in the name. */
+function magicalHit(o: Option | undefined) {
+  if (!o) return false;
+  return !!o.fromSpell || o.kind === "spell_attack" || (o.bonus ?? 0) > 0 || /\+\d|magic|silvered|adamantine/i.test(o.name);
+}
+
+/** Conditions that change this d20 roll: an attack (yours and the target's), or your own save or check. */
+async function conditionRules(admin: ReturnType<typeof createAdminClient>, c: { id: string; campaign_id: string; rule_set?: string | null }, plan: ReturnType<typeof planRoll>, opt: Option | undefined, request: RollRequest, target: Target | null | undefined, combatId: string | null) {
+  const ruleSet = await campaignRules(admin, c.campaign_id, c.rule_set);
+  const me = await whoIs(admin, c.campaign_id, combatId, { characterId: c.id });
+  if (!me) return null;
+  if (plan.rollType === "attack") {
+    const them = await whoIs(admin, c.campaign_id, combatId, target);
+    // as far as the app knows: ranged weapons and ranged spell attacks are from afar, melee is next to the target
+    const ranged = !!opt?.ranged || (opt?.kind === "spell_attack" && !/touch|self/i.test(opt.range ?? ""));
+    return { mods: attackMods(me, them ?? { name: "the target", conds: [] }, { ranged, within5: !ranged, rules: ruleSet }), ruleSet };
+  }
+  if (plan.rollType === "save" && plan.ability) return { mods: saveMods(me, plan.ability, ruleSet), ruleSet };
+  if (plan.rollType === "check") return { mods: checkMods(me, ruleSet, plan.ability), ruleSet };
+  void request;
+  return null;
+}
+
 /** A typed enemy name, tidied: one line, at most 40 characters. */
 function cleanName(n?: string | null) {
   const t = (n ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
@@ -437,9 +496,10 @@ export async function markAttack(characterId: string, rollId: string, hit: boole
   if (!c || !canEdit || !userId) return { error: "You can only mark your own character's attacks." };
   const admin = createAdminClient();
   const { data: r } = await admin.from("roll_events").select("id, character_id, roll_type, is_crit, is_fumble").eq("id", rollId).maybeSingle();
-  if (!r || r.character_id !== c.id || r.roll_type !== "attack") return { error: "That attack roll wasn't found." };
-  if (r.is_crit) return { success: true };
-  if (r.is_fumble) return { success: false };
+  if (!r || r.character_id !== c.id || (r.roll_type !== "attack" && r.roll_type !== "save_dc")) return { error: "That roll wasn't found." };
+  // save spells: `hit` = the target made its save (the DM says so)
+  if (r.roll_type === "attack" && r.is_crit) return { success: true };
+  if (r.roll_type === "attack" && r.is_fumble) return { success: false };
   const { error } = await admin.from("roll_events").update({ success: hit }).eq("id", rollId);
   if (error) return { error: error.message };
   refresh();
@@ -547,6 +607,13 @@ export async function setConcentration(characterId: string, spell: string | null
   const concentration = spell ? { spell, since: new Date().toISOString() } : null;
   const { error } = await supabase.from("characters").update({ concentration }).eq("id", character.id);
   if (error) return { error: error.message };
+  // stopped (or switched spells): what the old spell kept up in the fight ends
+  const old = character.concentration?.spell ?? null;
+  if (old && old !== spell) {
+    const admin = createAdminClient();
+    const { combat } = await liveState(admin, character.campaign_id);
+    if (combat) await endConcentrationEffects(admin, combat.id, { characterId: character.id });
+  }
   return { concentration };
 }
 

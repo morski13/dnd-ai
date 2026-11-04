@@ -8,6 +8,9 @@ import { CONDITIONS } from "@/lib/moderator/hp";
 import { liveState, touchCombat } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { cleanEffects, describe as describeEffect } from "@/lib/engine/effects";
+import { campaignRules } from "@/lib/engine/server";
+import { shortName } from "@/lib/session-data";
 
 type Fail = { error: string };
 
@@ -24,6 +27,10 @@ export type SheetCombat = {
   myInitiative: number | null;
   waiting: number;           // characters who haven't rolled initiative yet
   isDm: boolean;
+  myCombatantId: string | null;
+  fightConditions: string[]; // conditions on you in this fight (by hand, or from timed effects)
+  myEffects: { id: string; name: string; conditions: string[]; text: string }[];
+  rules: "2014" | "2024";
 } | null;
 
 export async function sheetCombat(characterId: string): Promise<Fail | { combat: SheetCombat; conditions: string[] }> {
@@ -31,7 +38,7 @@ export async function sheetCombat(characterId: string): Promise<Fail | { combat:
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getClaims();
   const userId = auth?.claims?.sub ?? null;
-  const { data: c } = userId ? await supabase.from("characters").select("id, campaign_id").eq("id", characterId).maybeSingle() : { data: null };
+  const { data: c } = userId ? await supabase.from("characters").select("id, campaign_id, rule_set").eq("id", characterId).maybeSingle() : { data: null };
   if (!c || !userId) return { error: "Character not found." };
   const admin = createAdminClient();
   const [{ combat: live }, isDm, conditions] = await Promise.all([liveState(admin, c.campaign_id as string), isCampaignDm(admin, c.campaign_id as string, userId), conditionsOf(admin, c.id as string)]);
@@ -41,6 +48,12 @@ export async function sheetCombat(characterId: string): Promise<Fail | { combat:
   const monsterIds = order.filter((r) => r.monster_id).map((r) => r.monster_id!);
   const { data: npcs } = monsterIds.length ? await admin.from("monsters").select("id").in("id", monsterIds).eq("kind", "npc") : { data: [] };
   const mine = order.find((r) => r.character_id === c.id) ?? null;
+  const [{ data: mineRow }, rules] = await Promise.all([
+    mine ? admin.from("combatants").select("*").eq("id", mine.id).maybeSingle() : Promise.resolve({ data: null }),
+    campaignRules(admin, c.campaign_id as string, (c as { rule_set?: string | null }).rule_set),
+  ]);
+  const fx = cleanEffects((mineRow as { effects?: unknown } | null)?.effects);
+  const nameOf = (id: string) => shortName(order.find((r) => r.id === id)?.name ?? "someone");
   return {
     conditions,
     combat: {
@@ -51,6 +64,10 @@ export async function sheetCombat(characterId: string): Promise<Fail | { combat:
       meIn: !!mine, myInitiative: mine?.initiative ?? null,
       waiting: order.filter((r) => r.character_id && r.initiative == null).length,
       isDm,
+      myCombatantId: mine?.id ?? null,
+      fightConditions: ((mineRow as { conditions?: string[] } | null)?.conditions ?? []),
+      myEffects: fx.map((e) => ({ id: e.id, name: e.name, conditions: e.conditions, text: describeEffect(e, nameOf) })),
+      rules,
     },
   };
 }
@@ -67,7 +84,7 @@ export async function endMyTurn(characterId: string, turnKey: string): Promise<F
   const nowKey = `${combat.round}:${combat.turn_index}`;
   if (nowKey !== turnKey) return { turnKey: nowKey }; // tapped twice, or the DM already moved it on
   if (current.character_id !== c.id && !(await isCampaignDm(admin, c.campaign_id, userId))) return { error: `It's ${current.name}'s turn, not yours.` };
-  const r = await advanceTurn(admin, combat.id);
+  const r = await advanceTurn(admin, combat.id, userId);
   if ("error" in r) return r;
   refresh();
   return { turnKey: `${r.round}:${r.turnIndex}` };
@@ -78,7 +95,7 @@ export async function setMyConditions(characterId: string, conditions: string[])
   const { userId, character: c, canEdit } = await loadCharacter(characterId);
   if (!c || !canEdit || !userId) return { error: "You can only change your own character." };
   const allowed = new Set<string>(CONDITIONS);
-  const clean = [...new Set(conditions.filter((x) => allowed.has(x)))].slice(0, 20);
+  const clean = [...new Set(conditions.filter((x) => allowed.has(x) || /^Exhaustion [1-6]$/.test(x)))].slice(0, 20);
   const admin = createAdminClient();
   const { error } = await admin.from("characters").update({ conditions: clean }).eq("id", c.id);
   if (error) return { error: /conditions/.test(error.message) ? "Run 34-table-combat.sql in Supabase to keep conditions on the sheet." : error.message };

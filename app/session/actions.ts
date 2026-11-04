@@ -241,12 +241,12 @@ export async function rollNpcInitiative(combatId: string, hidden: boolean): Prom
 
 export async function nextTurn(combatId: string): Promise<Fail | void> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
-  const { isDm, campaignId } = await me();
+  const { isDm, campaignId, userId } = await me();
   if (!isDm || !campaignId) return { error: "Only the DM can move the turn on." };
   const admin = createAdminClient();
   const { data: own } = await admin.from("combats").select("id").eq("id", combatId).eq("campaign_id", campaignId).maybeSingle();
   if (!own) return { error: "That fight isn't in your campaign." };
-  const r = await advanceTurn(admin, combatId);
+  const r = await advanceTurn(admin, combatId, userId);
   if ("error" in r) return r;
 }
 

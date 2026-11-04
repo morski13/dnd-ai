@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Applied } from "@/lib/moderator/apply";
-import { CONDITIONS, FACTORS, type DeathSaves, type Factor, type Health } from "@/lib/moderator/hp";
+import { FACTORS, type DeathSaves, type Factor, type Health } from "@/lib/moderator/hp";
+import { DurationPick, type PickedEffect } from "./duration-pick";
+import { addEffect, removeEffect } from "../effect-actions";
 import type { Combatant } from "@/lib/session-data";
 import { useDice } from "../../components/dice/dice-provider";
 import { adjustEffect, rollDeathSave, setConditions, stabilize, type DeathSaveResult } from "../moderator-actions";
@@ -63,6 +65,7 @@ export function AppliedNote({ applied: initial }: { applied: Applied }) {
         {a.kind === "heal" ? <>heals <b className="text-success">{a.amount}</b></> : a.amount < 0 ? <>is hit</> : <>takes <b className="text-danger">{a.amount}</b>{a.factor !== "full" && <span className="text-muted"> ({FACTORS.find((f) => f.id === a.factor)?.label.toLowerCase()}, rolled {a.rolled})</span>}</>}
         <span className="text-muted"> · {hpLine}</span>
       </p>
+      {a.defense && a.kind === "damage" && <p className="text-xs text-accent">The rules: {name} is {a.defense}.</p>}
       {big && <p className={`font-heading text-lg font-bold ${a.kind === "heal" ? "text-success" : "text-danger"} ${a.dropped || a.dead ? "animate-shake" : ""}`}>{big}</p>}
       {a.deathFails > 0 && !a.dead && <p className="text-xs text-danger">Hit while down: {a.deathFails} failed death save{a.deathFails > 1 ? "s" : ""}.</p>}
       {a.tempLost > 0 && <p className="text-xs text-[#7FB8D4]">{a.tempLost} came off temporary HP.</p>}
@@ -154,40 +157,55 @@ export function DeathSavePanel({ combatant, characterId, name, canRoll, isDm, se
   );
 }
 
-/** Conditions on someone in the fight. */
-export function Conditions({ combatant, canEdit }: { combatant: Combatant; canEdit: boolean }) {
+/** Conditions on someone in the fight: by hand, or with a duration (the app ends them when the time comes). */
+export function Conditions({ combatant, canEdit, others = [] }: { combatant: Combatant; canEdit: boolean; others?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [list, setList] = useState<string[]>(combatant.conditions);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const toggle = (c: string) => {
-    const next = list.includes(c) ? list.filter((x) => x !== c) : [...list, c];
+  const timed = new Map((combatant.effects ?? []).flatMap((e) => e.conditions.map((c) => [c, e] as const)));
+  const remove = (c: string) => {
+    const e = timed.get(c);
+    const next = list.filter((x) => x !== c);
     setList(next);
-    start(async () => { await setConditions(combatant.id, next); router.refresh(); });
+    setError(null);
+    start(async () => {
+      const r = e ? await removeEffect(combatant.id, e.id) : await setConditions(combatant.id, next);
+      if ("error" in r) setError(r.error);
+      router.refresh();
+    });
+  };
+  const add = (p: PickedEffect) => {
+    setError(null);
+    start(async () => {
+      const r = p.duration === "removed" && !p.name ? await setConditions(combatant.id, [...list, ...p.conditions]) : await addEffect(combatant.id, p);
+      if ("error" in r) return setError(r.error);
+      setList(r.conditions);
+      setOpen(false);
+      router.refresh();
+    });
   };
   return (
     <div className="mt-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        {list.map((c) => (
-          <button key={c} type="button" disabled={!canEdit || pending} onClick={() => toggle(c)}
-            className="animate-pop h-7 rounded-full border border-accent-strong bg-bg px-2.5 text-xs font-semibold text-accent" aria-label={`Remove ${c}`}>
-            {c}{canEdit && " ×"}
-          </button>
-        ))}
-        {canEdit && (
-          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-            className="h-9 rounded-full border border-dashed border-line px-3 text-xs text-muted">{open ? "Done" : "+ Condition"}</button>
+        {list.map((c) => {
+          const e = timed.get(c);
+          return (
+            <button key={c} type="button" disabled={!canEdit || pending} onClick={() => remove(c)} title={e ? `${e.name}: ${e.text}` : undefined}
+              className="animate-pop min-h-7 rounded-full border border-accent-strong bg-bg px-2.5 text-left text-xs font-semibold text-accent" aria-label={`Remove ${c}`}>
+              {c}{e ? <span className="font-normal text-muted"> · {e.text}</span> : null}{canEdit && " ×"}
+            </button>
+          );
+        })}
+        {canEdit && !open && (
+          <button type="button" onClick={() => setOpen(true)} aria-expanded={open}
+            className="h-9 rounded-full border border-dashed border-line px-3 text-xs text-muted">+ Condition</button>
         )}
         {!list.length && !canEdit && <span className="text-xs text-muted">No conditions</span>}
       </div>
-      {open && (
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
-          {CONDITIONS.map((c) => (
-            <button key={c} type="button" onClick={() => toggle(c)} aria-pressed={list.includes(c)}
-              className={`h-8 rounded-lg border text-[11px] ${list.includes(c) ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`}>{c}</button>
-          ))}
-        </div>
-      )}
+      {error && <p className="mt-1 text-xs text-danger" role="alert">{error}</p>}
+      {open && <DurationPick have={list} others={others.filter((o) => o.id !== combatant.id)} onPick={add} onClose={() => setOpen(false)} pending={pending} />}
     </div>
   );
 }

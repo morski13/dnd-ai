@@ -72,7 +72,7 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
             <button type="button" disabled={pending || !hpInput} onClick={() => changeHp("heal")} className="h-10 flex-1 rounded-xl border border-success-line bg-success-bg text-sm font-bold text-success">+ Heal</button>
           </div>
           {manual && <div className="mt-2"><AppliedNote key={manual.effectId + manual.hpAfter} applied={manual} /></div>}
-          <Conditions key={me.conditions.join()} combatant={me} canEdit />
+          <Conditions key={me.conditions.join()} combatant={me} canEdit others={party.map((p) => ({ id: p.id, name: p.name }))} />
           <MonsterConcentration monsterId={monster.id} spell={me.concentration} />
         </div>
       )}

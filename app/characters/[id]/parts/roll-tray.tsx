@@ -24,7 +24,10 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
   // Hide / show: remembered on this device. A roll that needs a next step (damage, a Wild Surge effect) opens it again.
   const hidden = useSyncExternalStore(subscribe, () => readHidden(), () => false);
   const [hiddenAt, setHiddenAt] = useState<string | null>(null); // the roll that was showing when it was hidden
-  const toMark = !!onMark && !!last && last.rollType === "attack" && last.success == null && !last.isCrit && !last.isFumble;
+  // the DM knows the enemy's AC and saves: the player says if the attack hit, or if the target made its save
+  const markHit = !!last && last.rollType === "attack" && last.success == null && !last.isCrit && !last.isFumble;
+  const markSave = !!last && last.rollType === "save_dc" && last.success == null && !last.autoSaves && !last.practice;
+  const toMark = !!onMark && (markHit || markSave);
   const needsYou = ((!!damage || toMark) && last?.id !== hiddenAt) || !!error;
   const open = !hidden || needsYou;
   const show = (v: boolean) => {
@@ -122,6 +125,14 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
           </p>
         )}
 
+        {last && !pending && !!last.reasons?.length && (
+          <ul key={`r${last.id}`} className="mt-1 space-y-0.5 rounded-lg bg-bg px-3 py-1.5 text-xs text-soft" aria-label="The rules on this roll">
+            {last.reasons.map((r) => <li key={r}>{r}</li>)}
+          </ul>
+        )}
+        {last && !pending && [last.applied, ...(last.appliedAll ?? [])].some((x) => x?.defense) && (
+          <p className="mt-1 text-xs text-accent">{[last.applied, ...(last.appliedAll ?? [])].filter((x) => x?.defense).map((x) => `${x!.target.name} is ${x!.defense}`).filter((v, i, all) => all.indexOf(v) === i).join(" · ")}</p>
+        )}
         {last && !pending && last.table?.text && (
           <p key={`t${last.id}`} className="animate-pop mt-2 rounded-lg bg-accent-surface px-3 py-2 text-sm">
             <b className="text-accent">{last.table.row}.</b> {last.table.text}
@@ -134,13 +145,28 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
           <button type="button" onClick={onUndoReal} className="mt-2 inline-flex min-h-10 items-center text-sm text-muted underline">Typo? Take it back and type again</button>
         )}
         {toMark && !pending && (
-          <div className="animate-pop mt-2 rounded-xl border border-line bg-bg p-2" role="group" aria-label="Did it hit?">
-            <p className="px-1 text-xs text-muted">The DM knows the AC: did {last.total} hit{last.target ? ` ${last.target}` : ""}?</p>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => onMark!(true)} className="h-11 rounded-lg border border-success-line bg-success-bg font-bold text-success">Hit</button>
-              <button type="button" onClick={() => onMark!(false)} className="h-11 rounded-lg border border-danger-line bg-danger-bg font-bold text-danger">Miss</button>
+          markSave ? (
+            <div className="animate-pop mt-2 rounded-xl border border-line bg-bg p-2" role="group" aria-label="Did they make the save?">
+              <p className="px-1 text-xs text-muted">The DM rolls the save: did {last.target ?? "the target"} make the {last.ability} save against DC {last.dc}?</p>
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => onMark!(false)} className="h-11 rounded-lg border border-success-line bg-success-bg font-bold text-success">They failed</button>
+                <button type="button" onClick={() => onMark!(true)} className="h-11 rounded-lg border border-danger-line bg-danger-bg font-bold text-danger">They saved</button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="animate-pop mt-2 rounded-xl border border-line bg-bg p-2" role="group" aria-label="Did it hit?">
+              <p className="px-1 text-xs text-muted">The DM knows the AC: did {last.total} hit{last.target ? ` ${last.target}` : ""}?</p>
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => onMark!(true)} className="h-11 rounded-lg border border-success-line bg-success-bg font-bold text-success">Hit</button>
+                <button type="button" onClick={() => onMark!(false)} className="h-11 rounded-lg border border-danger-line bg-danger-bg font-bold text-danger">Miss</button>
+              </div>
+            </div>
+          )
+        )}
+        {last && !pending && last.rollType === "save_dc" && last.success != null && !last.autoSaves && (
+          <p key={`s${last.id}`} role="status" className={`mt-1 rounded-lg px-3 py-2 text-sm font-bold ${last.success ? "bg-surface text-soft" : "animate-pop bg-success-bg text-success"}`}>
+            {last.success ? `${last.target ?? "The target"} made the save.` : `${last.target ?? "The target"} failed the save!`}
+          </p>
         )}
         {last && !pending && last.rollType === "attack" && last.success != null && last.vsAc == null && (
           <p key={`m${last.id}`} role="status" className={`mt-1 rounded-lg px-3 py-2 text-sm font-bold ${last.success ? "animate-pop bg-success-bg text-success" : "animate-shake bg-danger-bg text-danger"}`}>

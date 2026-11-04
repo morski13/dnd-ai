@@ -1,5 +1,6 @@
 "use server";
 import { refresh } from "next/cache";
+import { cleanEffects } from "@/lib/engine/effects";
 // Fight moderator actions: fix/undo an HP change, death saves, conditions, DM HP edits.
 import { roll } from "@/lib/dice";
 import { loadCharacter } from "@/lib/character-data";
@@ -104,8 +105,14 @@ export async function setConditions(combatantId: string, conditions: string[]): 
   if (!c || c.campaign_id !== campaignId) return { error: "Not found." };
   if (!isDm && !(await ownsCharacter(userId, c.character_id))) return { error: "Only the DM can change that." };
   const allowed = new Set<string>(CONDITIONS);
-  const clean = [...new Set(conditions.filter((x) => allowed.has(x)))];
-  await admin.from("combatants").update({ conditions: clean }).eq("id", c.id);
+  const clean = [...new Set(conditions.filter((x) => allowed.has(x) || /^Exhaustion [1-6]$/.test(x)))];
+  // a condition taken off by hand ends the timed effect that gave it (SQL 35)
+  const { data: withFx } = await admin.from("combatants").select("*").eq("id", c.id).maybeSingle();
+  const fx = (withFx as { effects?: unknown } | null)?.effects;
+  if (fx !== undefined) {
+    const kept = cleanEffects(fx).filter((e) => e.conditions.every((x) => clean.includes(x)));
+    await admin.from("combatants").update({ conditions: clean, effects: kept }).eq("id", c.id);
+  } else await admin.from("combatants").update({ conditions: clean }).eq("id", c.id);
   await touchCombat(admin, c.combat_id);
   return { conditions: clean };
 }

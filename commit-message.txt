@@ -1,16 +1,17 @@
-Combat mode for fights played at the table, fighting from the full sheet
+Battle engine phase 1: the rules core, and save spells marked at the table
 
-- DM: "Start combat mode" in Session (no monsters needed). The party joins, players roll initiative
-  from their sheets and end their own turns; the DM can add enemies with a name (AC/HP optional, kept secret).
-- Sheet in a fight: turn order, whose turn, Action / Bonus / Reaction / movement, Dash, Dodge,
-  Disengage, Help, Hide, Ready, Search, Use an Object (each spends the action; Cunning Action as a bonus),
-  reactions on anyone's turn (Opportunity Attack, Shield, Uncanny Dodge…), the one-spell-per-turn rule,
-  conditions that stay until removed or a long rest, "Hit by a spell?" save helper, End turn.
-- Attacks with an unknown AC: Hit / Miss buttons (natural 20 / 1 decide by themselves); damage waits for Hit.
-- Typed enemy names as targets (roll_events.target_name).
-- Totals show how they were reached ("1d8 (6) + 4 STR = 10"), hit dice too.
-- Fight ends: per-turn things reset; HP, conditions and spent slots stay until a rest.
-- SQL 34-table-combat.sql.
+- lib/engine: what conditions really do (advantage / disadvantage with reasons, auto-crit within 5 ft,
+  auto-fail STR/DEX saves, speed, can't act), Exhaustion by rule set (2014 levels, 2024 −2 per level),
+  damage types vs resistances / immunities / vulnerabilities ("nonmagical" too), condition immunities,
+  timed effects (end / start of a turn, rounds, 1 minute, save ends, concentration).
+- Sheet rolls follow the rules: attack, save and check advantage from your and the target's conditions,
+  reasons shown under the roll; saves the app rolls for targets too.
+- Damage lands with the target's defenses ("Ogre is resistant to fire").
+- Turns tick timed conditions: they run out, repeat saves are rolled (monsters secretly);
+  losing concentration ends what it kept up.
+- Conditions with a duration on the Session screen and the sheet (Hold Person: Paralyzed, WIS save ends).
+- Save spells at the table: "They failed / They saved"; a save means half damage (or none).
+- SQL 35-timed-effects.sql.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

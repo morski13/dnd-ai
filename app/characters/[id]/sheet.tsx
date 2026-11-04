@@ -31,6 +31,7 @@ import { CombatPanel, type ReactionChoice } from "./parts/combat-panel";
 import { SaveHelper } from "./parts/save-helper";
 import { useSheetCombat } from "./parts/use-combat";
 import { endFightFromSheet, endMyTurn, setMyConditions } from "./combat-actions";
+import { addEffect, removeEffect } from "../../session/effect-actions";
 import { damageParts } from "@/lib/breakdown";
 import type { Combo } from "@/lib/combos";
 import type { TableSession } from "@/lib/roll-service";
@@ -180,7 +181,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     setView((v) => (v ? { ...v, conditions: next } : v));
     run(() => setMyConditions(character.id, next), (r) => setView((v) => (v ? { ...v, conditions: r.conditions } : v)));
   }
-  /** Fights at the table: the player says if the attack hit (the DM knows the AC). */
+  /** Fights at the table: the player says if the attack hit, or if the target made its save (the DM knows). */
   function markHit(hit: boolean) {
     const r = last;
     if (!r) return;
@@ -457,12 +458,14 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
       return { label: `Roll ${next.label}`, onClick: () => doRoll({ kind: "use", key: next.key }) };
     }
     if (!last?.followUp || !!last.practice !== practice) return null;
-    if (last.success === false) return null; // a miss: no damage to roll
+    if (last.rollType === "attack" && last.success === false) return null; // a miss: no damage to roll
     const o = options.find((x) => x.key === last.followUp!.key);
     if (!o) return null;
+    const saved = last.rollType === "save_dc" && last.success === true; // the target made its save
+    if (saved && !o.half_on_save) return null;
     const expr = damageExpression(c, o, last.followUp.slot);
     return {
-      label: last.isCrit ? `Roll crit damage (${expr}, ${critHow(o)})` : `Roll damage (${expr})`,
+      label: last.isCrit ? `Roll crit damage (${expr}, ${critHow(o)})` : saved ? `Roll damage (${expr}, they take half)` : `Roll damage (${expr})`,
       onClick: () => doRoll(last.practice
         ? { kind: "damage", key: o.key, slot: last.followUp!.slot }
         : { kind: "damage", key: o.key, slot: last.followUp!.slot, parentRollId: last.id }),
@@ -573,6 +576,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
           }}
           onDrop={(name) => setFight((f) => ({ ...f, turn: { ...f.turn, ongoing: f.turn.ongoing.filter((x) => x !== name), thisTurn: f.turn.thisTurn.filter((x) => x !== name) } }))}
           onSaveHelper={() => setSaveOpen(true)}
+          onTimed={(p) => { if (combat.myCombatantId) run(() => addEffect(combat.myCombatantId!, p), () => void reloadCombat()); }}
+          onRemoveTimed={(id) => { if (combat.myCombatantId) run(() => removeEffect(combat.myCombatantId!, id), () => void reloadCombat()); }}
           onEndFight={live?.kind === "table" || combat.isDm ? () => run(() => endFightFromSheet(character.id), () => void reloadCombat()) : undefined}
           saveHelper={saveOpen ? (
             <SaveHelper bonus={(a) => saveBonus(c, a)} canEdit={canEdit} pending={pending} onClose={() => setSaveOpen(false)}

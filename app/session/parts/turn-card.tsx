@@ -162,7 +162,7 @@ export function TurnCard({ character, library, canEdit, combatants, isTurn, inCo
       <div className="mt-2">
         <HpBar hp={hp} max={character.hp_max} temp={meC?.temp ?? character.temp_hp ?? 0} health={healthOf(hp, character.hp_max)} />
       </div>
-      {meC && <Conditions key={meC.conditions.join()} combatant={meC} canEdit={canEdit} />}
+      {meC && <Conditions key={meC.conditions.join()} combatant={meC} canEdit={canEdit} others={combatants.map((x) => ({ id: x.id, name: x.name }))} />}
       {inCombat && !isTurn && canEdit && incoming && (() => {
         const hints = reactionHints(options, character.features, incoming, turn.reactionUsed);
         if (!hints.length) return null;
