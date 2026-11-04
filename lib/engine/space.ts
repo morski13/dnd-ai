@@ -2,6 +2,7 @@
 // moving through difficult terrain and around walls and enemies, and the opportunity attacks a move provokes.
 // Pure, tested. Grid units: one square = `feet` (5); a token's x/y is its top-left square, `size` squares wide.
 import { KINDS, readTerrain, type HazardRule, type Kind } from "./terrain";
+import { flyOver } from "./flight";
 
 export type Diagonals = "5" | "5-10-5";
 export type Pos = { x: number; y: number };
@@ -22,6 +23,7 @@ export type Terrain = {
   lights: { x: number; y: number; bright: number; dim: number }[];
   ambient: "bright" | "dim" | "dark";
   fog: boolean;            // fog of war for the players
+  kinds: Map<string, Kind>; // what each painted square is (for flying over it)
 };
 export const key = (x: number, y: number) => `${x},${y}`;
 
@@ -30,7 +32,7 @@ export function terrainOf(raw: unknown): Terrain {
   const d = readTerrain(raw);
   const t: Terrain = {
     walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set(),
-    heavy: new Set(), magicDark: new Set(), lights: [], ambient: d.light ?? "bright", fog: !!d.fog,
+    heavy: new Set(), magicDark: new Set(), lights: [], ambient: d.light ?? "bright", fog: !!d.fog, kinds: new Map(),
   };
   for (const [k, c] of Object.entries(d.cells)) {
     const r = KINDS[c.k];
@@ -43,6 +45,7 @@ export function terrainOf(raw: unknown): Terrain {
     if (r.swim) t.swim.add(k);
     if (r.hazard) t.hazards.set(k, { ...r.hazard, kind: c.k });
     if (c.h) t.height.set(k, c.h);
+    t.kinds.set(k, c.k);
     if (r.heavilyObscured) t.heavy.add(k);
     if (r.magicalDark) t.magicDark.add(k);
     if (r.light) { const [x, y] = k.split(",").map(Number); t.lights.push({ x, y, ...r.light }); }
@@ -214,8 +217,10 @@ export function moveCosts(me: Body, ctx: MoveCtx, maxFt = Infinity) {
       const x = n.x + dx, y = n.y + dy;
       if (x < 0 || y < 0 || x + me.size > ctx.cols || y + me.size > ctx.rows) continue;
       const cells = footprint(x, y, me.size);
-      if (cells.some(([cx, cy]) => ctx.terrain.walls.has(key(cx, cy)))) continue;
-      let hard = cells.some(([cx, cy]) => ctx.terrain.difficult.has(key(cx, cy)));
+      // in the air: over trees and boulders if high enough, never through walls; the ground doesn't slow you
+      const air = (me.z ?? 0) > 0;
+      if (cells.some(([cx, cy]) => ctx.terrain.walls.has(key(cx, cy)) && !(air && flyOver(ctx.terrain.kinds.get(key(cx, cy)), me.z!)))) continue;
+      let hard = !air && cells.some(([cx, cy]) => ctx.terrain.difficult.has(key(cx, cy)));
       let blocked = false;
       for (const o of ctx.others) {
         if (o.id === me.id || !overlaps(o, x, y, me.size)) continue;
@@ -228,7 +233,7 @@ export function moveCosts(me: Body, ctx: MoveCtx, maxFt = Infinity) {
       if (diagonal && ctx.diag === "5-10-5") { step = n.parity ? 2 : 1; parity = n.parity ? 0 : 1; }
       // climbing up: every foot of height costs a foot more (going down is free; a big drop is a fall)
       const rise = standingZ({ ...me, x, y, z: 0 }, ctx.terrain) - standingZ({ ...me, x: n.x, y: n.y, z: 0 }, ctx.terrain);
-      const climb = rise > 0 ? Math.ceil(rise / ctx.feet) : 0;
+      const climb = rise > 0 && !air ? Math.ceil(rise / ctx.feet) : 0;
       const cost = n.cost + step * (hard ? 2 : 1) + climb;
       if (cost > max) continue;
       const s = { x, y, parity };

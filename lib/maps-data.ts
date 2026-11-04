@@ -8,6 +8,7 @@ import { moveBudget, sizeSquares, startingSpots, walkSpeed } from "@/lib/maps/mo
 import { readTerrain, type TerrainData } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
 import { characterSenses, lightMap, NO_SENSES, seesBody, sensesFromText, visibleSquares, type Senses } from "@/lib/engine/vision";
+import { characterFlight, flightFromSpeed } from "@/lib/engine/flight";
 
 export type MapRow = { id: string; name: string; image_path: string | null; image_w: number | null; image_h: number | null; cols: number; rows: number; crop: Crop | null; stretch: boolean; feet: number; updated_at: string };
 export const MAP_COLUMNS = "id, name, image_path, image_w, image_h, cols, rows, crop, stretch, feet, updated_at";
@@ -17,6 +18,10 @@ export type BattleToken = {
   name: string; kind: "pc" | "monster" | "npc"; characterId: string | null; monsterId: string | null;
   portrait: string | null; speed: number; movedFt: number; dashes: number; budget: number; mine: boolean;
   conds: string[];   // conditions right now (Prone, Grappled…): speed, standing up
+  z: number;         // flying height (feet)
+  fly: number;       // flying speed (its own, or one it has for now), 0 = can't fly
+  hover: boolean;
+  flyExtra: number | null; // the flying speed it has for now (the Fly spell)
 };
 export type BattleArea = { by: string; spell: string; placed: unknown; at: string } | null;
 export type Battle = {
@@ -92,7 +97,7 @@ export async function loadBattle(supabase: SupabaseClient, a: {
   const map = m as (MapRow & { terrain?: unknown }) | null;
   if (!map) return null;
   if (a.isDm) await ensureTokens(a.campaignId, a.combatId, map.cols, map.rows);
-  const { data: rows } = await supabase.from("map_tokens").select("id, combatant_id, x, y, size, hidden, moved_ft, dashes").eq("combat_id", a.combatId);
+  const { data: rows } = await supabase.from("map_tokens").select("*").eq("combat_id", a.combatId); // "*": z / fly after 37-flying.sql
   const byId = new Map(a.combatants.map((x) => [x.id, x]));
   const charIds = a.combatants.map((x) => x.characterId).filter((x): x is string => !!x);
   const monIds = a.combatants.map((x) => x.monsterId).filter((x): x is string => !!x);
@@ -105,13 +110,14 @@ export async function loadBattle(supabase: SupabaseClient, a: {
   const mo = new Map(((mons ?? []) as { id: string; stat_block: { speed?: unknown; senses?: string } | null; portrait: number | null }[]).map((x) => [x.id, x]));
   const sensesOf = new Map<string, Senses>();
   const tokens: BattleToken[] = [];
-  for (const t of (rows ?? []) as { id: string; combatant_id: string; x: number; y: number; size: number; hidden: boolean; moved_ft: number; dashes: number }[]) {
+  for (const t of (rows ?? []) as { id: string; combatant_id: string; x: number; y: number; size: number; hidden: boolean; moved_ft: number; dashes: number; z?: number; fly?: number | null }[]) {
     const cb = byId.get(t.combatant_id);
     if (!cb) continue;
     const cRow = cb.characterId ? ch.get(cb.characterId) : null;
     const mRow = cb.monsterId ? mo.get(cb.monsterId) : null;
     const speed = cRow ? walkSpeed(cRow.speed) : walkSpeed(mRow?.stat_block?.speed);
     sensesOf.set(t.id, cRow ? characterSenses(cRow) : sensesFromText(mRow?.stat_block?.senses));
+    const own = cRow ? characterFlight(cRow) : flightFromSpeed(mRow?.stat_block?.speed);
     tokens.push({
       id: t.id, combatantId: t.combatant_id, x: t.x, y: t.y, size: t.size, hidden: t.hidden,
       name: cb.name, kind: cb.characterId ? "pc" : cb.ally ? "npc" : "monster", characterId: cb.characterId, monsterId: cb.monsterId,
@@ -119,6 +125,7 @@ export async function loadBattle(supabase: SupabaseClient, a: {
       speed, movedFt: t.moved_ft, dashes: t.dashes, budget: moveBudget(speed, t.dashes),
       mine: !!cb.characterId && a.myCharacterIds.includes(cb.characterId),
       conds: cb.conditions ?? [],
+      z: Number(t.z) || 0, fly: Math.max(own.fly, Number(t.fly) || 0), hover: own.hover, flyExtra: t.fly ?? null,
     });
   }
   // Fog of war: players only get the squares their characters see, and only the creatures in them.

@@ -1,6 +1,7 @@
 "use server";
 import { refresh } from "next/cache";
 import { cleanEffects } from "@/lib/engine/effects";
+import { checkFalls } from "@/lib/maps/server";
 // Fight moderator actions: fix/undo an HP change, death saves, conditions, DM HP edits.
 import { roll } from "@/lib/dice";
 import { loadCharacter } from "@/lib/character-data";
@@ -113,6 +114,7 @@ export async function setConditions(combatantId: string, conditions: string[]): 
     const kept = cleanEffects(fx).filter((e) => e.conditions.every((x) => clean.includes(x)));
     await admin.from("combatants").update({ conditions: clean, effects: kept }).eq("id", c.id);
   } else await admin.from("combatants").update({ conditions: clean }).eq("id", c.id);
+  await checkFalls(campaignId, userId).catch(() => []); // a flyer knocked Prone or held falls
   await touchCombat(admin, c.combat_id);
   return { conditions: clean };
 }

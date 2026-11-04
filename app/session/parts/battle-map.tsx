@@ -11,7 +11,7 @@ import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setMapLight, setTokenHidden, teleportToken } from "../map-actions";
+import { castArea, dashToken, disengageToken, flyTo, moveToken, paintTerrain, setFlySpeed, setMapLight, setTokenHidden, teleportToken } from "../map-actions";
 import { paint as paintCells, strokeSquares, type TerrainData } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
 import { LightLayer, LightTools, PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
@@ -76,8 +76,9 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const isTurnOf = (t: BattleToken) => t.combatantId === currentCombatantId;
   const canStrict = (t: BattleToken) => isTurnOf(t) && (t.mine || isDm);
   // the rules: speed after conditions, standing up from Prone first (half your speed)
-  const selSpeed = sel ? speedOf(sel.speed, sel.conds ?? [], battle.rules) : null;
-  const standing = sel && (sel.conds ?? []).includes("Prone") ? standUpCost(selSpeed!.speed) : 0;
+  const airborne = !!sel && (sel.z ?? 0) > 0;
+  const selSpeed = sel ? speedOf(airborne ? sel.fly : sel.speed, sel.conds ?? [], battle.rules) : null;
+  const standing = sel && !airborne && (sel.conds ?? []).includes("Prone") ? standUpCost(selSpeed!.speed) : 0;
   const left = sel && selSpeed ? Math.max(0, selSpeed.speed * (1 + sel.dashes) - sel.movedFt - standing) : 0;
   const reach = useMemo(() => {
     if (!sel || aim || tele || paint) return [];
@@ -249,6 +250,13 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             {t.hidden && <circle cx={r} cy={r} r={r - 0.08} fill="none" stroke="#fff" strokeWidth={0.05} strokeDasharray="0.15 0.1" />}
             {aim && hit && <circle cx={r} cy={r} r={r - 0.04} fill="none" stroke={isPicked ? areaColor : "#bbb"} strokeWidth={isPicked ? 0.14 : 0.06} />}
             {out && <text x={r} y={r} dy="0.35em" textAnchor="middle" fontSize={0.7 * t.size} fill="#fff" opacity={0.85}>✕</text>}
+            {(t.z ?? 0) > 0 && (
+              <g data-flying={t.z}>
+                <ellipse cx={r} cy={t.size - 0.05} rx={r * 0.7} ry={0.08} fill="#000" opacity={0.35} />
+                <rect x={t.size - 0.62} y={-0.08} width={0.7} height={0.3} rx={0.1} fill="#1d4f7a" stroke="#9fd3ef" strokeWidth={0.03} />
+                <text x={t.size - 0.27} y={0.14} textAnchor="middle" fontSize={0.2} fontWeight={700} fill="#fff">{t.z} ft</text>
+              </g>
+            )}
           </g>
         );
       })}
@@ -340,6 +348,40 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             </div>
           ) : (
             <p className="text-xs text-muted">Tap a token to see it. Drag to look around, pinch or use + / − to zoom.</p>
+          )}
+          {sel && (isDm || sel.mine) && (sel.fly > 0 || isDm || sel.mine) && (
+            <div className="rounded-xl border border-line bg-surface px-3 py-2" aria-label="Flying">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-sm font-semibold">✈ {(sel.z ?? 0) > 0 ? `Flying ${sel.z} ft up` : "On the ground"}</span>
+                <span className="text-xs text-muted">{sel.fly ? `fly ${sel.fly} ft${sel.hover ? ", hovers" : ""}` : "no flying speed"}</span>
+              </div>
+              {sel.fly > 0 && (canStrict(sel) || isDm) && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[5, 10, 30].map((d) => (
+                    <button key={`u${d}`} type="button" disabled={pending} onClick={() => act(() => flyTo(sel.id, (sel.z ?? 0) + d), (r) => setNote(`${sel.mine ? "You" : sel.name}: ${r.z} ft up.`))}
+                      className="h-9 rounded-lg border border-line px-2.5 text-xs font-bold text-soft">↑ {d}</button>
+                  ))}
+                  {(sel.z ?? 0) > 0 && [5, 10].map((d) => (
+                    <button key={`d${d}`} type="button" disabled={pending} onClick={() => act(() => flyTo(sel.id, Math.max(0, (sel.z ?? 0) - d)), (r) => setNote(r.z ? `${r.z} ft up.` : "Landed."))}
+                      className="h-9 rounded-lg border border-line px-2.5 text-xs font-bold text-soft">↓ {d}</button>
+                  ))}
+                  {(sel.z ?? 0) > 0 && (
+                    <button type="button" disabled={pending} onClick={() => act(() => flyTo(sel.id, 0), () => setNote("Landed."))}
+                      className="h-9 rounded-lg border border-accent-strong px-2.5 text-xs font-bold text-accent">Land</button>
+                  )}
+                </div>
+              )}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                <span>For now (Fly spell…):</span>
+                {[30, 60].map((v) => (
+                  <button key={v} type="button" aria-pressed={sel.flyExtra === v} disabled={pending}
+                    onClick={() => act(() => setFlySpeed(sel.id, sel.flyExtra === v ? null : v), (r) => r.fell.length && setNote(r.fell.join(" ")))}
+                    className={`h-8 rounded-full border px-2.5 ${sel.flyExtra === v ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`}>fly {v} ft</button>
+                ))}
+                {sel.flyExtra ? <button type="button" disabled={pending} onClick={() => act(() => setFlySpeed(sel.id, null), (r) => r.fell.length && setNote(r.fell.join(" ")))} className="h-8 px-1 underline">it ended</button> : null}
+              </div>
+              <p className="mt-1 text-[11px] text-muted">Up and down cost movement (5 ft per 5 ft). In the air you pass over trees (20 ft) and boulders (10 ft) and the ground doesn&apos;t slow you. Knocked Prone, held or out of flight: it falls (1d6 per 10 ft).</p>
+            </div>
           )}
           {sel && canStrict(sel) && !free && <p className="text-xs text-muted">Green squares are where {sel.mine ? "you" : sel.name} can go. Tap one to move.</p>}
 

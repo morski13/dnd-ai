@@ -9,6 +9,8 @@ import { monsterReach } from "@/lib/engine/damage";
 import { cleanEffects, shownConditions } from "@/lib/engine/effects";
 import { fallDice, KINDS } from "@/lib/engine/terrain";
 import { characterSenses, lightMap, lightNote, seesBody, sensesFromText, type Senses } from "@/lib/engine/vision";
+import { characterFlight, falls, flightFromSpeed, type Flight } from "@/lib/engine/flight";
+import { speedOf } from "@/lib/engine/conditions";
 import { roll } from "@/lib/dice";
 import { applyHp } from "@/lib/moderator/apply";
 
@@ -28,6 +30,7 @@ export type FullToken = {
   name: string; side: "party" | "enemy"; conds: string[]; reach: number;
   z?: number; // flying height (feet)
   senses: Senses;
+  flight: Flight; // flying speed (its own, or one it has for now) and whether it hovers
 };
 
 /** The running fight's map and every token in it (hidden ones too: only for the server's own checks). */
@@ -39,7 +42,7 @@ export async function battleState(campaignId: string) {
   if (!c?.map_id) return null;
   const [{ data: map }, { data: toks }, { data: cbs }, { data: camp }] = await Promise.all([
     admin.from("battle_maps").select("*").eq("id", c.map_id).maybeSingle(), // "*": terrain only after 36-map-terrain.sql
-    admin.from("map_tokens").select("id, combatant_id, x, y, size, hidden, moved_ft, dashes").eq("combat_id", combat.id),
+    admin.from("map_tokens").select("*").eq("combat_id", combat.id), // "*": z / fly only after 37-flying.sql
     admin.from("combatants").select("*, monsters(kind)").eq("combat_id", combat.id),
     admin.from("campaigns").select("rule_set, settings").eq("id", campaignId).maybeSingle(),
   ]);
@@ -62,7 +65,13 @@ export async function battleState(campaignId: string) {
       ? Math.max(5, ...(c1.attacks ?? []).filter((a) => a.kind === "weapon" && !a.ranged).map((a) => reachOf({ kind: "weapon", name: a.name, range: a.range, note: a.note }).melee ?? 5))
       : monsterReach(m1?.stat_block);
     return {
-      ...(t as Omit<FullToken, "character_id" | "monster_id" | "owner" | "speed" | "name" | "side" | "conds" | "reach">),
+      ...(t as Omit<FullToken, "character_id" | "monster_id" | "owner" | "speed" | "name" | "side" | "conds" | "reach" | "senses" | "flight">),
+      z: Number((t as { z?: number }).z) || 0,
+      flight: (() => {
+        const own = c1 ? characterFlight(c1) : flightFromSpeed(m1?.stat_block?.speed);
+        const extra = Number((t as { fly?: number | null }).fly) || 0;
+        return { fly: Math.max(own.fly, extra), hover: own.hover };
+      })(),
       character_id: (k?.character_id as string) ?? null, monster_id: (k?.monster_id as string) ?? null,
       owner: c1?.owner_user_id ?? null, speed: c1 ? walkSpeed(c1.speed) : walkSpeed(m1?.stat_block?.speed),
       name: (k?.name as string) ?? "?", side: k?.character_id || npc ? "party" : "enemy",
@@ -168,4 +177,23 @@ export async function terrainAtTurnStart(campaignId: string, combatantId: string
   const t = b.tokens.find((k) => k.combatant_id === combatantId);
   if (!t || (t.z ?? 0) > 0) return [];
   return terrainHarm(b, t, { squares: [{ x: t.x, y: t.y }], when: "start" }, byUser);
+}
+
+/**
+ * Flyers that can't stay up fall now: knocked Prone, speed 0, held, unconscious, or the flying speed is gone
+ * (a Fly spell ended). Unless they hover. 1d6 per 10 ft, then Prone on the ground.
+ */
+export async function checkFalls(campaignId: string, byUser: string): Promise<string[]> {
+  const b = await battleState(campaignId);
+  if (!b) return [];
+  const out: string[] = [];
+  for (const t of b.tokens) {
+    const z = t.z ?? 0;
+    if (z <= 0) continue;
+    const why = falls(z, t.conds, t.flight, t.flight.fly ? speedOf(t.flight.fly, t.conds, b.rules).speed : 0);
+    if (!why) continue;
+    await b.admin.from("map_tokens").update({ z: 0 }).eq("id", t.id);
+    out.push(`${t.name} falls ${z} ft (${why}).`, ...await terrainHarm(b, { ...t, z: 0 }, { squares: [], when: "enter", fallFt: z }, byUser));
+  }
+  return out;
 }

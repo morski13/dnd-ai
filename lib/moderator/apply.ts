@@ -135,6 +135,11 @@ export async function applyHp(admin: Admin, a: ApplyArgs): Promise<Applied | nul
     })
     : null;
 
+  // dropped to 0 HP in the air: it falls (loaded lazily: the map code uses this file too)
+  if (change.dropped && a.combatId) {
+    const { checkFalls } = await import("../maps/server");
+    await checkFalls(a.campaignId, a.createdBy).catch(() => []);
+  }
   // lost concentration: what it kept up ends
   if (concentration && !concentration.kept && a.combatId) {
     await endConcentrationEffects(admin, a.combatId, { characterId: t.kind === "character" ? t.id : null, monsterId: t.kind === "monster" ? t.id : null });

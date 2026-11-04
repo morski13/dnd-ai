@@ -8,7 +8,7 @@ import { monsterSave } from "@/lib/moderator/concentration";
 import { combine, saveMods } from "@/lib/engine/conditions";
 import { afterSave, cleanEffects, shownConditions, tick, withoutEffect, type TimedEffect, type TurnEvent } from "@/lib/engine/effects";
 import { campaignRules } from "@/lib/engine/server";
-import { terrainAtTurnStart } from "@/lib/maps/server";
+import { checkFalls, terrainAtTurnStart } from "@/lib/maps/server";
 
 type Row = { id: string; name: string; initiative: number | null; initiative_hidden?: boolean; dex_mod: number; character_id: string | null; monster_id: string | null; health: string | null };
 
@@ -49,6 +49,8 @@ export async function advanceTurn(admin: Admin, combatId: string, byUser?: strin
   // standing in fire, lava or acid when the turn starts hurts (battle map terrain)
   const campaignId = (combat as { campaign_id?: string }).campaign_id;
   if (campaignId && byUser) events.push(...await terrainAtTurnStart(campaignId, order[index].id, byUser).catch(() => [] as string[]));
+  // a Fly spell or condition ended on the way: flyers that can't stay up fall
+  if (campaignId && byUser) events.push(...await checkFalls(campaignId, byUser).catch(() => [] as string[]));
   // a new turn: that creature's movement on the battle map starts fresh (fine if there's no map)
   await admin.from("map_tokens").update({ moved_ft: 0, dashes: 0 }).eq("combatant_id", order[index].id).then(() => undefined, () => undefined);
   return { round, turnIndex: index, events };

@@ -6,6 +6,7 @@ import { defensesOf, conditionBlocked } from "@/lib/engine/damage";
 import { cleanEffects, makeEffect, shownConditions, withoutEffect, type DurationChoice } from "@/lib/engine/effects";
 import { CONDITIONS } from "@/lib/moderator/hp";
 import { touchCombat } from "@/lib/roll-service";
+import { checkFalls } from "@/lib/maps/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Ability } from "@/lib/rules";
@@ -64,6 +65,7 @@ export async function addEffect(combatantId: string, input: {
   const conditions = shownConditions(a.row.conditions ?? [], effects);
   await a.admin.from("combatants").update({ effects, conditions }).eq("id", a.row.id);
   await touchCombat(a.admin, a.row.combat_id);
+  await checkFalls(a.row.campaign_id, a.userId).catch(() => []); // a flyer knocked Prone or held falls
   refresh();
   return { conditions };
 }

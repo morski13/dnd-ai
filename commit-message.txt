@@ -1,16 +1,15 @@
-Battle map: light, darkvision, smoke, magical darkness and fog of war
+Battle map: flying (altitude, fly speeds, flying over things, falls)
 
-- lib/engine/vision.ts: senses from stat blocks ("Darkvision 60 ft.; Blindsight 30 ft.") and from
-  characters (features, else species: Drow 120, Elf / Dwarf / Tiefling… 60), light map (map light
-  bright / dim / dark + torches: 20 ft bright, 20 ft dim, not through walls), what a creature sees
-  (walls and smoke block, darkness needs darkvision, magical darkness needs truesight, blindsight
-  sees close things, invisible needs blindsight / truesight).
-- Terrain kinds: Smoke / fog, Magical darkness, Light (torch).
-- Attacks (sheet and DM monsters): can't see the target = disadvantage, the target can't see you =
-  advantage, with reasons.
-- Fog of war (DM switch): players get only the squares their characters see and only the monsters
-  in them (the server leaves the others out).
-- Map shading: dim and dark squares, smoke; DM light tools (bright / dim / dark, fog of war).
+- lib/engine/flight.ts: fly speed from stat blocks ("fly 60 ft. (hover)"), character features
+  ("flying speed of 30 feet", "equal to your walking speed") or species (Aarakocra, Fairy, Owlin);
+  heights of trees (20 ft) and boulders (10 ft); up / down cost; when a flyer falls.
+- Moving in the air: flying speed, over trees and boulders when high enough, ground terrain doesn't
+  slow, walls still block; height counts in distance and reach (melee can't reach a flyer 15 ft up).
+- flyTo (up, down, land: 5 ft of movement per 5 ft), setFlySpeed (a flying speed for now: Fly spell),
+  checkFalls after conditions change, at 0 HP and on turn changes: Prone / speed 0 / held / flight
+  gone → falls (1d6 per 10 ft, Prone) unless it hovers. Ground hazards skip flyers.
+- Map: altitude badge on tokens, flying controls in the token panel.
+- SQL 37-flying.sql (map_tokens.z, map_tokens.fly).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

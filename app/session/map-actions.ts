@@ -5,7 +5,8 @@ import { loadCharacter } from "@/lib/character-data";
 import { inRange, parseArea, place, tokensIn } from "@/lib/maps/area";
 import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
-import { battleState, moveCtx, terrainHarm, who } from "@/lib/maps/server";
+import { battleState, checkFalls, moveCtx, terrainHarm, who } from "@/lib/maps/server";
+import { climbCost, TALL } from "@/lib/engine/flight";
 import { canAct, speedOf } from "@/lib/engine/conditions";
 import { moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
 import { isKind, paint, readTerrain, type Kind } from "@/lib/engine/terrain";
@@ -39,9 +40,11 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
   if (!me.isDm && !mine) return { error: "That isn't your token." };
   if (!isTurn) return { error: "You can move on your turn." };
   // the rules: speed after conditions, standing up from Prone first, the real path around walls, enemies and difficult terrain
-  const speed = speedOf(t.speed, t.conds, b.rules);
+  // in the air the flying speed counts (and the ground's terrain doesn't)
+  const flying = (t.z ?? 0) > 0;
+  const speed = speedOf(flying ? t.flight.fly : t.speed, t.conds, b.rules);
   if (speed.speed <= 0) return { error: `${t.name} can't move: ${speed.why}.` };
-  const prone = t.conds.includes("Prone");
+  const prone = !flying && t.conds.includes("Prone");
   const standing = prone ? standUpCost(speed.speed) : 0;
   const left = moveBudget(speed.speed, t.dashes) - t.moved_ft - standing;
   const m = moveCosts(t, moveCtx(b, t), Math.max(0, left));
@@ -227,4 +230,52 @@ export async function setMapLight(light: "bright" | "dim" | "dark", fog: boolean
   if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
   await touchCombat(b.admin, b.combat.id);
   return { ok: true };
+}
+
+/**
+ * Fly up, down, or land (z = 0): 5 ft of movement per 5 ft of height. Needs a flying speed. Over a tree or a boulder
+ * you can't come lower than its top.
+ */
+export async function flyTo(tokenId: string, z: number): Promise<Fail | { z: number; movedFt: number }> {
+  const me = await who();
+  if (!me.userId || !me.campaignId) return { error: "Log in first." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const t = b.tokens.find((k) => k.id === tokenId);
+  if (!t) return { error: "That token isn't in this fight." };
+  if (!me.isDm && !(t.character_id && t.owner === me.userId)) return { error: "That isn't your token." };
+  if (b.currentCombatantId !== t.combatant_id && !me.isDm) return { error: "You can fly on your turn." };
+  const want = Math.max(0, Math.min(500, Math.round(z / 5) * 5));
+  if (want > 0 && !t.flight.fly) return { error: `${t.name} can't fly. (The DM can give a flying speed, e.g. for the Fly spell.)` };
+  const sp = speedOf(want > 0 || (t.z ?? 0) > 0 ? t.flight.fly : t.speed, t.conds, b.rules);
+  if (want > (t.z ?? 0) && sp.speed <= 0) return { error: `${t.name} can't fly up: ${sp.why ?? "speed 0"}.` };
+  // the top of whatever is under it
+  let floor = 0;
+  for (let j = 0; j < t.size; j++) for (let i = 0; i < t.size; i++) {
+    const kind = b.terrain.kinds.get(`${t.x + i},${t.y + j}`);
+    if (kind && b.terrain.walls.has(`${t.x + i},${t.y + j}`)) floor = Math.max(floor, TALL[kind] === Infinity ? 0 : TALL[kind] ?? 0);
+  }
+  if (want < floor) return { error: `There's something ${floor} ft tall under ${t.name}: land next to it.` };
+  const cost = climbCost(t.z ?? 0, want);
+  const strict = b.currentCombatantId === t.combatant_id;
+  const left = moveBudget(sp.speed, t.dashes) - t.moved_ft;
+  if (strict && cost > left) return { error: `That's ${cost} ft of flying; ${Math.max(0, left)} ft left.` };
+  const { error } = await b.admin.from("map_tokens").update({ z: want, ...(strict ? { moved_ft: t.moved_ft + cost } : {}) }).eq("id", t.id);
+  if (error) return { error: /column/.test(error.message) ? "Run supabase/37-flying.sql in Supabase first." : error.message };
+  return { z: want, movedFt: strict ? t.moved_ft + cost : t.moved_ft };
+}
+
+/** A flying speed for now (the Fly spell: 60 ft), or none. DM, or the character's player. Losing it in the air = falling. */
+export async function setFlySpeed(tokenId: string, fly: number | null): Promise<Fail | { fell: string[] }> {
+  const me = await who();
+  if (!me.userId || !me.campaignId) return { error: "Log in first." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const t = b.tokens.find((k) => k.id === tokenId);
+  if (!t) return { error: "That token isn't in this fight." };
+  if (!me.isDm && !(t.character_id && t.owner === me.userId)) return { error: "That isn't your token." };
+  const v = fly && fly > 0 ? Math.min(300, Math.round(fly / 5) * 5) : null;
+  const { error } = await b.admin.from("map_tokens").update({ fly: v }).eq("id", t.id);
+  if (error) return { error: /column/.test(error.message) ? "Run supabase/37-flying.sql in Supabase first." : error.message };
+  return { fell: await checkFalls(me.campaignId, me.userId) };
 }
