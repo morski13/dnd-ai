@@ -8,7 +8,7 @@ import { KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terr
  * Pictures in /public/terrain/<name>.png that are there (the DM's own). Grass, water, fire, lava and smoke stay
  * plain colours on purpose; everything else uses its colour until its picture is added here.
  */
-export const TERRAIN_PICTURES = new Set<string>([]);
+export const TERRAIN_PICTURES = new Set<string>(["barrel", "rocks", "crate", "door-open", "door-closed", "torch", "wall", "tree"]);
 
 export type Brush = { kind: Kind | "clear" | null; height: number | null; door: "door" | "window" | null; size: 1 | 3 };
 
@@ -29,7 +29,7 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
         return (
           <g key={k} data-terrain={c.k}>
             {c.k === "difficult" ? <rect x={x} y={y} width={1} height={1} fill="url(#t-hatch)" opacity={0.75} />
-              : pic ? <image href={`/terrain/${r.image}.png`} x={x} y={y} width={1} height={1} preserveAspectRatio="xMidYMid slice" />
+              : pic ? <image href={`/terrain/${r.image}.png`} x={x} y={y} width={1} height={1} preserveAspectRatio="xMidYMid slice" style={{ imageRendering: "pixelated" }} />
               : c.k !== "ground" ? <rect x={x} y={y} width={1} height={1} fill={r.color} opacity={r.blocksMove ? 0.85 : 0.5} stroke={r.blocksMove ? "#00000066" : "none"} strokeWidth={0.03} /> : null}
             {!pic && c.k !== "ground" && c.k !== "difficult" && c.k !== "wall" && (
               <text x={x + 0.5} y={y + 0.5} dy="0.35em" textAnchor="middle" fontSize={0.42} opacity={0.9}>{GLYPH[c.k] ?? ""}</text>
@@ -48,7 +48,7 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
         const name = d.window ? "window" : d.open ? "door-open" : "door-closed";
         const pic = TERRAIN_PICTURES.has(name) ? name : null;
         return pic
-          ? <image key={`door${k}`} href={`/terrain/${pic}.png`} x={x} y={y} width={1} height={1} data-door={d.open ? "open" : "closed"} />
+          ? <image key={`door${k}`} href={`/terrain/${pic}.png`} x={x} y={y} width={1} height={1} data-door={d.open ? "open" : "closed"} style={{ imageRendering: "pixelated" }} />
           : (
             <g key={`door${k}`} data-door={d.window ? "window" : d.open ? "open" : "closed"}>
               <rect x={x + 0.08} y={y + 0.08} width={0.84} height={0.84} rx={0.08} fill={d.window ? "#9fd3ef" : d.open ? "none" : "#7a4a22"} fillOpacity={d.window ? 0.55 : 1}
