@@ -89,7 +89,8 @@ export function makeEffect(p: {
   save?: { ability: Ability; dc: number } | null; concentration?: boolean;
 }): TimedEffect {
   const ends: Ends =
-    p.duration === "end_of_next_turn" ? { kind: "turns", at: "end", of: p.turnsOf, left: 1 }
+    // "until the end of MY next turn", put on during my own turn: this turn's end doesn't count (Guiding Bolt)
+    p.duration === "end_of_next_turn" ? { kind: "turns", at: "end", of: p.turnsOf, left: p.source?.combatantId && p.source.combatantId === p.turnsOf ? 2 : 1 }
     : p.duration === "start_of_next_turn" ? { kind: "turns", at: "start", of: p.turnsOf, left: 1 }
     : p.duration === "rounds" ? { kind: "turns", at: "start", of: p.turnsOf, left: Math.max(1, Math.min(100, p.rounds ?? 10)) }
     : p.duration === "save_ends" && p.rounds ? { kind: "turns", at: "start", of: p.turnsOf, left: Math.max(1, Math.min(100, p.rounds)) }
@@ -106,7 +107,8 @@ export function describe(e: TimedEffect, nameOf: (combatantId: string) => string
   const parts: string[] = [];
   if (e.ends.kind === "turns") {
     const who = nameOf(e.ends.of);
-    parts.push(e.ends.left === 1 ? `until the ${e.ends.at} of ${who}'s next turn` : `${e.ends.left} more rounds (counted at the ${e.ends.at} of ${who}'s turn)`);
+    const ownNext = e.ends.at === "end" && e.ends.left === 2 && e.source?.combatantId === e.ends.of;
+    parts.push(e.ends.left === 1 || ownNext ? `until the ${e.ends.at} of ${who}'s next turn` : `${e.ends.left} more rounds (counted at the ${e.ends.at} of ${who}'s turn)`);
   }
   if (e.save) parts.push(`${e.save.ability} save DC ${e.save.dc} at the ${e.save.at} of each of its turns ends it`);
   if (e.concentration && e.source) parts.push(`while ${e.source.name} concentrates`);

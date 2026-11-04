@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import type { Combatant } from "@/lib/session-data";
 import { monsterRoll, type QuickRoll } from "../actions";
 import { windowState } from "../reaction-actions";
-import { monsterTurn, setRecharge, spendLegendary, rollSaveAction, type TurnInfo } from "../monster-actions";
+import { applyRider, monsterTurn, setRecharge, spendLegendary, rollSaveAction, type TurnInfo } from "../monster-actions";
 import { useDice } from "../../components/dice/dice-provider";
 import { Segment } from "./bits";
 
@@ -26,6 +26,7 @@ export function MonsterTurn({ monsterId, party, targetId, setTargetId, hidden, o
   const [busy, setBusy] = useState(false);
   const [pending, start] = useTransition();
   const [breath, setBreath] = useState<{ name: string; picked: string[] } | null>(null);
+  const [riders, setRiders] = useState<{ attack: string; characterId: string; name: string; conditions: string[]; text: string | null }[]>([]);
 
   const load = useCallback(() => {
     monsterTurn(monsterId).then((r) => { if ("error" in r) setError(r.error); else { setInfo(r); setError(null); } }).catch(() => {});
@@ -51,7 +52,7 @@ export function MonsterTurn({ monsterId, party, targetId, setTargetId, hidden, o
   /** Rolls the attacks one by one on the target; each hit rolls its damage. Stops when the target drops. */
   async function runAttacks(names: string[], on: string | null) {
     if (!info || !on) { setError("Pick a target first."); return; }
-    setBusy(true); setError(null); setLog([]); setLeft([]);
+    setBusy(true); setError(null); setLog([]); setLeft([]); setRiders([]);
     const all: Attack[] = [...info.attacks, ...info.bonus.map((b) => ({ ...b, ranged: false }))];
     for (let i = 0; i < names.length; i++) {
       const a = all.find((x) => x.name === names[i]);
@@ -69,6 +70,16 @@ export function MonsterTurn({ monsterId, party, targetId, setTargetId, hidden, o
       const ap = dmg.applied;
       setLog((l) => [...l, `${a.name}: ${atk.total}${atk.isCrit ? " CRIT" : ""}, hit · ${ap ? ap.amount : dmg.total} ${a.type ?? "damage"}${ap?.defense ? ` (${ap.defense})` : ""}${ap?.dropped ? ` · ${ap.target.name} is down` : ""}`]);
       if (dmg.window) await waitWindow(dmg.window, null);
+      // what the hit does besides damage: a save (Ghoul Claw: Paralyzed) is rolled now; one without a save the DM gives
+      if (a.rider && !ap?.dropped) {
+        if (a.rider.save) {
+          const rr = await applyRider(monsterId, a.name, on, hidden);
+          setLog((l) => [...l, "error" in rr ? rr.error : `${a.name}: ${rr.line}`]);
+        } else {
+          const rider = a.rider;
+          setRiders((x) => [...x, { attack: a.name, characterId: on, name: party.find((p) => p.characterId === on)?.shortName ?? "them", conditions: rider.conditions, text: rider.text }]);
+        }
+      }
       if (ap?.dropped || ap?.hpAfter === 0) {
         const rest = names.slice(i + 1);
         if (rest.length) { setLeft(rest); setLog((l) => [...l, `${rest.length} attack${rest.length > 1 ? "s" : ""} left: pick another target and continue.`]); }
@@ -93,11 +104,12 @@ export function MonsterTurn({ monsterId, party, targetId, setTargetId, hidden, o
     });
   }
 
-  function legendary(delta: 1 | -1) {
+  function legendary(delta: number, then?: () => void) {
     start(async () => {
       const r = await spendLegendary(monsterId, delta);
       if ("error" in r) return setError(r.error);
       setInfo((i) => (i?.legendary ? { ...i, legendary: { ...i.legendary, left: r.left } } : i));
+      then?.();
     });
   }
 
@@ -216,6 +228,35 @@ export function MonsterTurn({ monsterId, party, targetId, setTargetId, hidden, o
           <button type="button" disabled={working || info.legendary.left === 0} onClick={() => legendary(1)} className="h-9 rounded-lg bg-accent px-3 text-xs font-bold text-accent-text disabled:opacity-50">Use one</button>
         </div>
       )}
+      {info.legendary && info.legendaryActions.length > 0 && (
+        <ul className="mt-2 space-y-1.5" aria-label="Legendary actions">
+          {info.legendaryActions.map((x) => (
+            <li key={x.name} className="flex items-start gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{x.name}{x.cost > 1 ? ` (costs ${x.cost})` : ""}</p>
+                <p className="text-xs text-soft">{x.text}</p>
+              </div>
+              <button type="button" disabled={working || info.legendary!.left < x.cost || (!!x.attack && !target)}
+                onClick={() => legendary(x.cost, x.attack ? () => void runAttacks([x.attack!], targetId) : undefined)}
+                className="h-9 shrink-0 rounded-lg border border-accent px-3 text-xs font-bold text-accent disabled:opacity-50">
+                {x.attack ? `Use · roll ${x.attack}` : "Use"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {riders.map((r, i) => (
+        <div key={`${r.attack}${i}`} className="mt-2 flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
+          <p className="min-w-0 flex-1 text-xs text-soft"><b className="text-text">{r.attack}</b> hit {r.name}: {r.text ?? r.conditions.join(", ")}</p>
+          <button type="button" disabled={working} onClick={() => start(async () => {
+            const rr = await applyRider(monsterId, r.attack, r.characterId, hidden);
+            setLog((l) => [...l, "error" in rr ? rr.error : `${r.attack}: ${rr.line}`]);
+            setRiders((x) => x.filter((_, j) => j !== i));
+            setTimeout(() => router.refresh(), 0);
+          })} className="h-9 shrink-0 rounded-lg bg-accent px-3 text-xs font-bold text-accent-text">Give {r.conditions.join(" + ")}</button>
+          <button type="button" onClick={() => setRiders((x) => x.filter((_, j) => j !== i))} className="h-9 shrink-0 rounded-lg border border-line px-2 text-xs text-soft">No</button>
+        </div>
+      ))}
       {info.note && <p className="mt-2 text-xs text-soft">Recharge: {info.note}</p>}
       {busy && <p className="mt-2 text-xs text-accent" role="status">Rolling…</p>}
       {log.length > 0 && <ul className="mt-2 space-y-0.5 text-sm" role="status">{log.map((l, i) => <li key={i}>{l}</li>)}</ul>}

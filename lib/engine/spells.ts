@@ -190,3 +190,14 @@ export function withZones(t: Terrain, zones: Zone[], tokens: (Tok & { combatant_
   }
   return out;
 }
+
+/** Damage areas that worked differently in 2014: no damage when cast, and "first time on a turn or starts its turn there". */
+const OLD_TIMING = new Set(["Spirit Guardians", "Moonbeam", "Cloudkill", "Insect Plague"]);
+
+/** The spell's area rule under the campaign's rules (2014 or 2024). */
+export function zoneRuleFor(name: string, rule: ZoneRule, rules: "2014" | "2024"): ZoneRule {
+  return rules === "2014" && OLD_TIMING.has(name) ? { ...rule, when: ["enter", "start"] } : rule;
+}
+
+/** Does casting it deal its damage right away? (2024 Moonbeam, Cloudkill: yes; 2014: only later, in the area.) */
+export const castDamageNow = (name: string, rules: "2014" | "2024") => !(rules === "2014" && OLD_TIMING.has(name));

@@ -7,6 +7,7 @@ import type { MonsterAction, MonsterStats } from "../encounter/build";
 import { compile } from "../encounter/sim";
 import { attackMods, saveMods, type RuleSet } from "./conditions";
 import type { Ability } from "../rules";
+import { readActions } from "../books/monster-text";
 
 /** What a monster's turn state is in this fight (combatants.monster_state, SQL 40). */
 export type MonsterState = {
@@ -29,7 +30,10 @@ export function cleanState(raw: unknown): MonsterState {
   };
 }
 
+export type Legendary = { name: string; cost: number; text: string; attack: string | null };
+
 export type Features = {
+  legendaryActions: Legendary[];      // from the stat block text (SRD): what each one does
   attacks: MonsterAction[];
   saves: MonsterAction[];             // breath weapons and the like
   bonus: MonsterAction[];
@@ -39,12 +43,40 @@ export type Features = {
 
 /** The parts of a stat block the turn uses. */
 export function featuresOf(sb: unknown): Features {
-  const s = (sb ?? {}) as Partial<MonsterStats>;
-  const actions = Array.isArray(s.actions) ? s.actions : [];
+  const s = (sb ?? {}) as Partial<MonsterStats> & { sections?: Record<string, string[]> };
+  let actions = Array.isArray(s.actions) ? s.actions : [];
+  // the stat block text says more than the saved actions: hit riders (Ghoul Claw: Paralyzed), saves that only give
+  // a condition. Read it again and add what's missing.
+  const text = s.sections?.Actions;
+  if (Array.isArray(text) && text.length) {
+    const again = readActions(text.join("\n")).actions;
+    actions = actions.map((a) => {
+      const b = again.find((x) => x.name === a.name && x.kind === a.kind);
+      return b ? { ...a, ...(b.rider && !a.rider ? { rider: b.rider } : {}), ...(b.conditions && !a.conditions ? { conditions: b.conditions, lasts: b.lasts } : {}) } : a;
+    });
+    for (const b of again) if (b.kind === "save" && !b.damage && b.conditions && !actions.some((a) => a.name === b.name)) actions = [...actions, b];
+  }
   const attacks = actions.filter((a) => a.kind === "attack" && a.damage);
   const saves = actions.filter((a) => a.kind === "save");
   const bonus = (Array.isArray(s.bonus_actions) ? s.bonus_actions : []).filter((a) => a.kind === "attack" && a.damage);
-  return { attacks, saves, bonus, multi: multiList(s.multiattack, attacks), legendary: Math.max(0, Math.min(5, Number(s.legendary_uses) || 0)) };
+  return {
+    attacks, saves, bonus, multi: multiList(s.multiattack, attacks), legendary: Math.max(0, Math.min(5, Number(s.legendary_uses) || 0)),
+    legendaryActions: legendaryList(s.sections?.["Legendary Actions"], attacks),
+  };
+}
+
+/** "Pounce. The dragon moves up to half its Speed, and it makes one Rend attack." → Pounce, 1 use, rolls Rend. */
+export function legendaryList(lines: unknown, attacks: MonsterAction[]): Legendary[] {
+  if (!Array.isArray(lines)) return [];
+  return lines.flatMap((raw): Legendary[] => {
+    const l = String(raw);
+    const m = l.match(/^([^.]{1,60})\.\s*(.*)$/);
+    if (!m || /legendary action uses|can take \d+ legendary actions/i.test(l) || /^the [a-z ]+ can take/i.test(l)) return [];
+    const name = m[1].replace(/\s*\(costs? \d+ actions?\)/i, "").trim();
+    const cost = Number(m[1].match(/costs? (\d+)/i)?.[1] ?? m[2].match(/costs? (\d+) actions?/i)?.[1] ?? 1);
+    const atk = attacks.find((a) => new RegExp(`\\b${a.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(m[2]) || a.name === name);
+    return [{ name, cost, text: m[2].slice(0, 240), attack: atk?.name ?? null }];
+  });
 }
 
 /**

@@ -283,7 +283,10 @@ export async function zoneHarm(
       out.push(`${t.name}${word}: ${z.spell}, ${z.rule.conditions.join(" and ")}.`);
     } else if (saved != null && !t.monster_id) out.push(`${t.name}${word} against ${z.spell}.`);
   }
-  if (changed) await b.admin.from("combats").update({ zones }).eq("id", b.combat.id);
+  if (changed) {
+    await b.admin.from("combats").update({ zones }).eq("id", b.combat.id);
+    b.zones = zones; // the next call on the same state sees who was already hit
+  }
   return out;
 }
 
@@ -322,4 +325,25 @@ export async function zonesOnTurn(campaignId: string, combatantId: string, when:
   if (!b?.zones.length) return [];
   const t = b.tokens.find((k) => k.combatant_id === combatantId);
   return t ? zoneHarm(b, t, { when }, byUser) : [];
+}
+
+/**
+ * 2024 Spirit Guardians: when the caster moves, the aura going into a creature's space affects it too
+ * (once per turn, like walking into it).
+ */
+export async function auraMoved(b: NonNullable<Awaited<ReturnType<typeof battleState>>>, mover: FullToken, to: { x: number; y: number }, byUser: string): Promise<string[]> {
+  if (b.rules !== "2024") return [];
+  const auras = b.zones.filter((z) => z.rule.follows && z.casterCombatantId === mover.combatant_id);
+  if (!auras.length) return [];
+  const after = { ...b, tokens: b.tokens.map((k) => (k.id === mover.id ? { ...k, ...to } : k)) };
+  const moved = after.tokens.find((k) => k.id === mover.id)!;
+  const out: string[] = [];
+  for (const z of auras) {
+    for (const t of b.tokens) {
+      if (t.id === mover.id || zoneSpares(z, t)) continue;
+      const was = zoneTouches(z, mover, t, b.map.feet), now = zoneTouches(z, moved, t, b.map.feet);
+      if (!was && now) out.push(...await zoneHarm(after, t, { when: "appear", zoneId: z.id }, byUser));
+    }
+  }
+  return out;
 }

@@ -5,7 +5,7 @@ import { loadCharacter } from "@/lib/character-data";
 import { inRange, parseArea, place, tokensIn } from "@/lib/maps/area";
 import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
-import { battleState, checkFalls, moveCtx, terrainHarm, who, zoneHarm } from "@/lib/maps/server";
+import { auraMoved, battleState, checkFalls, moveCtx, terrainHarm, who, zoneHarm } from "@/lib/maps/server";
 import { climbCost, TALL } from "@/lib/engine/flight";
 import { openWindow } from "@/lib/reactions-server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
@@ -14,7 +14,7 @@ import { addEffect } from "./effect-actions";
 import { liveState } from "@/lib/roll-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { allOptions, damageExpression, saveDCFor, type Attack, type SheetCharacter, type SpellInfo } from "@/lib/rules";
-import { durationRounds, spellRule, type Zone } from "@/lib/engine/spells";
+import { castDamageNow, durationRounds, spellRule, zoneRuleFor, type Zone } from "@/lib/engine/spells";
 import type { AreaSpec, Placed } from "@/lib/maps/area";
 import type { Advantage } from "@/lib/dice";
 import { rollForCharacter, type RollResponse } from "../characters/[id]/actions";
@@ -66,6 +66,7 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
   const harm = (t.z ?? 0) > 0 && !fallFt ? [] : await terrainHarm(b, t, { squares: path.slice(1), when: "enter", fallFt }, me.userId);
   // lasting spells on the way: Spirit Guardians, Moonbeam, Spike Growth, Web…
   harm.push(...await zoneHarm(b, { ...t, x: nx, y: ny }, { when: "enter", path }, me.userId).catch(() => [] as string[]));
+  harm.push(...await auraMoved(b, t, { x: nx, y: ny }, me.userId).catch(() => [] as string[])); // Spirit Guardians coming along
   // leaving reach: the pop-up asks the ones it provokes (5 s)
   if (prov.length) {
     await openWindow(b.admin, { campaignId: me.campaignId, combatId: b.combat.id, rules: b.rules,
@@ -192,7 +193,8 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   let inside = tokensIn(placed, b.tokens, caster.id, spec.shape);
   // a lasting area with nothing to roll now (Spirit Guardians, Web, Fog Cloud): it just goes on the map
   const lasting = sp ? spellRule(sp as SpellInfo) : null;
-  const zoneOnly = !!lasting?.zone && (!!lasting.noCastDamage || !(sp as SpellInfo).roll);
+  // 2014: Moonbeam, Cloudkill and Insect Plague only hurt later, in the area
+  const zoneOnly = !!lasting?.zone && (!!lasting.noCastDamage || !(sp as SpellInfo).roll || !castDamageNow(opt.name, b.rules));
   if (zoneOnly) inside = [];
   else if (spec.pick === "choose") {
     const allowedIds = new Set(inside.filter((t) => me.isDm || !t.hidden).map((t) => t.combatant_id));
@@ -209,7 +211,8 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   const zoneNote = await keepZone(b, character, opt, spec, placed, caster, (res.roll as { followUp?: { slot?: number } }).followUp?.slot ?? opt.level ?? undefined);
   if (zoneNote) res.roll = { ...res.roll, reasons: [...(res.roll.reasons ?? []), zoneNote] };
   // creatures inside when it appears: Web, Entangle, Grease, Stinking Cloud make their save now (not Spirit Guardians)
-  if (zoneNote && zoneOnly && lasting?.zone?.save && !lasting.zone.follows) {
+  if (zoneOnly) res.roll = { ...res.roll, followUp: undefined }; // nothing to roll now: the area does it later
+  if (zoneNote && zoneOnly && lasting?.zone?.save && !lasting.zone.follows && !lasting.zone.damage) {
     const nb = await battleState(me.campaignId);
     const z = nb?.zones.find((x) => x.spell === opt.name && x.casterCombatantId === caster.combatant_id);
     if (nb && z) {
@@ -237,7 +240,8 @@ async function keepZone(
   caster: { combatant_id: string; side: "party" | "enemy"; name: string }, slot: number | undefined,
 ): Promise<string | null> {
   const sp = opt.fromSpell;
-  const rule = sp ? spellRule(sp)?.zone : null;
+  const base = sp ? spellRule(sp)?.zone : null;
+  const rule = sp && base ? zoneRuleFor(sp.name, base, b.rules) : null;
   if (!sp || !rule) return null;
   const rounds = durationRounds(sp.duration);
   if (rounds == null && !sp.concentration) return null;

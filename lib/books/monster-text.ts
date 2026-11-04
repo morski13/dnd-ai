@@ -35,6 +35,40 @@ export function entries(text: string): string[] {
 const nameOf = (entry: string) => entry.match(/^([^.]{1,60})\./)?.[1].trim() ?? "";
 const baseName = (n: string) => n.replace(/\s*\((?:recharge|\d+\/day)[^)]*\)\s*/i, "").trim();
 
+export type Lasts = "next_turn" | "my_next_turn" | "save_ends" | "removed";
+const CONDITIONS = ["Blinded", "Charmed", "Deafened", "Frightened", "Grappled", "Incapacitated", "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious"];
+
+/**
+ * The conditions a failed save gives, and how long: "…or have the Frightened condition until the end of its next turn",
+ * 2014 "…or be frightened for 1 minute. The target can repeat the saving throw at the end of each of its turns",
+ * "is knocked prone". Null when there are none.
+ */
+export function saveConditions(text: string): { conditions: string[]; lasts: Lasts } | null {
+  const t = text.replace(/’/g, "'");
+  const found = CONDITIONS.filter((c) => new RegExp(`\\b(?:${c} condition|(?:be|is|becomes?|knocked) ${c.toLowerCase()})\\b`, "i").test(t));
+  if (!found.length) return null;
+  // "until the end of its next turn" (the target's) or "…of the mummy's next turn" (the monster's own)
+  const lasts = /repeat(?:s)? the sav/i.test(t) ? "save_ends"
+    : /until the (?:end|start) of (?:its|the target's) next turn/i.test(t) ? "next_turn"
+    : /until the (?:end|start) of the [a-z ]+'s next turn/i.test(t) ? "my_next_turn" : "removed";
+  return { conditions: found, lasts };
+}
+
+/** What a hit does besides damage: "…Constitution Saving Throw: DC 10. Failure: the Paralyzed condition…", "…has the Grappled condition (escape DC 13)". */
+export function riderOf(hitText: string): NonNullable<MonsterAction["rider"]> | null {
+  const cond = saveConditions(hitText);
+  if (!cond) return null;
+  const save = hitText.match(/DC\s*(\d+)\s+(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+saving throw/i)
+    ?? hitText.match(/(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Saving Throw:\s*DC\s*(\d+)/i);
+  const escape = hitText.match(/escape DC\s*(\d+)/i);
+  return {
+    ...cond,
+    ...(save ? { save: { ability: ABIL[(/^\d/.test(save[1]) ? save[2] : save[1]).toLowerCase()], dc: Number(/^\d/.test(save[1]) ? save[1] : save[2]) } } : {}),
+    ...(escape ? { escape: Number(escape[1]) } : {}),
+    note: hitText.replace(/^Hit:[^.]*\.\s*/i, "").slice(0, 200),
+  };
+}
+
 export type ParsedActions = { actions: MonsterAction[]; multiattack?: { count: number; uses: string[] }; unread: string[] };
 
 export function readActions(text: string): ParsedActions {
@@ -61,9 +95,10 @@ export function readActions(text: string): ParsedActions {
       for (const p of after.matchAll(/plus\s+\d+\s*\((\d+d\d+(?:\s*[+−–-]\s*\d+)?)\)\s*[A-Za-z]+\s+damage(?!\s+(?:if|when|while|against))/gi)) if (dice) dice += "+" + cleanDice(p[1]);
       const type = hit ? (hit[3] ?? hit[2]).toLowerCase() : "";
       if (!dice) { unread.push(full); continue; }
+      const rider = riderOf(after);
       actions.push({
         name, kind: "attack", bonus: Number(atk[2]), damage: dice, avg: hit ? Number(hit[1]) : avgOf(dice),
-        damage_type: type, ranged: /^ranged/i.test(atk[1]), ...extra,
+        damage_type: type, ranged: /^ranged/i.test(atk[1]), ...(rider ? { rider } : {}), ...extra,
       });
       continue;
     }
@@ -74,11 +109,13 @@ export function readActions(text: string): ParsedActions {
       const dc = Number(/^\d/.test(save[1]) ? save[1] : save[2]);
       const ab = ABIL[(/^\d/.test(save[1]) ? save[2] : save[1]).toLowerCase()];
       const dmg = e.match(/(\d+)\s*\((\d+d\d+(?:\s*[+−–-]\s*\d+)?)\)\s*([A-Za-z]+)\s+damage/i);
-      if (!dmg) continue; // a save with no damage (a condition): the simulator skips those anyway
       const area = /cone|line|sphere|cube|cylinder|emanation|radius|each creature/i.test(e);
+      const cond = saveConditions(e);
+      if (!dmg && !cond) continue; // a save that does something the app can't track
       actions.push({
-        name, kind: "save", save_ability: ab, dc, damage: cleanDice(dmg[2]), avg: Number(dmg[1]), damage_type: dmg[3].toLowerCase(),
-        half: /half as much|half damage|success:\s*half/i.test(e), targets: area ? 2 : 1, ...extra,
+        name, kind: "save", save_ability: ab, dc,
+        ...(dmg ? { damage: cleanDice(dmg[2]), avg: Number(dmg[1]), damage_type: dmg[3].toLowerCase(), half: /half as much|half damage|success:\s*half/i.test(e) } : {}),
+        targets: area ? 2 : 1, ...(cond ?? {}), ...extra,
       });
       continue;
     }

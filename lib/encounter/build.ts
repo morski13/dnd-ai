@@ -13,6 +13,9 @@ export type MonsterAction = {
   bonus?: number; damage?: string; avg?: number; damage_type?: string; ranged?: boolean;
   save_ability?: Ability; dc?: number; half?: boolean; targets?: number;
   recharge?: number; per_day?: number; count?: number;
+  conditions?: string[]; lasts?: "next_turn" | "my_next_turn" | "save_ends" | "removed"; // a failed save gives these (Frightful Presence)
+  /** what a hit does besides damage (Ghoul Claw: CON save or Paralyzed; Grappled, escape DC 13) */
+  rider?: { conditions: string[]; lasts: "next_turn" | "my_next_turn" | "save_ends" | "removed"; save?: { ability: Ability; dc: number }; escape?: number; note?: string };
 };
 export type MonsterStats = {
   name: string;
