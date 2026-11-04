@@ -12,6 +12,9 @@ import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat, type
 import { advanceTurn } from "@/lib/combat-turns";
 import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods } from "@/lib/engine/conditions";
 import { campaignRules, whoIs } from "@/lib/engine/server";
+import { effectAc } from "@/lib/engine/effects";
+import { typesIn } from "@/lib/engine/damage";
+import { openWindow } from "@/lib/reactions-server";
 import { attackGeometry } from "@/lib/maps/server";
 import type { Advantage } from "@/lib/dice";
 
@@ -21,6 +24,7 @@ export type QuickRoll = {
   isCrit: boolean; isFumble: boolean; success: boolean | null; target: string | null; hidden: boolean;
   applied?: Applied | null;
   reasons?: string[];       // what the rules changed (advantage from conditions, cover, distance)
+  window?: { id: string; closesAt: string; who: string[] } | null; // a reaction pop-up opened by this roll
 };
 
 /** Who is asking, and their role in their campaign. */
@@ -342,7 +346,7 @@ export async function monsterRoll(
       if (geo && !geo.sees && !(them?.conds ?? []).includes("Invisible") && !meW.conds.includes("Blinded")) m.disadvantage.push(`${monster.name} can't see ${them?.name ?? "the target"} (darkness or smoke)`);
       if (geo && !geo.seen && !meW.conds.includes("Invisible") && !(them?.conds ?? []).includes("Blinded")) m.advantage.push(`${them?.name ?? "the target"} can't see ${monster.name}`);
       adv = combineAdvantage(adv, m);
-      coverAc = geo?.cover.ac ?? 0;
+      coverAc = (geo?.cover.ac ?? 0) + (them ? effectAc(them.effects) : 0); // cover, plus Shield and the like
       autoCrit = m.autoCrit;
       reasons.push(...rollWith("normal", m).reasons, ...(geo?.cover.why ? [`${them?.name}: ${geo.cover.why}`] : []), ...(geo ? [`${geo.dist} ft away`] : []));
     } else if (meW && (form.kind === "save" || form.kind === "check")) {
@@ -378,7 +382,25 @@ export async function monsterRoll(
     });
     if (applied) applied.canAdjust = true;
   }
+  // Reactions: an attack on a character (Shield, Uncanny Dodge, Silvery Barbs…), damage taken (Hellish Rebuke, Absorb Elements)
+  let window: { id: string; closesAt: string; who: string[] } | null = null;
+  if (combat && tgt?.characterId && (form.kind === "attack" || (form.kind === "damage" && applied && applied.amount > 0))) {
+    try {
+      const rules = await campaignRules(admin, campaignId);
+      const [atkW, tgtW] = await Promise.all([whoIs(admin, campaignId, combat.id, { monsterId }), whoIs(admin, campaignId, combat.id, { characterId: tgt.characterId })]);
+      if (atkW?.combatantId && tgtW?.combatantId) {
+        const geo = await attackGeometry(campaignId, { monsterId }, { characterId: tgt.characterId });
+        window = await openWindow(admin, {
+          campaignId, combatId: combat.id, rules, rollId: saved.id, effectId: applied?.effectId ?? null,
+          trigger: form.kind === "attack"
+            ? { kind: "attack", attackerId: atkW.combatantId, attackerName: monster.name, targetId: tgtW.combatantId, total: res.total, hit: success, ac: tgt.ac != null ? tgt.ac + coverAc : null, melee: geo ? geo.dist <= 10 : true }
+            : { kind: "damage", sourceId: atkW.combatantId, sourceName: monster.name, targetId: tgtW.combatantId, types: typesIn(form.label) },
+        });
+      }
+    } catch { window = null; }
+  }
   return {
+    window,
     label: `${monster.name}: ${form.label || "Roll"}`, expression: res.expression, total: res.total, dice: res.dice,
     diceAll: res.diceAll, modifier: res.modifier, isCrit: res.isCrit, isFumble: res.isFumble, success,
     target: tgt?.name ?? null, hidden: form.hidden, applied, reasons: reasons.length ? reasons : undefined,

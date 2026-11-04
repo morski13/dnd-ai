@@ -130,3 +130,13 @@ export async function endFightFromSheet(characterId: string): Promise<Fail | { o
   refresh();
   return { ok: true };
 }
+
+/** The reaction was used from the sheet (by hand): the fight knows, so the pop-up won't offer another one this round. */
+export async function markReactionUsed(characterId: string): Promise<Fail | { ok: true }> {
+  const { userId, character: c, canEdit } = await loadCharacter(characterId);
+  if (!c || !canEdit || !userId) return { error: "Only for your own character." };
+  const admin = createAdminClient();
+  const { combat } = await liveState(admin, c.campaign_id);
+  if (combat) await admin.from("combatants").update({ reaction_used: true }).eq("combat_id", combat.id).eq("character_id", c.id).then(() => undefined, () => undefined);
+  return { ok: true };
+}

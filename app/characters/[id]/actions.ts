@@ -9,6 +9,8 @@ import { attackMods, checkMods, combine as combineAdvantage, rollWith, saveMods,
 import { checkRange, reachOf } from "@/lib/engine/space";
 import { attackGeometry } from "@/lib/maps/server";
 import { campaignRules, endConcentrationEffects, whoIs } from "@/lib/engine/server";
+import { effectAc } from "@/lib/engine/effects";
+import { openWindow } from "@/lib/reactions-server";
 import { replayRng } from "@/lib/offline-rolls";
 import { ABILITIES, allOptions, planRoll, rowKey, SKILLS, tableRow, type Ability, type Attack, type Option, type RollRequest, type SpellBook, type SpellInfo } from "@/lib/rules";
 import { isWildSoul, wildSoulPreset } from "@/lib/presets/wild-soul";
@@ -49,6 +51,7 @@ export type SavedRoll = {
   missed?: boolean;                          // damage after a missed attack: not applied
   autoSaves?: boolean;                       // a save spell whose targets' saves the app rolled itself
   reasons?: string[];                        // why the rules changed this roll ("Advantage: Ogre is Prone")
+  window?: { id: string; closesAt: string; who: string[] } | null; // a reaction pop-up this roll opened (the DM's monsters)
   table?: { row: string; text?: string };    // a roll table: the row it landed on
   next?: { key: string; label: string; many?: boolean }; // a table row with something to roll: offer it next
   self?: SelfResult | null;                  // what happened to the roller afterwards (temp HP, damage)
@@ -400,6 +403,24 @@ export async function rollForCharacter(
     aimedAt = [tgt.name, ...rest.filter((x): x is NonNullable<typeof x> => !!x && x.name !== tgt.name).map((x) => x.name)];
   }
 
+  // Reactions: an attack on a monster (its own reactions, the DM decides), a spell (Counterspell)
+  let window: { id: string; closesAt: string; who: string[] } | null = null;
+  if (combat && depth === 0 && !replay?.offline && (plan.rollType === "attack" || (request.kind === "use" && opt?.fromSpell))) {
+    try {
+      const meW = await whoIs(admin, c.campaign_id, combat.id, { characterId: c.id });
+      const tW = plan.rollType === "attack" && tgt?.monsterId ? await whoIs(admin, c.campaign_id, combat.id, { monsterId: tgt.monsterId }) : null;
+      const rulesNow = (rules?.ruleSet === "2014" ? "2014" : "2024") as "2014" | "2024";
+      if (meW?.combatantId && opt?.fromSpell && request.kind === "use") {
+        window = await openWindow(admin, { campaignId: c.campaign_id, combatId: combat.id, rules: rulesNow, rollId: saved.id,
+          trigger: { kind: "spell", casterId: meW.combatantId, casterName: c.name, spell: opt.name } });
+      }
+      if (!window && meW?.combatantId && tW?.combatantId && plan.rollType === "attack") {
+        window = await openWindow(admin, { campaignId: c.campaign_id, combatId: combat.id, rules: rulesNow, rollId: saved.id,
+          trigger: { kind: "attack", attackerId: meW.combatantId, attackerName: c.name, targetId: tW.combatantId, total: result?.total ?? null, hit: success, ac: vsAc, melee: !(opt?.ranged) } });
+      }
+    } catch { window = null; }
+  }
+
   // casting a new concentration spell: the old one's effects end
   if (endedConcentration && combat) await endConcentrationEffects(admin, combat.id, { characterId: c.id });
 
@@ -447,6 +468,7 @@ export async function rollForCharacter(
       success,
       autoSaves: !!saves?.length,
       reasons: reasons.length ? reasons : undefined,
+      window,
       // a fight played at the table: players don't learn an enemy's AC (the DM typed it in to check hits)
       vsAc: !viewerIsDm && combat?.mode === "table" && tgt?.monsterId ? null : vsAc,
       target: tgt?.name ?? targetName,
@@ -499,7 +521,10 @@ async function conditionRules(admin: ReturnType<typeof createAdminClient>, c: { 
     if (geo && !geo.sees && !(them?.conds ?? []).includes("Invisible") && !me.conds.includes("Blinded")) mods.disadvantage.push(`you can't see ${tn} (darkness or smoke)`);
     if (geo && !geo.seen && !me.conds.includes("Invisible") && !(them?.conds ?? []).includes("Blinded")) mods.advantage.push(`${tn} can't see you`);
     if (geo?.cover.ac) mods.notes.unshift(`${them?.name ?? "The target"} has ${geo.cover.why}`);
-    return { mods, ruleSet, coverAc: geo?.cover.ac ?? 0, dist: geo?.dist ?? null };
+    // Shield and the like: AC bonuses from effects on the target
+    const fxAc = them ? effectAc(them.effects) : 0;
+    if (fxAc) mods.notes.push(`${them?.name}: +${fxAc} AC (${them?.effects.filter((e) => e.ac).map((e) => e.name).join(", ")})`);
+    return { mods, ruleSet, coverAc: (geo?.cover.ac ?? 0) + fxAc, dist: geo?.dist ?? null };
   }
   if (plan.rollType === "save" && plan.ability) return { mods: saveMods(me, plan.ability, ruleSet), ruleSet };
   if (plan.rollType === "check") return { mods: checkMods(me, ruleSet, plan.ability), ruleSet };

@@ -6,6 +6,7 @@ import { touchCombat } from "@/lib/roll-service";
 import { checkConcentration, type ConcentrationCheck } from "./concentration";
 import { factorFor, typesIn } from "../engine/damage";
 import { endConcentrationEffects, whoIs } from "../engine/server";
+import { cleanEffects } from "../engine/effects";
 import { adjusted, applyDamage, applyHeal, healthOf, NO_SAVES, type DeathSaves, type Factor, type Health, type HpState } from "./hp";
 
 export type Applied = {
@@ -105,7 +106,19 @@ export async function applyHp(admin: Admin, a: ApplyArgs): Promise<Applied | nul
     const who = await whoIs(admin, a.campaignId, a.combatId, a.target);
     if (who) defense = factorFor(typesIn(a.damageType), who.defenses, { magical: !!a.magical, conds: who.conds });
   }
-  const saveFactor: Factor = a.kind === "damage" ? (a.factor ?? "full") : "full";
+  let saveFactor: Factor = a.kind === "damage" ? (a.factor ?? "full") : "full";
+  // Uncanny Dodge (from the reaction pop-up): this damage is halved, then it's gone
+  if (a.kind === "damage" && a.combatId) {
+    const col = t.kind === "character" ? "character_id" : "monster_id";
+    const { data: cb } = await admin.from("combatants").select("*").eq("combat_id", a.combatId).eq(col, t.id).maybeSingle();
+    const fx = cleanEffects((cb as { effects?: unknown } | null)?.effects);
+    const dodge = fx.find((e) => e.halveNext);
+    if (cb && dodge) {
+      saveFactor = saveFactor === "full" ? "half" : saveFactor;
+      defense = { ...defense, why: [defense.why, "Uncanny Dodge: halved"].filter(Boolean).join(" · ") };
+      await admin.from("combatants").update({ effects: fx.filter((e) => e !== dodge) }).eq("id", (cb as { id: string }).id);
+    }
+  }
   const factor: Factor = defense.factor !== "full" ? defense.factor : saveFactor;
   const amount = a.kind === "damage" ? adjusted(adjusted(a.total, saveFactor), defense.factor) : Math.max(0, Math.floor(a.total));
   const change = a.kind === "damage"

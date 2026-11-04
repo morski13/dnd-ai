@@ -21,6 +21,7 @@ import { allOptions } from "@/lib/rules";
 import { TELEPORTS } from "@/lib/maps/move";
 import { HEALTH_LABEL, HpBar } from "./parts/moderator";
 import { TavernButton } from "../tavern/panel";
+import { ReactionPrompt } from "../components/reaction-prompt";
 
 export function SessionView({ data, shops = [] }: { data: SessionData; shops?: { id: string; name: string }[] }) {
   useLive(data.campaign.id, data.session?.id ?? null, data.userId ?? null);
@@ -204,6 +205,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
         </div>
       </div>
       <TavernButton characterId={focusChar?.id ?? mine?.characterId ?? data.myCharacterIds[0] ?? null} />
+      {combat && <ReactionPrompt campaignId={data.campaign.id} />}
     </MapAimProvider>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 // DM: roll for a monster (secret by default, per the house rules).
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { Combatant, QuickAction } from "@/lib/session-data";
 import { monsterRoll, type QuickRoll } from "../actions";
+import { windowState } from "../reaction-actions";
 import { useDice } from "../../components/dice/dice-provider";
 import { ResultLine, Segment } from "./bits";
 import { AppliedNote, Conditions, HpBar } from "./moderator";
@@ -32,6 +33,26 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
   const [hpInput, setHpInput] = useState("");
   const [manual, setManual] = useState<Applied | null>(null);
   const lastWasCrit = !!last?.isCrit && kind === "damage";
+  // a reaction pop-up opened by the last roll: wait for it (the players have a few seconds)
+  const [wait, setWait] = useState<{ id: string; closesAt: string } | null>(null);
+  const [waitLeft, setWaitLeft] = useState(0);
+  const [reacted, setReacted] = useState<string[]>([]);
+  useEffect(() => {
+    if (!wait) return;
+    let alive = true;
+    const tick = setInterval(async () => {
+      setWaitLeft(Math.max(0, (Date.parse(wait.closesAt) - Date.now()) / 1000));
+      const st = await windowState(wait.id).catch(() => null);
+      if (!alive || !st || "error" in st) return;
+      setReacted(st.used);
+      if (!st.open) {
+        setWait(null);
+        setLast((l) => (l && st.success != null ? { ...l, success: st.success } : l));
+        router.refresh();
+      }
+    }, 600);
+    return () => { alive = false; clearInterval(tick); };
+  }, [wait, router]);
 
   function changeHp(k: "damage" | "heal") {
     const n = Number(hpInput);
@@ -53,6 +74,8 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
       if ("error" in res) return setError(res.error);
       await dice.show({ ...res, tone: kind === "damage" ? "damage" : "plain" });
       setLast(res);
+      setReacted([]);
+      if (res.window) { setWait({ id: res.window.id, closesAt: res.window.closesAt }); setWaitLeft(5); }
       setTimeout(() => router.refresh(), 0); // update the log without keeping the button busy
     });
   }
@@ -137,9 +160,15 @@ export function MonsterCard({ monster, isTurn, party, hiddenByDefault, me }: {
         Secret roll (players see &quot;DM roll, hidden&quot; until the fight ends)
       </label>
 
-      <button type="button" onClick={doRoll} disabled={pending}
+      {wait && (
+        <p className="mt-2 rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm" role="status">
+          <b className="text-accent">Waiting for reactions</b> · {waitLeft.toFixed(1)} s{reacted.length ? ` · ${reacted.join(", ")}` : ""}
+        </p>
+      )}
+      {!wait && reacted.length > 0 && <p className="mt-2 rounded-xl bg-bg px-3 py-2 text-sm text-accent" role="status">Reacted: {reacted.join(", ")}</p>}
+      <button type="button" onClick={doRoll} disabled={pending || !!wait}
         className="mt-2 h-14 w-full rounded-2xl bg-accent font-heading text-xl font-bold text-accent-text disabled:opacity-50">
-        {pending ? "Rolling…" : `Roll ${label || "it"}`}{lastWasCrit && !pending ? " · crit, dice doubled" : ""}
+        {pending ? "Rolling…" : wait ? "Reactions first…" : `Roll ${label || "it"}`}{lastWasCrit && !pending && !wait ? " · crit, dice doubled" : ""}
       </button>
       {error && <p className="mt-2 rounded-lg bg-bg px-3 py-2 text-sm text-danger">{error}</p>}
       {last && (

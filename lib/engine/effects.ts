@@ -16,6 +16,8 @@ export type TimedEffect = {
   save?: { ability: Ability; dc: number; at: "start" | "end" } | null; // repeat save on the target's own turn; a success ends it
   concentration?: boolean;       // ends when the source stops concentrating
   note?: string;
+  ac?: number;                   // AC bonus while it lasts (Shield: +5)
+  halveNext?: boolean;           // the next damage it takes is halved, then it ends (Uncanny Dodge)
 };
 
 export type TurnEvent = { kind: "start" | "end"; combatantId: string };
@@ -56,6 +58,9 @@ export function endConcentration(effects: TimedEffect[], sourceId: string) {
   const ended = effects.filter((e) => e.concentration && e.source?.combatantId === sourceId);
   return { kept: effects.filter((e) => !ended.includes(e)), ended };
 }
+
+/** AC bonus from effects (Shield +5). */
+export const effectAc = (effects: TimedEffect[]) => effects.reduce((a, e) => a + (e.ac ?? 0), 0);
 
 /** The conditions a creature shows: the ones put on by hand plus every effect's. */
 export function shownConditions(manual: string[], effects: TimedEffect[]): string[] {
@@ -123,6 +128,8 @@ export function cleanEffects(input: unknown): TimedEffect[] {
       ? { ability: String(s.ability) as Ability, dc: Math.min(40, Math.floor(Number(s.dc))), at: (s.at === "start" ? "start" : "end") as "start" | "end" } : null;
     const src = e.source as Record<string, unknown> | null | undefined;
     const source = src ? { combatantId: typeof src.combatantId === "string" ? src.combatantId : null, name: String(src.name ?? "").slice(0, 60) } : null;
-    return [{ id, name, conditions, source, ends, save, concentration: !!e.concentration, note: typeof e.note === "string" ? e.note.slice(0, 200) : undefined }];
+    const ac = Math.max(-10, Math.min(10, Math.round(Number(e.ac) || 0)));
+    return [{ id, name, conditions, source, ends, save, concentration: !!e.concentration, note: typeof e.note === "string" ? e.note.slice(0, 200) : undefined,
+      ...(ac ? { ac } : {}), ...(e.halveNext ? { halveNext: true } : {}) }];
   });
 }

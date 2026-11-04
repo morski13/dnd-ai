@@ -7,6 +7,7 @@ import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
 import { battleState, checkFalls, moveCtx, terrainHarm, who } from "@/lib/maps/server";
 import { climbCost, TALL } from "@/lib/engine/flight";
+import { openWindow } from "@/lib/reactions-server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
 import { moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
 import { isKind, paint, readTerrain, type Kind } from "@/lib/engine/terrain";
@@ -62,6 +63,11 @@ export async function moveToken(tokenId: string, x: number, y: number, free = fa
     if (drop >= 10) fallFt = Math.max(fallFt, drop);
   }
   const harm = (t.z ?? 0) > 0 && !fallFt ? [] : await terrainHarm(b, t, { squares: path.slice(1), when: "enter", fallFt }, me.userId);
+  // leaving reach: the pop-up asks the ones it provokes (5 s)
+  if (prov.length) {
+    await openWindow(b.admin, { campaignId: me.campaignId, combatId: b.combat.id, rules: b.rules,
+      trigger: { kind: "leave", moverId: t.combatant_id, moverName: t.name, threatIds: prov.map((o) => o.combatant_id) } }).catch(() => null);
+  }
   return {
     movedFt: t.moved_ft + standing + cost, stood: prone, harm: harm.length ? harm : undefined,
     provoked: prov.map((o) => (o.hidden && !me.isDm ? "Something unseen" : o.name)),

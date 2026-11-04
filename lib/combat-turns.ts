@@ -46,6 +46,8 @@ export async function advanceTurn(admin: Admin, combatId: string, byUser?: strin
   if (ending) events.push(...await tickEffects(admin, combat, { kind: "end", combatantId: ending.id }, byUser ?? null));
   await admin.from("combats").update({ turn_index: index, round }).eq("id", combatId);
   events.push(...await tickEffects(admin, combat, { kind: "start", combatantId: order[index].id }, byUser ?? null));
+  // its reaction comes back (SQL 38; fine without it)
+  await admin.from("combatants").update({ reaction_used: false }).eq("id", order[index].id).then(() => undefined, () => undefined);
   // standing in fire, lava or acid when the turn starts hurts (battle map terrain)
   const campaignId = (combat as { campaign_id?: string }).campaign_id;
   if (campaignId && byUser) events.push(...await terrainAtTurnStart(campaignId, order[index].id, byUser).catch(() => [] as string[]));

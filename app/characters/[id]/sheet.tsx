@@ -30,9 +30,10 @@ import { attacksPerAction, bonusStandardActions, move, NEW_FIGHT, spend, startTu
 import { CombatPanel, type ReactionChoice } from "./parts/combat-panel";
 import { SaveHelper } from "./parts/save-helper";
 import { useSheetCombat } from "./parts/use-combat";
-import { endFightFromSheet, endMyTurn, setMyConditions } from "./combat-actions";
+import { endFightFromSheet, endMyTurn, markReactionUsed, setMyConditions } from "./combat-actions";
 import { addEffect, removeEffect } from "../../session/effect-actions";
 import { damageParts } from "@/lib/breakdown";
+import { ReactionPrompt } from "../../components/reaction-prompt";
 import type { Combo } from "@/lib/combos";
 import type { TableSession } from "@/lib/roll-service";
 import { PortraitButton } from "../../components/map/portrait";
@@ -179,6 +180,7 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     });
   }
   function doReaction(r: ReactionChoice) {
+    void markReactionUsed(character.id).catch(() => {});
     if (r.id.startsWith("oa:")) { spendAs.current = "reaction"; return doRoll({ kind: "use", key: r.id.slice(3) }, "reaction"); }
     if (r.roll) return doRoll({ kind: "use", key: r.id });
     // a feature (Uncanny Dodge…): nothing to roll, the reaction is used
@@ -779,6 +781,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }}
         realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined}
         parts={lastParts} onMark={canEdit ? markHit : undefined} markFirst={inFight} />}
+      {canEdit && shared && (
+        <ReactionPrompt campaignId={character.campaign_id}
+          onUsed={(cid) => { if (cid === character.id) setFight((f) => ({ ...f, turn: { ...f.turn, reactionUsed: true } })); void reloadCombat(); }} />
+      )}
       {pad && <RealDicePad title={pad.title} shape={pad.shape} onDone={pad.done} />}
       {aimPick && (
         <TargetPick title={aimPick.title} heal={aimPick.aim.heal} foe={aimPick.aim.foe} many={aimPick.aim.many} max={aimPick.aim.max}

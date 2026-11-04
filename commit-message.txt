@@ -1,15 +1,17 @@
-Battle map: flying (altitude, fly speeds, flying over things, falls)
+Battle engine phase 3: the reaction pop-up (5 seconds, only for those who can react)
 
-- lib/engine/flight.ts: fly speed from stat blocks ("fly 60 ft. (hover)"), character features
-  ("flying speed of 30 feet", "equal to your walking speed") or species (Aarakocra, Fairy, Owlin);
-  heights of trees (20 ft) and boulders (10 ft); up / down cost; when a flyer falls.
-- Moving in the air: flying speed, over trees and boulders when high enough, ground terrain doesn't
-  slow, walls still block; height counts in distance and reach (melee can't reach a flyer 15 ft up).
-- flyTo (up, down, land: 5 ft of movement per 5 ft), setFlySpeed (a flying speed for now: Fly spell),
-  checkFalls after conditions change, at 0 HP and on turn changes: Prone / speed 0 / held / flight
-  gone → falls (1d6 per 10 ft, Prone) unless it hovers. Ground hazards skip flyers.
-- Map: altitude badge on tokens, flying controls in the token panel.
-- SQL 37-flying.sql (map_tokens.z, map_tokens.fly).
+- lib/engine/react.ts: who can react to what. An attack hits: Shield (says when it makes it miss),
+  Uncanny Dodge, Defensive Duelist, Parry, a monster's own reactions; friends: Silvery Barbs (60 ft),
+  Interception (next to the target), Sentinel. A spell: Counterspell within 60 ft. Leaving reach:
+  Opportunity Attack (War Caster). Damage: Hellish Rebuke, Absorb Elements.
+- reaction_windows (SQL 38) opened by: the DM's monster attacks and damage on characters, players'
+  attacks on monsters, players' spells (monsters with Counterspell), moves that leave reach.
+  combatants.reaction_used: used for the round, back at the start of the creature's turn.
+- Pop-up on the Session screen and the sheet: countdown, options with why, Pass. Shield adds +5 AC
+  (later attacks too) and can turn the hit into a miss; Uncanny Dodge halves the next damage;
+  Absorb Elements turns the damage to resisted; Opportunity Attack, Counterspell, Hellish Rebuke…
+  are rolled from the sheet at whoever set it off. The DM answers for monsters.
+- Monster card waits for the reactions before the next roll and shows what was used.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6
