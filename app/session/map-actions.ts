@@ -7,7 +7,7 @@ import { ensureTokens } from "@/lib/maps-data";
 import { freeAt, moveBudget, squares, TELEPORTS } from "@/lib/maps/move";
 import { battleState, moveCtx, terrainHarm, who } from "@/lib/maps/server";
 import { canAct, speedOf } from "@/lib/engine/conditions";
-import { distanceFt, moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
+import { moveCosts, provoked, standingZ, standUpCost } from "@/lib/engine/space";
 import { isKind, paint, readTerrain, type Kind } from "@/lib/engine/terrain";
 import { addEffect } from "./effect-actions";
 import { liveState, touchCombat } from "@/lib/roll-service";
@@ -198,8 +198,8 @@ export async function castArea(characterId: string, optionKey: string, aim: { x:
   return { ...res, hit: targets.length };
 }
 
-/** DM: paint squares of the fight's map: a kind of terrain, a height, a door or window, or clear them. */
-export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear"; height?: number; door?: "door" | "window" | "none" }): Promise<Fail | { ok: true }> {
+/** DM: paint squares of the fight's map: a kind of terrain, a height, or clear them. */
+export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear"; height?: number }): Promise<Fail | { ok: true }> {
   const me = await who();
   if (!me.campaignId || !me.isDm) return { error: "Only the DM can paint the map." };
   const b = await battleState(me.campaignId);
@@ -213,23 +213,3 @@ export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear
   return { ok: true };
 }
 
-/** Open or close a door: the DM any time; a player on their turn, standing next to it. */
-export async function toggleDoor(cell: string): Promise<Fail | { open: boolean }> {
-  const me = await who();
-  if (!me.userId || !me.campaignId) return { error: "Log in first." };
-  const b = await battleState(me.campaignId);
-  if (!b) return NO_MAP;
-  const t = readTerrain(b.terrainRaw);
-  const door = t.doors[cell];
-  if (!door || door.window) return { error: "There's no door there." };
-  if (!me.isDm) {
-    const mine = b.tokens.find((k) => k.owner === me.userId && k.combatant_id === b.currentCombatantId);
-    if (!mine) return { error: "You can open doors on your turn." };
-    const [x, y] = cell.split(",").map(Number);
-    if (distanceFt(mine, { id: "door", x, y, size: 1 }, b.map.feet, b.diag) > 5) return { error: "Stand next to the door to open it." };
-  }
-  t.doors[cell] = { ...door, open: !door.open };
-  await b.admin.from("battle_maps").update({ terrain: t }).eq("id", b.map.id);
-  await touchCombat(b.admin, b.combat.id);
-  return { open: !door.open };
-}

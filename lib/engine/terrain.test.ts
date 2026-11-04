@@ -13,7 +13,6 @@ describe("terrain kinds", () => {
     expect(p.cells["3,3"]).toEqual({ k: "tree" });
     expect(paint(p, ["3,3"], { height: 10 }).cells["3,3"]).toEqual({ k: "tree", h: 10 });
     expect(paint(p, ["3,3"], { kind: "clear" }).cells["3,3"]).toBeUndefined();
-    expect(paint(t, ["4,4"], { door: "door" }).doors["4,4"]).toEqual({ open: false });
     expect(strokeSquares({ x: 0.5, y: 0.5 }, { x: 3.5, y: 0.5 })).toEqual(["0,0", "1,0", "2,0", "3,0"]);
     expect(strokeSquares({ x: 2.5, y: 2.5 }, { x: 2.5, y: 2.5 }, 3)).toHaveLength(9);
   });
@@ -24,14 +23,6 @@ describe("terrain kinds", () => {
     const forest = terrainOf({ v: 2, cells: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].flatMap((y) => [[`2,${y}`, { k: "boulder" }]])) });
     expect(coverOf(b("a", 0, 3), b("t", 4, 3), forest, []).level).toBe("three-quarters");
     expect(coverOf(b("a", 0, 0), b("t", 4, 0), terrainOf({ v: 2, cells: { "2,0": { k: "barrel" } } }), []).level).toBe("half");
-  });
-  it("closed doors block, open ones don't; windows block moving but not sight", () => {
-    const shut = terrainOf({ v: 2, cells: {}, doors: { "1,0": { open: false } } });
-    expect(shut.walls.has("1,0")).toBe(true);
-    expect(terrainOf({ v: 2, cells: {}, doors: { "1,0": { open: true } } }).walls.has("1,0")).toBe(false);
-    const win = terrainOf({ v: 2, cells: {}, doors: { "1,0": { open: false, window: true } } });
-    expect(win.walls.has("1,0")).toBe(true);
-    expect(win.sight.has("1,0")).toBe(false);
   });
   it("height: climbing costs extra, distance counts it, a ridge blocks the view from below", () => {
     const hill = { v: 2, cells: { "1,0": { k: "ground", h: 10 } } };

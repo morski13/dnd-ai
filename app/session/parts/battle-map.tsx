@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { inRange, place, squaresIn, tokensIn, type Placed } from "@/lib/maps/area";
 import { freeAt, squares } from "@/lib/maps/move";
-import { distanceFt, key as sqKey, reachableSquares, standUpCost, type MoveCtx } from "@/lib/engine/space";
+import { distanceFt, reachableSquares, standUpCost, type MoveCtx } from "@/lib/engine/space";
 import { speedOf } from "@/lib/engine/conditions";
 import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken, toggleDoor } from "../map-actions";
+import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken } from "../map-actions";
 import { paint as paintCells, strokeSquares, type TerrainData } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
 import { PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
@@ -41,7 +41,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const [hideArea, setHideArea] = useState<string | null>(null);
   // DM: painting terrain with a brush (squares change at once, the server keeps them)
   const [brush, setBrush] = useState<Brush | null>(null);
-  const paint = brush && (brush.kind || brush.door || brush.height !== null) ? brush : null;
+  const paint = brush && (brush.kind || brush.height !== null) ? brush : null;
   const [localT, setLocalT] = useState<TerrainData | null>(null);
   const pendingCells = useRef<Set<string>>(new Set());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,7 +122,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
 
   /** What the brush paints, as the server understands it. */
   const brushWhat = (b: Brush) => ({
-    ...(b.kind ? { kind: b.kind } : {}), ...(b.height !== null ? { height: b.height } : {}), ...(b.door ? { door: b.door } : {}),
+    ...(b.kind ? { kind: b.kind } : {}), ...(b.height !== null ? { height: b.height } : {}),
   });
   function brushStroke(from: Pt, to: Pt) {
     if (!paint || !isDm) return;
@@ -149,12 +149,6 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
     if (Object.keys(optimistic).length) return; // the last move is still on its way
     const sq = { x: Math.floor(p.x), y: Math.floor(p.y) };
     if (paint && isDm) return; // painting happens on the brush strokes
-    // a door: open or close it (players: on their turn, standing next to it)
-    const doorKey = sqKey(sq.x, sq.y);
-    const door = tData.doors[doorKey];
-    if (door && !door.window && !aim && !tele) {
-      return act(() => toggleDoor(doorKey), (r) => setNote(r.open ? "The door is open." : "The door is closed."));
-    }
     const at = tokens.find((t) => sq.x >= t.x && sq.x < t.x + t.size && sq.y >= t.y && sq.y < t.y + t.size) ?? null;
     if (aim) {
       if (aim.spec.shape === "targets") {

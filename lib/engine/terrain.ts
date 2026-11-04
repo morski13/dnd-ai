@@ -1,6 +1,6 @@
 // Battle engine, part 5: what each kind of terrain does (pure, tested).
-// The DM paints squares with a kind (tree, water, barrels…), a height, doors and windows, and hazards.
-// Stored on the map as terrain v2: { v: 2, cells: { "3,4": { k: "tree", h: 10 } }, doors: { "5,5": { open: false } } }.
+// The DM paints squares with a kind (tree, water, barrels…), a height, and hazards.
+// Stored on the map as terrain v2: { v: 2, cells: { "3,4": { k: "tree", h: 10 } } }.
 // The old format ({ walls: [...], difficult: [...] }) still reads.
 
 export type Kind =
@@ -35,8 +35,7 @@ export const KIND_LIST = Object.keys(KINDS) as Kind[];
 export const isKind = (k: unknown): k is Kind => typeof k === "string" && k in KINDS;
 
 export type Cell = { k: Kind; h?: number };         // h: height in feet (+ hill, ledge; − pit)
-export type Door = { open: boolean; window?: boolean };
-export type TerrainData = { v: 2; cells: Record<string, Cell>; doors: Record<string, Door> };
+export type TerrainData = { v: 2; cells: Record<string, Cell> };
 
 const okKey = (s: string) => /^\d+,\d+$/.test(s);
 
@@ -44,7 +43,6 @@ const okKey = (s: string) => /^\d+,\d+$/.test(s);
 export function readTerrain(raw: unknown): TerrainData {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const cells: Record<string, Cell> = {};
-  const doors: Record<string, Door> = {};
   for (const k of (Array.isArray(r.walls) ? r.walls : []).map(String)) if (okKey(k)) cells[k] = { k: "wall" };
   for (const k of (Array.isArray(r.difficult) ? r.difficult : []).map(String)) if (okKey(k) && !cells[k]) cells[k] = { k: "difficult" };
   const rc = (r.cells && typeof r.cells === "object" ? r.cells : {}) as Record<string, unknown>;
@@ -57,29 +55,21 @@ export function readTerrain(raw: unknown): TerrainData {
     if (kind === "ground" && !h) continue;
     cells[k] = h ? { k: kind, h } : { k: kind };
   }
-  const rd = (r.doors && typeof r.doors === "object" ? r.doors : {}) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(rd)) {
-    if (!okKey(k)) continue;
-    const d = (v ?? {}) as Record<string, unknown>;
-    doors[k] = { open: !!d.open, ...(d.window ? { window: true } : {}) };
-  }
-  return { v: 2, cells, doors };
+  return { v: 2, cells };
 }
 
-/** Paint squares: a kind (keeps the height), a height (keeps the kind), or clear. Doors and windows too. */
-export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "clear"; height?: number; door?: "door" | "window" | "none" }): TerrainData {
-  const cells = { ...t.cells }, doors = { ...t.doors };
+/** Paint squares: a kind (keeps the height), a height (keeps the kind), or clear. */
+export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "clear"; height?: number }): TerrainData {
+  const cells = { ...t.cells };
   for (const k of keys) {
     if (!okKey(k)) continue;
     const old = cells[k];
-    if (what.kind === "clear") { delete cells[k]; delete doors[k]; continue; }
+    if (what.kind === "clear") { delete cells[k]; continue; }
     const kind = what.kind ?? old?.k ?? "ground";
     const h = what.height !== undefined ? Math.max(-200, Math.min(200, Math.round(what.height))) : old?.h ?? 0;
     if (kind === "ground" && !h) delete cells[k]; else cells[k] = h ? { k: kind, h } : { k: kind };
-    if (what.door === "none") delete doors[k];
-    else if (what.door) doors[k] = { open: false, ...(what.door === "window" ? { window: true } : {}) };
   }
-  return { v: 2, cells, doors };
+  return { v: 2, cells };
 }
 
 /** The squares of a brush stroke between two points (a straight line of squares, `size` wide). */

@@ -8,11 +8,11 @@ export type Pos = { x: number; y: number };
 /** z: feet above the ground it stands on (flying); the ground's own height comes from the terrain. */
 export type Body = Pos & { id: string; size: number; z?: number };
 export type Terrain = {
-  walls: Set<string>;      // can't move through (walls, trees, boulders, closed doors, windows)
+  walls: Set<string>;      // can't move through (walls, trees, boulders)
   difficult: Set<string>;  // costs double
-  sight: Set<string>;      // blocks sight completely (walls, closed doors)
+  sight: Set<string>;      // blocks sight completely (walls)
   capped: Set<string>;     // blocks sight, but gives three-quarters cover at most (trees, boulders)
-  half: Set<string>;       // half cover (bushes, barrels, crates, windows)
+  half: Set<string>;       // half cover (bushes, barrels, crates)
   height: Map<string, number>; // feet above (or below) the floor
   obscured: Set<string>;   // lightly obscured (tall grass, bushes)
   hazards: Map<string, HazardRule & { kind: Kind }>;
@@ -20,7 +20,7 @@ export type Terrain = {
 };
 export const key = (x: number, y: number) => `${x},${y}`;
 
-/** Terrain as stored with a map (old { walls, difficult } lists, or v2 cells / doors). */
+/** Terrain as stored with a map (old { walls, difficult } lists, or v2 cells). */
 export function terrainOf(raw: unknown): Terrain {
   const d = readTerrain(raw);
   const t: Terrain = { walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set() };
@@ -35,10 +35,6 @@ export function terrainOf(raw: unknown): Terrain {
     if (r.swim) t.swim.add(k);
     if (r.hazard) t.hazards.set(k, { ...r.hazard, kind: c.k });
     if (c.h) t.height.set(k, c.h);
-  }
-  for (const [k, door] of Object.entries(d.doors)) {
-    if (door.window) { t.walls.add(k); t.half.add(k); continue; }
-    if (!door.open) { t.walls.add(k); t.sight.add(k); }
   }
   return t;
 }
