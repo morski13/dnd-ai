@@ -11,16 +11,19 @@ import { actionsLeft, actionSurge, endLine, NEW_FIGHT, nextTurn, type Turn } fro
 import { endTableSession, joinTableFight, leaveTableFight, startTableSession } from "../../../session/actions";
 import type { Fight } from "./fight-store";
 
-export function TableCard({ characterId, canEdit, live, setLive, fight, setFight, perAction, canSurge, spendSurge, warning }: {
+export function TableCard({ characterId, canEdit, live, setLive, fight, setFight, perAction, canSurge, spendSurge, warning, combatOn = "none", onJoined }: {
   characterId: string; canEdit: boolean;
   live: TableSession; setLive: (s: TableSession) => void;
   fight: Fight; setFight: (f: Fight | ((f: Fight) => Fight)) => void;
   perAction: number; canSurge: boolean; spendSurge: () => void; warning: string | null;
+  /** a shared fight is running: "in" = this character fights (the combat panel takes over), "out" = not in it yet */
+  combatOn?: "none" | "in" | "out";
+  onJoined?: () => void;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const t = fight.on && fight.sessionId === (live?.id ?? null) ? fight.turn : null;
+  const t = combatOn === "none" && fight.on && fight.sessionId === (live?.id ?? null) ? fight.turn : null;
 
   const track = () => start(async () => {
     setError(null);
@@ -41,7 +44,7 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
   const [fightNote, setFightNote] = useState<string | null>(null);
   const fightOn = () => {
     setFight({ on: true, turn: NEW_FIGHT, sessionId: live?.id ?? null });
-    joinTableFight(characterId).then((r) => setFightNote("error" in r ? r.error : r.started ? "Fight started: everyone's rolls now count in it." : null)).catch(() => {});
+    joinTableFight(characterId).then((r) => { setFightNote("error" in r ? r.error : r.started ? "Fight started: everyone's rolls now count in it." : null); onJoined?.(); }).catch(() => {});
   };
   const fightOff = () => {
     setFight({ on: false, turn: NEW_FIGHT, sessionId: null });
@@ -72,8 +75,17 @@ export function TableCard({ characterId, canEdit, live, setLive, fight, setFight
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
 
+      {/* a shared fight this character isn't in yet */}
+      {canEdit && live && combatOn === "out" && (
+        <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
+          <p className="min-w-0 flex-1 text-sm"><b className="text-accent">⚔ A fight is on</b><span className="block text-xs text-muted">You&apos;re not in it yet.</span></p>
+          <button type="button" onClick={fightOn} className="h-10 shrink-0 rounded-xl bg-accent px-3 text-sm font-bold text-accent-text">Join the fight</button>
+        </div>
+      )}
+      {fightNote && combatOn !== "none" && <p className="mt-1 text-xs text-soft" role="status">{fightNote}</p>}
+
       {/* fight mode */}
-      {canEdit && live && (
+      {canEdit && live && combatOn === "none" && (
         <div className="mt-3 border-t border-line pt-3">
           <button type="button" role="switch" aria-checked={!!t} onClick={t ? fightOff : fightOn}
             className="flex min-h-11 w-full items-center justify-between gap-3 text-left">

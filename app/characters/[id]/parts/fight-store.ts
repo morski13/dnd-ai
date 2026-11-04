@@ -4,8 +4,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { NEW_FIGHT, type Turn } from "@/lib/turn";
 
-export type Fight = { on: boolean; turn: Turn; sessionId: string | null };
-const OFF: Fight = { on: false, turn: NEW_FIGHT, sessionId: null };
+/**
+ * on/sessionId: fight mode for a session. combatId/turnKey: the shared fight this turn belongs to (the turn order
+ * lives in the fight; "1:2" = round 1, third in the order). note: shown once the fight is over.
+ */
+export type Fight = { on: boolean; turn: Turn; sessionId: string | null; combatId?: string | null; turnKey?: string | null; note?: string | null };
+export const OFF: Fight = { on: false, turn: NEW_FIGHT, sessionId: null, combatId: null, turnKey: null, note: null };
 
 const cache = new Map<string, Fight>();
 const listeners = new Set<() => void>();
@@ -18,7 +22,8 @@ function read(id: string): Fight {
   try {
     const raw = localStorage.getItem(key(id));
     const j = raw ? JSON.parse(raw) : null;
-    if (j && typeof j === "object" && j.turn) f = { on: !!j.on, turn: { ...NEW_FIGHT, ...j.turn }, sessionId: typeof j.sessionId === "string" ? j.sessionId : null };
+    const str = (v: unknown) => (typeof v === "string" ? v : null);
+    if (j && typeof j === "object" && j.turn) f = { on: !!j.on, turn: { ...NEW_FIGHT, ...j.turn }, sessionId: str(j.sessionId), combatId: str(j.combatId), turnKey: str(j.turnKey), note: str(j.note) };
   } catch { f = OFF; }
   cache.set(id, f);
   return f;

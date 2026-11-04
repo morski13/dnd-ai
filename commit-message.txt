@@ -1,4 +1,16 @@
-Fix the build: add back the Session Wrapped loader in stats-data
+Combat mode for fights played at the table, fighting from the full sheet
+
+- DM: "Start combat mode" in Session (no monsters needed). The party joins, players roll initiative
+  from their sheets and end their own turns; the DM can add enemies with a name (AC/HP optional, kept secret).
+- Sheet in a fight: turn order, whose turn, Action / Bonus / Reaction / movement, Dash, Dodge,
+  Disengage, Help, Hide, Ready, Search, Use an Object (each spends the action; Cunning Action as a bonus),
+  reactions on anyone's turn (Opportunity Attack, Shield, Uncanny Dodge…), the one-spell-per-turn rule,
+  conditions that stay until removed or a long rest, "Hit by a spell?" save helper, End turn.
+- Attacks with an unknown AC: Hit / Miss buttons (natural 20 / 1 decide by themselves); damage waits for Hit.
+- Typed enemy names as targets (roll_events.target_name).
+- Totals show how they were reached ("1d8 (6) + 4 STR = 10"), hit dice too.
+- Fight ends: per-turn things reset; HP, conditions and spent slots stay until a rest.
+- SQL 34-table-combat.sql.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_014ScUJ9vHTe7BJYNvrzcHWg
+Claude-Session: https://claude.ai/code/session_014ScUJAa2LXdg6ghJqmuJE6

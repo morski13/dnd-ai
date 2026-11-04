@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bestMoves, findCombos } from "./combos";
 import { allOptions, type SheetCharacter } from "./rules";
-import { actionSurge, attacksPerAction, NEW_FIGHT, nextTurn, spend, turnFinished, turnLeft } from "./turn";
+import { actionSurge, attacksPerAction, bonusStandardActions, move, moveBudget, NEW_FIGHT, nextTurn, spend, startTurn, takeAction, turnFinished, turnLeft } from "./turn";
 
 // Kazar: Barbarian 9 / Fighter 1 with a morningstar, Rage and Reckless Attack
 const kazar: SheetCharacter = {
@@ -70,5 +70,62 @@ describe("fight mode: the turn", () => {
 
     t = spend(t, opt("Morningstar"), 2).turn;
     expect(findCombos(kazar, options, target, turnLeft(t))).toEqual([]); // nothing left
+  });
+});
+
+describe("combat mode: actions everyone has, movement, spells", () => {
+  it("Dash after casting a spell: the action is gone (Cuca's bug)", () => {
+    const wizard: SheetCharacter = { ...kazar, class_levels: [{ class: "Wizard", level: 5 }], attacks: [] };
+    const bolt = { ...opt("Morningstar"), name: "Fire Bolt", kind: "spell_attack" as const, fromSpell: { name: "Fire Bolt" } as never, level: 0 };
+    let t = spend(NEW_FIGHT, bolt, attacksPerAction(wizard.class_levels)).turn;
+    expect(t.actionsUsed).toBe(1);
+    const dash = takeAction(t, "Dash");
+    expect(dash.warning).toMatch(/no action left/);
+    t = dash.turn;
+    expect(t.dashes).toBe(1);
+  });
+
+  it("Cunning Action: Dash as a bonus action keeps the action", () => {
+    const rogue = [{ class: "Rogue", level: 3 }];
+    expect(bonusStandardActions(rogue).has("Dash")).toBe(true);
+    expect(bonusStandardActions([{ class: "Rogue", level: 1 }]).size).toBe(0);
+    const r = takeAction(NEW_FIGHT, "Dash", true);
+    expect(r.warning).toBeNull();
+    expect(r.turn).toMatchObject({ bonusUsed: true, actionsUsed: 0, dashes: 1 });
+  });
+
+  it("movement: speed, plus speed again per Dash; resets next turn", () => {
+    let t = move(NEW_FIGHT, 25, 30).turn;
+    expect(moveBudget(t, 30)).toBe(30);
+    const far = move(t, 10, 30);
+    expect(far.warning).toMatch(/more than your 30 ft/);
+    t = takeAction(t, "Dash").turn;
+    expect(moveBudget(t, 30)).toBe(60);
+    expect(move(t, 10, 30).warning).toBeNull();
+    expect(move(t, -100, 30).turn.moved).toBe(0);
+    expect(nextTurn(t)).toMatchObject({ moved: 0, dashes: 0 });
+  });
+
+  it("Opportunity Attack spends the reaction, not the action", () => {
+    const over = { ...NEW_FIGHT, over: true, actionsUsed: 1 };
+    const r = spend(over, opt("Morningstar"), 2, "reaction");
+    expect(r.warning).toBeNull();
+    expect(r.turn).toMatchObject({ reactionUsed: true, actionsUsed: 1, attacksLeft: 0 });
+    expect(spend(r.turn, opt("Morningstar"), 2, "reaction").warning).toMatch(/reaction/);
+  });
+
+  it("bonus-action spell, then only a cantrip with the action", () => {
+    const spell = (name: string, action: "action" | "bonus", level: number) =>
+      ({ name, key: `spell:${name}`, kind: "heal", action, level, fromSpell: { name } }) as never;
+    let t = spend(NEW_FIGHT, spell("Healing Word", "bonus", 1), 1).turn;
+    expect(spend(t, spell("Cure Wounds", "action", 1), 1).warning).toMatch(/only cast a cantrip/);
+    expect(spend(t, spell("Sacred Flame", "action", 0), 1).warning).toBeNull();
+    t = spend(NEW_FIGHT, spell("Fireball", "action", 3), 1).turn;
+    expect(spend(t, spell("Healing Word", "bonus", 1), 1).warning).toMatch(/bonus-action spell isn't allowed/);
+  });
+
+  it("your turn comes up in a shared fight: fresh turn at the fight's round, Rage still on", () => {
+    const t = { ...NEW_FIGHT, round: 1, ongoing: ["Rage"], actionsUsed: 1, reactionUsed: true, over: true };
+    expect(startTurn(t, 3)).toMatchObject({ round: 3, actionsUsed: 0, reactionUsed: false, over: false, ongoing: ["Rage"] });
   });
 });

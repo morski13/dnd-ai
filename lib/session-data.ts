@@ -111,7 +111,8 @@ export async function getSessionData(focusParam?: string | null) {
   if (!session) return { ...base, session: null, combat: null, combatants: [] as Combatant[], current: null, battle: null as Battle | null, log: [] as LogRow[], focus: null, focusMonster: null } as const;
 
   const [{ data: combat }, { data: log }] = await Promise.all([
-    supabase.from("combats").select("id, name, round, turn_index")
+    // "*": "mode" (played at the table) only exists after 34-table-combat.sql
+    supabase.from("combats").select("*")
       .eq("session_id", session.id).is("ended_at", null)
       .order("started_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.rpc("session_log", { p_session_id: session.id, p_limit: 80 }),
@@ -180,7 +181,7 @@ export async function getSessionData(focusParam?: string | null) {
   return {
     ...base,
     session,
-    combat,
+    combat: combat ? { id: combat.id as string, name: combat.name as string | null, round: combat.round as number, turn_index: combat.turn_index as number, mode: ((combat as { mode?: string }).mode === "table" ? "table" : "app") as "app" | "table" } : null,
     combatants,
     current,
     battle,

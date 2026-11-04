@@ -3,7 +3,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type Admin = ReturnType<typeof createAdminClient>;
-export type Target = { characterId?: string | null; monsterId?: string | null };
+/** Who a roll goes to: a character or monster in the app, or just a name the player typed (an enemy only the DM knows). */
+export type Target = { characterId?: string | null; monsterId?: string | null; name?: string | null };
 
 /** The running session as the character sheet shows it ("table" = started by a player). */
 export type TableSession = { id: string; number: number; kind: "dm" | "table"; startedBy: string | null; mine: boolean } | null;
@@ -25,10 +26,10 @@ export async function liveState(admin: Admin, campaignId: string) {
   }
   if (!session) return { session: null, combat: null };
   const { data: combat } = await admin
-    .from("combats").select("id, round, turn_index")
+    .from("combats").select("*") // "mode" (played at the table) only exists after 34-table-combat.sql
     .eq("session_id", session.id).is("ended_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
-  return { session, combat };
+  return { session, combat: combat as { id: string; round: number; turn_index: number; mode?: string } | null };
 }
 
 /** Name and AC of a target in this campaign (null if it isn't one). */

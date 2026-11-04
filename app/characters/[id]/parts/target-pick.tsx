@@ -5,16 +5,21 @@
 import { useState } from "react";
 import type { AimChoice } from "@/lib/targets";
 
-export type Picked = string[]; // choice keys ("c:<id>" / "m:<id>"); [] = no target
+export type Picked = string[]; // choice keys ("c:<id>" / "m:<id>", or "n:<name>" for an enemy typed in); [] = no target
 
 const HEALTH: Record<AimChoice["health"], string> = { unhurt: "unhurt", hurt: "hurt", bloodied: "bloodied", down: "down" };
 
-export function TargetPick({ title, heal, foe, many, max, choices, initial, onDone }: {
+export function TargetPick({ title, heal, foe, many, max, choices, initial, onDone, typeName = false, recentNames = [] }: {
   title: string; heal: boolean; foe: boolean; many: boolean; max: number | null;
   choices: AimChoice[]; initial: string[];
   onDone: (p: Picked | null) => void;
+  /** a fight played at the table: enemies the app doesn't know can be typed in ("Goblin") */
+  typeName?: boolean;
+  recentNames?: string[];
 }) {
-  const [picked, setPicked] = useState<string[]>(initial);
+  const [picked, setPicked] = useState<string[]>(initial.filter((k) => !k.startsWith("n:")));
+  const [typed, setTyped] = useState(initial.find((k) => k.startsWith("n:"))?.slice(2) ?? "");
+  const name = typed.trim().slice(0, 40);
   const enemies = choices.filter((c) => c.side === "enemy");
   // you first, then your side by name
   const friends = [...choices.filter((c) => c.side === "party" && c.me), ...choices.filter((c) => c.side === "party" && !c.me)];
@@ -24,11 +29,12 @@ export function TargetPick({ title, heal, foe, many, max, choices, initial, onDo
     : [["Your side", friends]];
   const full = max != null && picked.length >= max;
   const tap = (k: string) => {
-    if (!many) return setPicked([k]);
+    if (!many) { setTyped(""); return setPicked([k]); }
     if (picked.includes(k)) return setPicked(picked.filter((x) => x !== k));
     if (!full) setPicked([...picked, k]);
   };
-  const names = picked.map((k) => { const c = choices.find((x) => x.key === k); return c?.me ? "you" : c?.name ?? "?"; });
+  const names = [...picked.map((k) => { const c = choices.find((x) => x.key === k); return c?.me ? "you" : c?.name ?? "?"; }), ...(name ? [name] : [])];
+  const chosen = [...picked, ...(name ? [`n:${name}`] : [])];
   const verb = heal ? "Heal" : foe ? (many ? "Cast on" : "Attack") : "Cast on";
 
   return (
@@ -43,6 +49,21 @@ export function TargetPick({ title, heal, foe, many, max, choices, initial, onDo
         </p>
 
         <div className="mt-3 flex max-h-[55vh] flex-col gap-3 overflow-y-auto">
+          {typeName && foe && (
+            <div>
+              <label className="text-xs uppercase tracking-[0.12em] text-muted" htmlFor="aim-name">{enemies.length ? "Or an enemy that isn't in the app" : "Which enemy? (only the DM knows its AC)"}</label>
+              <input id="aim-name" value={typed} onChange={(e) => { setTyped(e.target.value); if (!many && e.target.value.trim()) setPicked([]); }} placeholder="Goblin, the big ogre…" maxLength={40}
+                className="mt-1 h-12 w-full rounded-xl border border-line bg-bg px-3 text-base" />
+              {recentNames.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {recentNames.map((n) => (
+                    <button key={n} type="button" onClick={() => { setTyped(n); if (!many) setPicked([]); }} aria-pressed={name === n}
+                      className={`h-9 rounded-full border px-3 text-sm ${name === n ? "border-danger-line bg-danger-bg font-bold text-danger" : "border-line text-soft"}`}>{n}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {groups.filter(([, list]) => list.length).map(([label, list]) => (
             <div key={label}>
               {groups.length > 1 && <p className="mb-1 text-xs uppercase tracking-[0.12em] text-muted">{label}</p>}
@@ -82,9 +103,9 @@ export function TargetPick({ title, heal, foe, many, max, choices, initial, onDo
           ))}
         </div>
 
-        <button type="button" onClick={() => onDone(picked)} disabled={!picked.length}
+        <button type="button" onClick={() => onDone(chosen)} disabled={!chosen.length}
           className="mt-3 h-12 w-full rounded-xl bg-accent px-4 text-[15px] font-bold text-accent-text disabled:opacity-40">
-          {picked.length ? `${verb} ${names.join(", ")}` : "Pick someone"}
+          {chosen.length ? `${verb} ${names.join(", ")}` : typeName && foe ? "Type or pick an enemy" : "Pick someone"}
         </button>
         <div className="mt-2 flex justify-between gap-2 text-sm">
           <button type="button" onClick={() => onDone(null)} className="h-11 px-2 text-muted underline">Cancel</button>

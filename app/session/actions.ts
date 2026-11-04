@@ -8,8 +8,8 @@ import { applyHp, campaignAutoApply, type Applied } from "@/lib/moderator/apply"
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCharacter } from "@/lib/character-data";
-import { sortCombatants } from "@/lib/session-data";
 import { hitOrMiss, liveState, lookupTarget, recordInitiative, touchCombat, type TableSession } from "@/lib/roll-service";
+import { advanceTurn } from "@/lib/combat-turns";
 
 type Fail = { error: string };
 export type QuickRoll = {
@@ -241,32 +241,60 @@ export async function rollNpcInitiative(combatId: string, hidden: boolean): Prom
 
 export async function nextTurn(combatId: string): Promise<Fail | void> {
   refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
-  const { supabase, isDm } = await me();
-  if (!isDm) return { error: "Only the DM can move the turn on." };
+  const { isDm, campaignId } = await me();
+  if (!isDm || !campaignId) return { error: "Only the DM can move the turn on." };
   const admin = createAdminClient();
-  const [{ data: combat }, { data: rows }] = await Promise.all([
-    supabase.from("combats").select("round, turn_index").eq("id", combatId).single(),
-    admin.from("combatants").select("id, name, initiative, dex_mod, character_id, monster_id, health").eq("combat_id", combatId),
+  const { data: own } = await admin.from("combats").select("id").eq("id", combatId).eq("campaign_id", campaignId).maybeSingle();
+  if (!own) return { error: "That fight isn't in your campaign." };
+  const r = await advanceTurn(admin, combatId);
+  if ("error" in r) return r;
+}
+
+/**
+ * Combat mode for a fight played at the table: no monsters needed in the app. Everyone in the party joins;
+ * players roll initiative from their sheets and end their own turns. The DM can still add enemies (name, AC, HP).
+ */
+export async function startTableCombat(sessionId: string): Promise<Fail | { combatId: string }> {
+  refresh(); // other screens (stats, lists) show this change at once, not after the 30 s client cache
+  const { campaignId, isDm } = await me();
+  if (!campaignId || !isDm) return { error: "Only the DM can start combat mode." };
+  const admin = createAdminClient();
+  const { session, combat: running } = await liveState(admin, campaignId);
+  if (!session || session.id !== sessionId) return { error: "Start the session first." };
+  if (running) return { combatId: running.id as string };
+  const row = { campaign_id: campaignId, session_id: sessionId, name: "Combat at the table", round: 1, turn_index: 0 };
+  // "mode" needs 34-table-combat.sql; without it the fight is saved as an ordinary one
+  let { data: c, error } = await admin.from("combats").insert({ ...row, mode: "table" }).select("id").single();
+  if (error && /mode/.test(error.message)) ({ data: c, error } = await admin.from("combats").insert(row).select("id").single());
+  if (error || !c) return { error: "Couldn't start combat mode. " + (error?.message ?? "") };
+  // the players' characters (not the DM's NPC characters)
+  const [{ data: chars }, { data: members }] = await Promise.all([
+    admin.from("characters").select("id, name, owner_user_id, ability_scores").eq("campaign_id", campaignId),
+    admin.from("campaign_members").select("user_id, role").eq("campaign_id", campaignId),
   ]);
-  if (!combat || !rows?.length) return { error: "No one is in this fight." };
-  // Skip monsters at 0 HP and dead characters (dying characters still get a turn: death saves).
-  const charIds = rows.filter((r) => r.character_id).map((r) => r.character_id!);
-  const { data: dead } = charIds.length
-    ? await admin.from("death_saves").select("character_id").in("character_id", charIds).eq("dead", true)
-    : { data: [] as { character_id: string }[] };
-  const deadSet = new Set((dead ?? []).map((d) => d.character_id));
-  const order = sortCombatants(rows);
-  const skip = (r: (typeof order)[number]) => (r.monster_id && r.health === "down") || (r.character_id && deadSet.has(r.character_id));
-  let index = combat.turn_index;
-  let round = combat.round;
-  for (let k = 0; k < order.length; k++) {
-    index += 1;
-    if (index >= order.length) { index = 0; round += 1; }
-    if (!skip(order[index])) break;
+  const players = new Set((members ?? []).filter((m) => m.role === "player").map((m) => m.user_id as string));
+  const rows = (chars ?? []).filter((ch) => ch.owner_user_id && players.has(ch.owner_user_id as string)).map((ch) => ({
+    combat_id: c!.id, campaign_id: campaignId, character_id: ch.id, name: ch.name,
+    dex_mod: Math.floor((((ch.ability_scores as Record<string, number> | null)?.DEX ?? 10) - 10) / 2),
+  }));
+  if (rows.length) await admin.from("combatants").insert(rows);
+  await copyConditions(admin, c.id as string);
+  return { combatId: c.id as string };
+}
+
+/** Conditions a character already has (Poisoned from the last fight) show on the initiative chips too. */
+async function copyConditions(admin: ReturnType<typeof createAdminClient>, combatId: string) {
+  const { data: rows } = await admin.from("combatants").select("id, character_id").eq("combat_id", combatId).not("character_id", "is", null);
+  const ids = (rows ?? []).map((r) => r.character_id as string);
+  if (!ids.length) return;
+  const { data: chars, error } = await admin.from("characters").select("id, conditions").in("id", ids);
+  if (error) return; // before 34-table-combat.sql
+  for (const ch of chars ?? []) {
+    const cond = (ch as { conditions?: string[] }).conditions ?? [];
+    if (!cond.length) continue;
+    const r = (rows ?? []).find((x) => x.character_id === ch.id);
+    if (r) await admin.from("combatants").update({ conditions: cond }).eq("id", r.id);
   }
-  await supabase.from("combats").update({ turn_index: index, round }).eq("id", combatId);
-  // a new turn: that creature's movement on the battle map starts fresh (fine if there's no map)
-  await admin.from("map_tokens").update({ moved_ft: 0, dashes: 0 }).eq("combatant_id", order[index].id).then(() => undefined, () => undefined);
 }
 
 export async function endCombat(combatId: string): Promise<Fail | void> {
@@ -414,7 +442,9 @@ export async function joinTableFight(characterId: string): Promise<Fail | { comb
   let combatId = combat?.id ?? null;
   let started = false;
   if (!combatId) {
-    const { data: c, error } = await admin.from("combats").insert({ campaign_id: campaignId, session_id: session.id, name: "Table fight", round: 1, turn_index: 0 }).select("id").single();
+    const row = { campaign_id: campaignId, session_id: session.id, name: "Table fight", round: 1, turn_index: 0 };
+    let { data: c, error } = await admin.from("combats").insert({ ...row, mode: "table" }).select("id").single();
+    if (error && /mode/.test(error.message)) ({ data: c, error } = await admin.from("combats").insert(row).select("id").single()); // before SQL 34
     if (error || !c) return { error: error?.message ?? "Couldn't start the fight." };
     combatId = c.id as string; started = true;
   }

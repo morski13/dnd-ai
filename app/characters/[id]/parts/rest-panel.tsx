@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { Resource } from "@/lib/character-data";
 import type { RestResult } from "@/lib/rest-service";
 import { averageHitDie, hitDiceLeft } from "@/lib/rests";
+import { hitDieLine } from "@/lib/breakdown";
 import type { SpellBook } from "@/lib/rules";
 import { useDice } from "../../../components/dice/dice-provider";
 import { BottomSheet, Stepper } from "../../../items/parts/ui";
@@ -17,6 +18,7 @@ export function RestPanel({ characterId, classLevels, conMod, hitDiceUsed, hp, o
   const [open, setOpen] = useState<"short" | "long" | null>(null);
   const [spend, setSpend] = useState<Record<string, number>>({});
   const [done, setDone] = useState<string | null>(null);
+  const [sums, setSums] = useState<string[]>([]); // how the hit dice added up: "d10 (6) + 3 CON = 9"
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dice = useDice();
@@ -28,6 +30,7 @@ export function RestPanel({ characterId, classLevels, conMod, hitDiceUsed, hp, o
   function finish(r: RestResult | { error: string }) {
     if ("error" in r) return setError(r.error);
     onRested(r);
+    setSums(r.kind === "short" ? r.rolls.map((x) => hitDieLine(x, conMod)) : []);
     setDone(r.kind === "short"
       ? `Short rest: ${r.healed ? `healed ${r.healed} HP` : "no healing"}; short-rest abilities are back.`
       : `Long rest: full HP, every spell slot, ability use and hit die back.${r.ended ? ` You stopped concentrating on ${r.ended}.` : ""}`);
@@ -41,7 +44,17 @@ export function RestPanel({ characterId, classLevels, conMod, hitDiceUsed, hp, o
         <button type="button" onClick={() => setOpen("long")} className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-soft">Long rest</button>
       </div>
       <p className="mt-1.5 text-xs text-muted">Hit dice: {left.map((d) => `${d.left}/${d.total} d${d.die}`).join(" · ") || "none"}</p>
-      {done && <p className="animate-pop mt-2 rounded-xl bg-success-bg px-3 py-2 text-sm text-success" role="status">{done}</p>}
+      {done && (
+        <div className="animate-pop mt-2 rounded-xl bg-success-bg px-3 py-2 text-sm text-success" role="status">
+          <p>{done}</p>
+          {sums.length > 0 && (
+            <ul className="mt-1 text-xs tabular-nums text-soft">
+              {sums.map((x, i) => <li key={i}>{x}</li>)}
+              {sums.length > 1 && <li className="font-bold text-success">Hit dice in total: {sums.reduce((a, x) => a + Number(x.split("= ").pop()), 0)}</li>}
+            </ul>
+          )}
+        </div>
+      )}
 
       {open === "short" && (
         <BottomSheet title="Short rest" onClose={close}>

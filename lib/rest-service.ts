@@ -27,6 +27,11 @@ export async function longRestFor(characterId: string, userId: string): Promise<
   await admin.from("characters").update({
     hp_current: res.hp_current, temp_hp: 0, hit_dice_used: res.hit_dice_used, resources: res.resources, spells: res.spells, concentration: null,
   }).eq("id", c.id);
+  // conditions from fights end with a long rest (Exhaustion stays: it goes down one level at a time, by hand).
+  // Needs 34-table-combat.sql; before it there's nothing to clear.
+  const { data: cond } = await admin.from("characters").select("conditions").eq("id", c.id).maybeSingle();
+  const had = ((cond as { conditions?: string[] } | null)?.conditions ?? []);
+  if (had.length) await admin.from("characters").update({ conditions: had.filter((x) => x === "Exhaustion") }).eq("id", c.id);
   const ended = (c.concentration as { spell?: string } | null)?.spell ?? null;
   return { kind: "long", healed: Math.max(0, missing), hp_current: res.hp_current, temp_hp: 0, rolls: [], hit_dice_used: res.hit_dice_used,
     resources: res.resources, spells: res.spells, ended };

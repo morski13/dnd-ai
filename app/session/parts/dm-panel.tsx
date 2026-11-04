@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { endCombat, endSession, nextTurn, rollNpcInitiative, startSavedFight } from "../actions";
+import { addMonster, endCombat, endSession, nextTurn, rollNpcInitiative, startSavedFight, startTableCombat } from "../actions";
 import type { FightBuilderData } from "@/lib/session-data";
 import { FightBuilder } from "./fight-builder";
 import { TierBadge } from "../../fights/tier";
@@ -12,8 +12,10 @@ import type { ThemeId } from "@/lib/themes";
 import { TableTheme } from "./table-theme";
 import { setFightMap } from "../map-actions";
 
-export function DmPanel({ sessionId, combatId, builder, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply, theme = "tavern", maps = [], mapInFight = null }: {
+export function DmPanel({ sessionId, combatId, combatMode = "app", builder, inFightIds, hiddenByDefault, waitingForInitiative, savedFights, autoApply, theme = "tavern", maps = [], mapInFight = null }: {
   sessionId: string; combatId: string | null; builder: FightBuilderData | null;
+  /** table = combat mode for a fight played at the table */
+  combatMode?: "app" | "table";
   /** characters and monsters already fighting */
   inFightIds: string[];
   hiddenByDefault: boolean; waitingForInitiative: number;
@@ -65,7 +67,13 @@ export function DmPanel({ sessionId, combatId, builder, inFightIds, hiddenByDefa
 
       {!combatId ? (
         <>
-          <p className="mt-3 text-sm text-soft">Your saved fights</p>
+          <div className="mt-3 rounded-xl border border-accent-line bg-accent-surface p-3">
+            <p className="font-semibold">Fight at the table?</p>
+            <p className="mt-0.5 text-xs text-soft">Combat mode without monsters in the app: everyone rolls initiative from their sheet, ends their own turn, and says if their attacks hit (you know the AC). Their sheets count actions, reactions, movement and conditions.</p>
+            <button type="button" disabled={pending} onClick={() => act(() => startTableCombat(sessionId))}
+              className="mt-2 h-12 w-full rounded-xl bg-accent font-bold text-accent-text disabled:opacity-50">⚔ Start combat mode</button>
+          </div>
+          <p className="mt-4 text-sm text-soft">Or run the fight in the app. Your saved fights:</p>
           <ul className="mt-1 flex flex-col gap-1.5">
             {savedFights.length === 0 && (
               <li className="text-sm text-muted">None yet. Plan one in the <Link href="/fights" className="text-accent underline">Fight planner</Link>.</li>
@@ -85,10 +93,14 @@ export function DmPanel({ sessionId, combatId, builder, inFightIds, hiddenByDefa
         </>
       ) : (
         <>
+          {combatMode === "table" && (
+            <p className="mt-3 rounded-xl bg-surface px-3 py-2 text-xs text-soft">Combat mode at the table: players end their own turns on their sheets. You can still move it on here.</p>
+          )}
           <button type="button" disabled={pending} onClick={() => act(() => nextTurn(combatId))}
-            className="mt-3 h-14 w-full rounded-xl bg-accent font-heading text-xl font-bold text-accent-text disabled:opacity-50">
+            className={`mt-3 w-full rounded-xl font-heading font-bold disabled:opacity-50 ${combatMode === "table" ? "h-11 border border-accent-strong text-base text-accent" : "h-14 bg-accent text-xl text-accent-text"}`}>
             Next turn →
           </button>
+          {combatMode === "table" && <QuickEnemy pending={pending} onAdd={(f) => act(() => addMonster(f, combatId))} />}
           <div className="mt-3 rounded-xl border border-line p-3" aria-label="Battle map for this fight">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold">Battle map</p>
@@ -140,5 +152,34 @@ export function DmPanel({ sessionId, combatId, builder, inFightIds, hiddenByDefa
       </button>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </section>
+  );
+}
+
+/** Combat mode at the table: an enemy with just a name (AC and HP if you want the app to track them). */
+function QuickEnemy({ pending, onAdd }: { pending: boolean; onAdd: (f: { name: string; ac: number; hp: number; initBonus: number }) => void }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: "", ac: "", hp: "", init: "" });
+  const num = (v: string) => Number(v.replace(/[^\d-]/g, "")) || 0;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="mt-2 h-11 text-sm text-accent">+ Add an enemy (name, AC, HP: all optional but the name)</button>;
+  const field = "mt-1 h-11 w-full rounded-lg border border-line bg-bg px-2 text-base";
+  return (
+    <form className="mt-2 rounded-xl border border-line p-3" onSubmit={(e) => {
+      e.preventDefault();
+      if (!f.name.trim()) return;
+      onAdd({ name: f.name.trim(), ac: num(f.ac), hp: num(f.hp), initBonus: num(f.init) });
+      setF({ name: "", ac: "", hp: "", init: "" });
+    }}>
+      <label className="block text-xs text-muted">Enemy name<input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={40} placeholder="Goblin 1" className={field} /></label>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <label className="text-xs text-muted">AC<input inputMode="numeric" value={f.ac} onChange={(e) => setF({ ...f, ac: e.target.value })} className={field} /></label>
+        <label className="text-xs text-muted">HP<input inputMode="numeric" value={f.hp} onChange={(e) => setF({ ...f, hp: e.target.value })} className={field} /></label>
+        <label className="text-xs text-muted">Init. bonus<input inputMode="numeric" value={f.init} onChange={(e) => setF({ ...f, init: e.target.value })} className={field} /></label>
+      </div>
+      <p className="mt-1 text-[11px] text-muted">Players never see the AC or HP. With an AC, their hits are checked for them.</p>
+      <div className="mt-2 flex gap-2">
+        <button type="submit" disabled={pending || !f.name.trim()} className="h-11 flex-1 rounded-xl bg-accent text-sm font-bold text-accent-text disabled:opacity-50">Add to the fight</button>
+        <button type="button" onClick={() => setOpen(false)} className="h-11 px-3 text-sm text-muted">Close</button>
+      </div>
+    </form>
   );
 }

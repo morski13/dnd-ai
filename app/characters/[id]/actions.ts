@@ -143,11 +143,13 @@ export async function rollForCharacter(
   let parentTarget: Target | null = null;
   let parentMissed = false;
   let parentIsSave = false;
+  let parentTargetName: string | null = null; // an enemy that isn't in the app, typed by the player ("Goblin")
   if (request.kind === "damage" && request.parentRollId) {
     const { data: parent } = await supabase
-      .from("roll_events").select("id, is_crit, success, character_id, target_character_id, target_monster_id, roll_type")
+      .from("roll_events").select("*")
       .eq("id", request.parentRollId).maybeSingle();
     if (parent && parent.character_id === c.id) {
+      parentTargetName = (parent as { target_name?: string | null }).target_name ?? null;
       parentRollId = parent.id;
       critical = !!parent.is_crit;
       parentMissed = parent.success === false;
@@ -228,6 +230,8 @@ export async function rollForCharacter(
     ? hitOrMiss(result.total, vsAc, result.isCrit, result.isFumble)
     : null;
   const slotNote = plan.spellSlot ? ` (level ${plan.spellSlot})` : "";
+  // no creature in the app to aim at: the name the player typed (fights played at the table)
+  const targetName = tgt ? null : parentTargetName ?? cleanName(target?.name);
   const insertRow = {
       campaign_id: c.campaign_id,
       session_id: session?.id ?? null,
@@ -258,15 +262,16 @@ export async function rollForCharacter(
     .from("roll_events")
     .insert({
       ...insertRow,
+      ...(targetName ? { target_name: targetName } : {}),
       ...(replay?.at ? { created_at: replay.at } : {}),
       ...(replay?.offline ? { offline: true } : {}),
       ...(replay?.physical ? { physical: true } : {}),
     })
     .select("id")
     .single()
-    // before 30-offline-physical-rolls.sql there's no "offline" column: save it without the mark
-    .then(async (res) => (res.error && replay && /offline|physical/.test(res.error.message)
-      ? admin.from("roll_events").insert({ ...insertRow, ...(replay.at ? { created_at: replay.at } : {}) }).select("id").single() : res));
+    // before 30-offline-physical-rolls.sql / 34-table-combat.sql those columns don't exist: save it without them
+    .then(async (res) => (res.error && /offline|physical|target_name/.test(res.error.message)
+      ? admin.from("roll_events").insert({ ...insertRow, ...(replay?.at ? { created_at: replay.at } : {}) }).select("id").single() : res));
   if (error || !saved) return { error: "Couldn't save the roll. " + (error?.message ?? "") };
 
   const base = { campaignId: c.campaign_id, sessionId: session?.id ?? null, combatId: combat?.id ?? null, round: combat?.round ?? null, createdBy: userId };
@@ -398,8 +403,9 @@ export async function rollForCharacter(
       request,
       followUp: plan.followUp && request.kind === "use" ? { key: request.key, slot: plan.spellSlot } : undefined,
       success,
-      vsAc,
-      target: tgt?.name ?? null,
+      // a fight played at the table: players don't learn an enemy's AC (the DM typed it in to check hits)
+      vsAc: !viewerIsDm && combat?.mode === "table" && tgt?.monsterId ? null : vsAc,
+      target: tgt?.name ?? targetName,
       aimedAt,
       applied,
       appliedAll: plan.rollType === "heal" ? appliedAll : undefined,
@@ -414,6 +420,30 @@ export async function rollForCharacter(
     saves,
     appliedAll,
   };
+}
+
+/** A typed enemy name, tidied: one line, at most 40 characters. */
+function cleanName(n?: string | null) {
+  const t = (n ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return t || null;
+}
+
+/**
+ * Fights played at the table: the enemy's AC is a secret, so after an attack roll the player says
+ * whether it hit (the DM tells them). A natural 20 always hits and a natural 1 always misses, so those stay.
+ */
+export async function markAttack(characterId: string, rollId: string, hit: boolean): Promise<Fail | { success: boolean }> {
+  const { userId, character: c, canEdit } = await loadCharacter(characterId);
+  if (!c || !canEdit || !userId) return { error: "You can only mark your own character's attacks." };
+  const admin = createAdminClient();
+  const { data: r } = await admin.from("roll_events").select("id, character_id, roll_type, is_crit, is_fumble").eq("id", rollId).maybeSingle();
+  if (!r || r.character_id !== c.id || r.roll_type !== "attack") return { error: "That attack roll wasn't found." };
+  if (r.is_crit) return { success: true };
+  if (r.is_fumble) return { success: false };
+  const { error } = await admin.from("roll_events").update({ success: hit }).eq("id", rollId);
+  if (error) return { error: error.message };
+  refresh();
+  return { success: hit };
 }
 
 /**

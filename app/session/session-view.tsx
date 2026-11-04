@@ -123,6 +123,15 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
       {combat && current && !current.controllable && (
         <p className="mt-3 text-sm text-muted">Waiting for <strong className="text-text">{current.name}</strong>…</p>
       )}
+      {/* players: fight from the whole character sheet (actions, reactions, movement and conditions are counted there) */}
+      {combat && !data.isDm && mine?.characterId && (
+        <Link href={`/characters/${mine.characterId}`}
+          className="mt-3 flex min-h-12 items-center gap-3 rounded-xl border border-accent-line bg-accent-surface px-3 py-2 text-sm">
+          <span aria-hidden className="text-lg text-accent">⚔</span>
+          <span className="min-w-0 flex-1"><b className="text-text">Fight from your full sheet</b> <span className="block text-xs text-soft">Every attack, spell and action, counted for this turn</span></span>
+          <span className="shrink-0 font-bold text-accent">Open ›</span>
+        </Link>
+      )}
 
       {/* phones and tablets: one column. Laptops: the fight on the left, tools, dice and the log on the right */}
       <div className="mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -174,6 +183,7 @@ export function SessionView({ data, shops = [] }: { data: SessionData; shops?: {
           <DmPanel
             sessionId={data.session.id}
             combatId={combat?.id ?? null}
+            combatMode={combat?.mode ?? "app"}
             builder={data.builder}
             inFightIds={combatants.flatMap((c) => [c.monsterId, c.characterId].filter((x): x is string => !!x))}
             hiddenByDefault={data.monstersHiddenByDefault}

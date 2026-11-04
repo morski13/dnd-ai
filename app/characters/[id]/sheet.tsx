@@ -2,7 +2,7 @@
 // The interactive character sheet. Every tap on a bonus asks the server to roll and save it.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { signed, type Advantage } from "@/lib/dice";
 import { addQueued, offlineRoll, recorder, replayRng } from "@/lib/offline-rolls";
 import { diceSides, physicalValues, shapeOf, type RollShape } from "@/lib/physical";
@@ -19,14 +19,19 @@ import {
   planRoll, saveBonus, skillBonus, totalLevel, type Ability, type Option, type RollRequest, type SheetCharacter, type SpellBook, type SpellInfo,
 } from "@/lib/rules";
 import {
-  changeHp, practiceRoll, realDiceRoll, restoreAllSlots, rollQuick, undoRealDiceRoll, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
+  changeHp, markAttack, practiceRoll, realDiceRoll, restoreAllSlots, rollQuick, undoRealDiceRoll, saveHomebrew, setInspiration, setConcentration, setResourceUsed, setSlotsUsed, type SavedRoll,
 } from "./actions";
 import { ConcentrationChip } from "./parts/concentration";
 import { CustomizeButton } from "./parts/customize";
 import { PrintButton } from "./parts/print-button";
 import { TableCard } from "./parts/table-card";
-import { useFight } from "./parts/fight-store";
-import { attacksPerAction, spend, turnFinished, turnLeft } from "@/lib/turn";
+import { OFF, useFight } from "./parts/fight-store";
+import { attacksPerAction, bonusStandardActions, move, NEW_FIGHT, spend, startTurn, takeAction, turnFinished, turnLeft } from "@/lib/turn";
+import { CombatPanel, type ReactionChoice } from "./parts/combat-panel";
+import { SaveHelper } from "./parts/save-helper";
+import { useSheetCombat } from "./parts/use-combat";
+import { endFightFromSheet, endMyTurn, setMyConditions } from "./combat-actions";
+import { damageParts } from "@/lib/breakdown";
 import type { Combo } from "@/lib/combos";
 import type { TableSession } from "@/lib/roll-service";
 import { PortraitButton } from "../../components/map/portrait";
@@ -58,7 +63,12 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 }) {
   const [live, setLive] = useState<TableSession>(initialLive);
   const [fight, setFight] = useFight(character.id);
+  // the running fight (the DM's, or one played at the table): turn order, whose turn, conditions
+  const { view, setView, reload: reloadCombat } = useSheetCombat(character.id, character.campaign_id, live?.id ?? null);
+  const combat = view?.combat ?? null;
+  const conditions = view?.conditions ?? [];
   const [turnWarning, setTurnWarning] = useState<string | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
   const [targetAc, setTargetAc] = useState<number | null>(null); // typed on Best moves: attack rolls are checked against it
   const [hp, setHp] = useState({ cur: character.hp_current ?? character.hp_max ?? 0, temp: character.temp_hp ?? 0 });
   const [hitDiceUsed, setHitDiceUsed] = useState<Record<string, number>>(character.hit_dice_used ?? {});
@@ -88,27 +98,100 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   const m = mods(c);
   const classes = c.class_levels.map((cl) => cl.class);
 
-  // fight mode is on for the running session
-  const inFight = !!live && fight.on && fight.sessionId === live.id;
+  // in a shared fight (this character is in it), or fight mode is on for the running session
+  const shared = !!combat?.meIn;
+  const myTurn = !!combat?.current?.me;
+  const inFight = shared || (!!live && fight.on && fight.sessionId === live.id && !combat);
   const perAction = attacksPerAction(c.class_levels, c.features);
+  const speed = character.speed ?? 30;
+
+  // The shared fight drives the turn: your turn comes up → action, bonus action, reaction and movement come back.
+  // The fight ends → everything per turn resets (Rage and the like end too); HP, conditions and spent slots stay.
+  const cId = combat?.meIn ? combat.id : null;
+  const cKey = combat?.turnKey ?? null;
+  const cRound = combat?.round ?? 1;
+  const loaded = !!view;
+  useEffect(() => {
+    if (cId) {
+      setFight((f) => {
+        const fresh = myTurn ? startTurn(NEW_FIGHT, cRound) : { ...NEW_FIGHT, round: cRound, over: true };
+        if (f.combatId !== cId) return { on: true, sessionId: live?.id ?? null, combatId: cId, turnKey: cKey, note: null, turn: fresh };
+        if (f.turnKey === cKey) return f;
+        return { ...f, turnKey: cKey, turn: myTurn ? startTurn(f.turn, cRound) : { ...f.turn, round: cRound, over: true } };
+      });
+    } else if (loaded) {
+      setFight((f) => (f.combatId
+        ? { ...OFF, note: "The fight is over. Actions, reactions and movement are reset, and Rage-style effects end. HP, conditions and spent spell slots stay until a rest." }
+        : f));
+    }
+  }, [cId, cKey, cRound, myTurn, loaded, live?.id, setFight]);
+
+  /** What the next roll is used as: an Opportunity Attack is a weapon attack that costs your reaction. */
+  const spendAs = useRef<"reaction" | undefined>(undefined);
 
   /** Fight mode: what this roll costs this turn (checks and damage rolls cost nothing). */
   function spendTurn(request: RollRequest) {
+    const as = spendAs.current;
+    spendAs.current = undefined;
     if (!inFight || request.kind !== "use") return;
     const o = options.find((x) => x.key === request.key);
     if (!o || o.row_of) return;
     let warning: string | null = null;
     setFight((f) => {
-      const r = spend(f.turn, o, perAction);
+      const r = spend(f.turn, o, perAction, as);
       warning = r.warning;
       const hasBonus = options.some((x) => actionOf(x) === "bonus" && !r.turn.ongoing.includes(x.name));
-      return { ...f, turn: { ...r.turn, over: r.turn.over || turnFinished(r.turn, hasBonus) } };
+      return { ...f, turn: { ...r.turn, over: r.turn.over || (!as && turnFinished(r.turn, hasBonus)) } };
     });
+    if (shared && !myTurn && warning && /turn is over/.test(warning)) warning = "It isn't your turn: only reactions now. The app counted it anyway.";
     setTurnWarning(warning);
   }
 
+  /** Combat mode: Dash, Dodge, Hide… (your action, or your bonus action with Cunning Action). */
+  function doAction(name: string, asBonus: boolean) {
+    let warning: string | null = null;
+    setFight((f) => { const r = takeAction(f.turn, name, asBonus); warning = r.warning; return { ...f, turn: r.turn }; });
+    setTurnWarning(warning);
+  }
+  function doMove(feet: number) {
+    let warning: string | null = null;
+    setFight((f) => { const r = move(f.turn, feet, speed); warning = r.warning; return { ...f, turn: r.turn }; });
+    setTurnWarning(warning);
+  }
+  function endTurn() {
+    if (!combat) return;
+    const key = combat.turnKey;
+    setFight((f) => ({ ...f, turn: { ...f.turn, over: true } }));
+    setTurnWarning(null);
+    startTransition(async () => {
+      const r = await endMyTurn(character.id, key);
+      if ("error" in r) setError(r.error);
+      await reloadCombat();
+    });
+  }
+  function doReaction(r: ReactionChoice) {
+    if (r.id.startsWith("oa:")) { spendAs.current = "reaction"; return doRoll({ kind: "use", key: r.id.slice(3) }, "reaction"); }
+    if (r.roll) return doRoll({ kind: "use", key: r.id });
+    // a feature (Uncanny Dodge…): nothing to roll, the reaction is used
+    setFight((f) => ({ ...f, turn: { ...f.turn, reactionUsed: true } }));
+    setTurnWarning(`${r.name}: reaction used. Tell the DM.`);
+  }
+  function saveConditions(next: string[]) {
+    setView((v) => (v ? { ...v, conditions: next } : v));
+    run(() => setMyConditions(character.id, next), (r) => setView((v) => (v ? { ...v, conditions: r.conditions } : v)));
+  }
+  /** Fights at the table: the player says if the attack hit (the DM knows the AC). */
+  function markHit(hit: boolean) {
+    const r = last;
+    if (!r) return;
+    setLast({ ...r, success: hit });
+    if (r.practice || r.offline) return;
+    markAttack(character.id, r.id, hit).then((res) => { if ("error" in res) setError(res.error); }).catch(() => {});
+  }
+
   /** One roll from start to finish (dice, tray, spent uses). Resolves with the saved roll, or null. */
-  async function rollNow(asked: RollRequest, adv: Advantage): Promise<SavedRoll | null> {
+  async function rollNow(asked: RollRequest, adv: Advantage, as?: "reaction"): Promise<SavedRoll | null> {
+    spendAs.current = as;
     // attack rolls go against the AC typed on Best moves (the server decides hit or miss)
     const atk = asked.kind === "use" ? options.find((x) => x.key === asked.key) : null;
     const request: RollRequest = asked.kind === "use" && targetAc != null && (atk?.kind === "weapon" || atk?.kind === "spell_attack") ? { ...asked, ac: targetAc } : asked;
@@ -128,8 +211,10 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     if (request.kind === "use") {
       const who = await askTarget(atk, request.slot);
       if (who === null) return null; // cancelled
-      const ref = (k: string): Target => (k.startsWith("m:") ? { monsterId: k.slice(2) } : { characterId: k.slice(2) });
-      aimed = { target: who[0] ? ref(who[0]) : null, more: who.slice(1).map(ref) };
+      const ref = (k: string): Target => (k.startsWith("m:") ? { monsterId: k.slice(2) } : k.startsWith("n:") ? { name: k.slice(2) } : { characterId: k.slice(2) });
+      // a typed name goes last: creatures the app knows come first
+      const sorted = [...who.filter((k) => !k.startsWith("n:")), ...who.filter((k) => k.startsWith("n:"))];
+      aimed = { target: sorted[0] ? ref(sorted[0]) : null, more: sorted.slice(1).filter((k) => !k.startsWith("n:")).map(ref) };
     }
     // Real dice: ask what they show (or let the app roll)
     if (realDice) {
@@ -160,7 +245,8 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
   }
 
   // ---- who a roll goes to: "Who gets Healing Word?", and in a fight "Who does Morningstar hit?"
-  const [aimPick, setAimPick] = useState<{ title: string; aim: Aim; choices: AimChoice[]; initial: string[]; done: (p: Picked | null) => void } | null>(null);
+  const [aimPick, setAimPick] = useState<{ title: string; aim: Aim; choices: AimChoice[]; initial: string[]; typeName?: boolean; recent?: string[]; done: (p: Picked | null) => void } | null>(null);
+  const typedNames = useRef<string[]>([]); // enemies typed in this fight ("Goblin"), offered again next time
   const lastAim = useRef<Record<string, string[]>>({}); // last pick per option ("" = last enemy attacked)
   async function askTarget(o: Option | null | undefined, slot?: number): Promise<Picked | null> {
     if (!o || !aimOf(o, slot, true)) return [];
@@ -174,13 +260,17 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     const aim = aimOf(o, slot, inFight);
     if (!aim) return [];
     const usable = choices.filter((c) => (aim.foe ? c.side === "enemy" || aim.many : c.side === "party"));
-    if (!usable.length || (aim.foe && !usable.some((c) => c.side === "enemy"))) return [];
-    const initial = firstPick(aim, usable, lastAim.current[o.key] ?? (aim.foe ? lastAim.current[""] : undefined));
+    // in a fight the enemies may not be in the app at all (played at the table): type a name instead
+    const typeName = aim.foe && inFight;
+    if (!typeName && (!usable.length || (aim.foe && !usable.some((c) => c.side === "enemy")))) return [];
+    const before = lastAim.current[o.key] ?? (aim.foe ? lastAim.current[""] : undefined);
+    const initial = before?.some((k) => k.startsWith("n:")) ? before : firstPick(aim, usable, before);
     return new Promise((resolve) => setAimPick({
-      title: o.name, aim, choices: usable, initial,
+      title: o.name, aim, choices: usable, initial, typeName, recent: typedNames.current,
       done: (p) => {
         setAimPick(null);
         if (p && p.length) { lastAim.current[o.key] = p; if (aim.foe) lastAim.current[""] = p; }
+        for (const k of p ?? []) if (k.startsWith("n:")) typedNames.current = [k.slice(2), ...typedNames.current.filter((x) => x !== k.slice(2))].slice(0, 6);
         resolve(p);
       },
     }));
@@ -260,10 +350,13 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     return r;
   }
 
-  function doRoll(request: RollRequest) {
+  function doRoll(request: RollRequest, as?: "reaction") {
     if (!canEdit || pending) return;
     setError(null);
-    startTransition(async () => { await rollNow(request, advantage); });
+    startTransition(async () => {
+      const r = await rollNow(request, advantage, as);
+      if (r && request.kind === "initiative" && combat) await reloadCombat(); // your place in the order
+    });
   }
 
   /** Best moves → "Do it": the boosts, then the attack or spell (with advantage when the move has it). */
@@ -321,6 +414,30 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
     character.species,
     c.class_levels.map((cl) => `${cl.class} ${cl.level}${c.class_levels.length === 1 && cl.subclass ? ` (${cl.subclass})` : ""}`).join(" / "),
   ].filter(Boolean).join(" · ");
+
+  // the named numbers in the last damage or healing roll ("STR" 4), for the sum under the total
+  const lastParts = (() => {
+    if (!last || (last.rollType !== "damage" && last.rollType !== "heal")) return [];
+    const req = last.request;
+    if (req.kind !== "use" && req.kind !== "damage") return [];
+    const o = options.find((x) => x.key === req.key);
+    return o ? damageParts(c, o, req.slot ?? (o.level || undefined)) : [];
+  })();
+
+  // reactions you can take on anyone's turn
+  const reactionChoices: ReactionChoice[] = (() => {
+    const out: ReactionChoice[] = [];
+    for (const o of options) {
+      if (o.row_of || actionOf(o) !== "reaction") continue;
+      out.push({ id: o.key, name: o.name, why: o.fromSpell ? `${o.level ? `Level ${o.level} spell` : "Cantrip"}${o.range ? ` · ${o.range}` : ""}` : o.note ?? "Uses your reaction", roll: true });
+    }
+    for (const w of options.filter((o) => o.kind === "weapon" && !o.ranged && !o.row_of).slice(0, 2)) {
+      out.push({ id: `oa:${w.key}`, name: `Opportunity Attack · ${w.name}`, why: "Someone leaves your reach: one attack with it.", roll: true });
+    }
+    const have = new Set(c.features.map((f) => (typeof f === "string" ? f : f.name)));
+    for (const [name, why] of FEATURE_REACTIONS) if (have.has(name) && !out.some((x) => x.name === name)) out.push({ id: `f:${name}`, name, why, roll: false });
+    return out;
+  })();
 
   const sheetOptions = options.filter((o) => !o.fromSpell && o.kind !== "boost" && !o.row_of);
   const spellOptions = options.filter((o) => o.fromSpell && (o.damage || o.kind === "heal"));
@@ -427,13 +544,55 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
         </span>
       </button>
 
-      <TableCard characterId={character.id} canEdit={canEdit} live={live} setLive={setLive} fight={fight} setFight={setFight}
+      {fight.note && !combat && (
+        <p className="animate-pop mt-3 flex items-start gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-soft" role="status">
+          <span className="min-w-0 flex-1">{fight.note}</span>
+          <button type="button" onClick={() => setFight((f) => ({ ...f, note: null }))} className="h-8 shrink-0 px-1 text-xs text-muted underline">OK</button>
+        </p>
+      )}
+      <TableCard combatOn={combat ? (combat.meIn ? "in" : "out") : "none"} onJoined={() => void reloadCombat()}
+        characterId={character.id} canEdit={canEdit} live={live} setLive={setLive} fight={fight} setFight={setFight}
         perAction={perAction} canSurge={resources.some((r) => /^action surge$/i.test(r.name) && (r.used ?? 0) < r.max)}
         spendSurge={() => {
           const i = resources.findIndex((r) => /^action surge$/i.test(r.name));
           if (i >= 0) run(() => setResourceUsed(character.id, i, (resources[i].used ?? 0) + 1), (r) => setResources(r.resources));
         }}
         warning={inFight ? turnWarning : null} />
+
+      {shared && combat && (
+        <CombatPanel combat={combat} t={fight.turn} perAction={perAction} speed={speed} canEdit={canEdit} pending={pending}
+          warning={turnWarning} bonusStd={bonusStandardActions(c.class_levels, c.features)} reactions={reactionChoices}
+          canSurge={resources.some((r) => /^action surge$/i.test(r.name) && (r.used ?? 0) < r.max)}
+          conditions={conditions} note={null}
+          onRollInit={() => doRoll({ kind: "initiative" })}
+          onEndTurn={endTurn} onAction={doAction} onMove={doMove} onReaction={doReaction} onConditions={saveConditions}
+          onSurge={() => {
+            setFight((f) => ({ ...f, turn: { ...f.turn, actions: f.turn.actions + 1, over: false } }));
+            const i = resources.findIndex((r) => /^action surge$/i.test(r.name));
+            if (i >= 0) run(() => setResourceUsed(character.id, i, (resources[i].used ?? 0) + 1), (r) => setResources(r.resources));
+          }}
+          onDrop={(name) => setFight((f) => ({ ...f, turn: { ...f.turn, ongoing: f.turn.ongoing.filter((x) => x !== name), thisTurn: f.turn.thisTurn.filter((x) => x !== name) } }))}
+          onSaveHelper={() => setSaveOpen(true)}
+          onEndFight={live?.kind === "table" || combat.isDm ? () => run(() => endFightFromSheet(character.id), () => void reloadCombat()) : undefined}
+          saveHelper={saveOpen ? (
+            <SaveHelper bonus={(a) => saveBonus(c, a)} canEdit={canEdit} pending={pending} onClose={() => setSaveOpen(false)}
+              onRoll={(a) => new Promise((resolve) => {
+                setError(null);
+                startTransition(async () => { const r = await rollNow({ kind: "save", ability: a }, advantage); resolve(r?.total ?? null); });
+              })}
+              onApply={async (o) => {
+                if (o.damage > 0) {
+                  const r = await changeHp(character.id, "damage", o.damage);
+                  if ("error" in r) setError(r.error);
+                  else {
+                    setHp({ cur: r.hp_current, temp: r.temp_hp });
+                    if (r.concentration) { if (!r.concentration.kept) setConc(null); setConcNote(concText(r.concentration)); }
+                  }
+                }
+                if (o.condition && !conditions.includes(o.condition)) saveConditions([...conditions, o.condition]);
+              }} />
+          ) : null} />
+      )}
 
       <section className="mt-3 grid grid-cols-4 gap-2">
         <StatBox label="AC" value={character.ac ?? "–"} />
@@ -605,11 +764,12 @@ export function CharacterSheet({ character, canEdit, library: initialLibrary, fe
 
       {canEdit && <RollTray last={last} error={error} pending={pending} advantage={advantage} setAdvantage={setAdvantage} damage={followUp}
         practice={practice} setPractice={(on) => { setPractice(on); setLast(null); setError(null); }}
-        realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined} />}
+        realDice={realDice} setRealDice={setRealDice} onUndoReal={last && last.id === undoable ? undoReal : undefined}
+        parts={lastParts} onMark={canEdit ? markHit : undefined} markFirst={inFight} />}
       {pad && <RealDicePad title={pad.title} shape={pad.shape} onDone={pad.done} />}
       {aimPick && (
         <TargetPick title={aimPick.title} heal={aimPick.aim.heal} foe={aimPick.aim.foe} many={aimPick.aim.many} max={aimPick.aim.max}
-          choices={aimPick.choices} initial={aimPick.initial} onDone={aimPick.done} />
+          choices={aimPick.choices} initial={aimPick.initial} onDone={aimPick.done} typeName={aimPick.typeName} recentNames={aimPick.recent} />
       )}
     </>
   );
@@ -668,6 +828,21 @@ function OptionGroup({ title, items, c, canEdit, pending, resourceLeft, onUse, e
     </div>
   );
 }
+
+/** Reactions that come from features (nothing to roll: the reaction is used and the DM is told). */
+const FEATURE_REACTIONS: [string, string][] = [
+  ["Uncanny Dodge", "An attack you can see hits you: halve its damage."],
+  ["Defensive Duelist", "A melee attack would hit you: add your proficiency bonus to your AC."],
+  ["Parry", "A melee attack hits you: reduce the damage with a Superiority Die."],
+  ["Riposte", "A melee attack misses you: attack back with a Superiority Die."],
+  ["Sentinel", "A creature near you attacks someone else: attack it."],
+  ["Protection", "Someone attacks an ally next to you: give it disadvantage (shield in hand)."],
+  ["Interception", "An ally next to you is hit: reduce the damage."],
+  ["Deflect Missiles", "A ranged weapon attack hits you: reduce the damage, maybe throw it back."],
+  ["Slow Fall", "You fall: reduce the falling damage."],
+  ["Mage Slayer", "A creature near you casts a spell: attack it."],
+  ["War Caster", "Someone leaves your reach: cast a spell at them instead of an Opportunity Attack."],
+];
 
 function concText(c: { spell: string; dc: number; total: number | null; kept: boolean; reason: string }) {
   if (c.reason === "down") return `Dropped to 0 HP: ${c.spell} ends.`;

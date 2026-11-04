@@ -2,9 +2,10 @@
 // Bottom panel: the last roll, the damage follow-up, and Disadvantage / Normal / Advantage.
 import { useState, useSyncExternalStore } from "react";
 import { signed, type Advantage } from "@/lib/dice";
+import { howTotal, type Part } from "@/lib/breakdown";
 import type { SavedRoll } from "../actions";
 
-export function RollTray({ last, error, pending, advantage, setAdvantage, damage, practice = false, setPractice, realDice = false, setRealDice, onUndoReal }: {
+export function RollTray({ last, error, pending, advantage, setAdvantage, damage, practice = false, setPractice, realDice = false, setRealDice, onUndoReal, parts = [], onMark, markFirst = false }: {
   last: (SavedRoll & { after?: string | null }) | null;
   error: string | null;
   pending: boolean;
@@ -16,11 +17,15 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
   realDice?: boolean;                    // "I use real dice": every roll button asks what your dice show
   setRealDice?: (on: boolean) => void;
   onUndoReal?: () => void;               // typed a wrong number: take the last real-dice roll back (2 minutes)
+  parts?: Part[];                        // the named numbers in the last roll ("STR" 4), for the sum under the total
+  onMark?: (hit: boolean) => void;       // the enemy's AC is a secret: the player says if the attack hit
+  markFirst?: boolean;                   // in a fight: say hit or miss before the damage roll
 }) {
   // Hide / show: remembered on this device. A roll that needs a next step (damage, a Wild Surge effect) opens it again.
   const hidden = useSyncExternalStore(subscribe, () => readHidden(), () => false);
   const [hiddenAt, setHiddenAt] = useState<string | null>(null); // the roll that was showing when it was hidden
-  const needsYou = (!!damage && last?.id !== hiddenAt) || !!error;
+  const toMark = !!onMark && !!last && last.rollType === "attack" && last.success == null && !last.isCrit && !last.isFumble;
+  const needsYou = ((!!damage || toMark) && last?.id !== hiddenAt) || !!error;
   const open = !hidden || needsYou;
   const show = (v: boolean) => {
     if (!v) setHiddenAt(last?.id ?? null);
@@ -91,7 +96,7 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
                 <p className="truncate text-xs uppercase tracking-[0.12em] text-muted">
                   {last.label}{last.physical ? " · real dice" : ""}{last.practice ? " · practice, not saved" : last.offline ? " · offline, sent later" : last.inSession ? " · saved to session" : " · saved"}
                 </p>
-                <p className="truncate text-sm text-soft">{breakdown(last)}</p>
+                <p className="text-sm leading-snug text-soft tabular-nums">{howTotal(last, parts) ?? breakdown(last)}</p>
               </>
             ) : (
               <p className="text-sm text-muted">{practice ? "Tap any bonus to try a roll. Nothing is saved." : "Tap any bonus to roll. Every roll is saved."}</p>
@@ -128,7 +133,21 @@ export function RollTray({ last, error, pending, advantage, setAdvantage, damage
         {last?.physical && !last.offline && !pending && onUndoReal && (
           <button type="button" onClick={onUndoReal} className="mt-2 inline-flex min-h-10 items-center text-sm text-muted underline">Typo? Take it back and type again</button>
         )}
-        {damage && !pending && (
+        {toMark && !pending && (
+          <div className="animate-pop mt-2 rounded-xl border border-line bg-bg p-2" role="group" aria-label="Did it hit?">
+            <p className="px-1 text-xs text-muted">The DM knows the AC: did {last.total} hit{last.target ? ` ${last.target}` : ""}?</p>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => onMark!(true)} className="h-11 rounded-lg border border-success-line bg-success-bg font-bold text-success">Hit</button>
+              <button type="button" onClick={() => onMark!(false)} className="h-11 rounded-lg border border-danger-line bg-danger-bg font-bold text-danger">Miss</button>
+            </div>
+          </div>
+        )}
+        {last && !pending && last.rollType === "attack" && last.success != null && last.vsAc == null && (
+          <p key={`m${last.id}`} role="status" className={`mt-1 rounded-lg px-3 py-2 text-sm font-bold ${last.success ? "animate-pop bg-success-bg text-success" : "animate-shake bg-danger-bg text-danger"}`}>
+            {last.success ? `Hit!${last.isCrit ? " Critical." : ""}${last.target ? ` ${last.target} takes it.` : ""}` : `Miss${last.isFumble ? " (natural 1)" : ""}. No damage to roll.`}
+          </p>
+        )}
+        {damage && !pending && !(toMark && markFirst) && (
           <button type="button" onClick={damage.onClick} className="mt-2 h-11 w-full rounded-xl border border-danger-line bg-danger-bg text-sm font-bold text-danger">
             {damage.label}
           </button>
