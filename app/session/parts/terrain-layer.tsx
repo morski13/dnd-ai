@@ -4,8 +4,11 @@
 import { useState } from "react";
 import { KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terrain";
 
-/** Pictures from /public/terrain/<name>.png. Turn on once the files are in the project. */
-export const TERRAIN_PICTURES = false;
+/**
+ * Pictures in /public/terrain/<name>.png that are there (the DM's own). Grass, water, fire, lava and smoke stay
+ * plain colours on purpose; everything else uses its colour until its picture is added here.
+ */
+export const TERRAIN_PICTURES = new Set<string>(["tree", "bush"]);
 
 export type Brush = { kind: Kind | "clear" | null; height: number | null; door: "door" | "window" | null; size: 1 | 3 };
 
@@ -22,7 +25,7 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
       {cells.map(([k, c]) => {
         const [x, y] = k.split(",").map(Number);
         const r = KINDS[c.k];
-        const pic = TERRAIN_PICTURES && r.image;
+        const pic = r.image && TERRAIN_PICTURES.has(r.image) ? r.image : null;
         return (
           <g key={k} data-terrain={c.k}>
             {c.k === "difficult" ? <rect x={x} y={y} width={1} height={1} fill="url(#t-hatch)" opacity={0.75} />
@@ -42,7 +45,8 @@ export function TerrainLayer({ data }: { data: TerrainData }) {
       })}
       {Object.entries(data.doors).map(([k, d]) => {
         const [x, y] = k.split(",").map(Number);
-        const pic = TERRAIN_PICTURES ? (d.window ? "window" : d.open ? "door-open" : "door-closed") : null;
+        const name = d.window ? "window" : d.open ? "door-open" : "door-closed";
+        const pic = TERRAIN_PICTURES.has(name) ? name : null;
         return pic
           ? <image key={`door${k}`} href={`/terrain/${pic}.png`} x={x} y={y} width={1} height={1} data-door={d.open ? "open" : "closed"} />
           : (
