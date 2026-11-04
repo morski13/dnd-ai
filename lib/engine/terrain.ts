@@ -5,7 +5,7 @@
 
 export type Kind =
   | "wall" | "tree" | "boulder" | "bush" | "grass" | "rocks" | "water" | "deep-water" | "barrel" | "crate" | "difficult"
-  | "fire" | "lava" | "spikes" | "acid" | "ground";
+  | "fire" | "lava" | "spikes" | "acid" | "smoke" | "darkness" | "torch" | "ground";
 
 export type HazardRule = { dice: string; type: string; when: "enter" | "start" | "both"; note: string };
 
@@ -13,6 +13,9 @@ export type HazardRule = { dice: string; type: string; when: "enter" | "start" |
 export const KINDS: Record<Kind, {
   label: string; blocksMove: boolean; difficult: boolean; blocksSight: boolean; cover: "half" | "three-quarters" | "total" | null;
   lightlyObscured?: boolean; swim?: boolean; hazard?: HazardRule; image: string; color: string;
+  heavilyObscured?: boolean;   // smoke, fog, magical darkness: nobody sees into or through it
+  magicalDark?: boolean;       // darkvision doesn't see through it
+  light?: { bright: number; dim: number }; // a light source on this square (feet)
 }> = {
   wall:         { label: "Wall", blocksMove: true, difficult: false, blocksSight: true, cover: "total", image: "wall", color: "#16120e" },
   tree:         { label: "Tree", blocksMove: true, difficult: false, blocksSight: true, cover: "three-quarters", image: "tree", color: "#2f5d2a" },
@@ -29,13 +32,18 @@ export const KINDS: Record<Kind, {
   lava:         { label: "Lava", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "10d10", type: "fire", when: "both", note: "entering or starting a turn in it" }, image: "lava", color: "#c43b12" },
   spikes:       { label: "Spikes", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "2d4", type: "piercing", when: "enter", note: "for every 5 ft moved through it" }, image: "spikes", color: "#7a6a5a" },
   acid:         { label: "Acid", blocksMove: false, difficult: true, blocksSight: false, cover: null, hazard: { dice: "2d6", type: "acid", when: "both", note: "entering or starting a turn in it" }, image: "acid", color: "#6fae2a" },
+  smoke:        { label: "Smoke / fog", blocksMove: false, difficult: false, blocksSight: false, cover: null, heavilyObscured: true, image: "", color: "#9aa0a6" },
+  darkness:     { label: "Magical darkness", blocksMove: false, difficult: false, blocksSight: false, cover: null, heavilyObscured: true, magicalDark: true, image: "", color: "#05040a" },
+  torch:        { label: "Light (torch)", blocksMove: false, difficult: false, blocksSight: false, cover: null, light: { bright: 20, dim: 20 }, image: "torch", color: "#f2c14e" },
   ground:       { label: "Ground (height only)", blocksMove: false, difficult: false, blocksSight: false, cover: null, image: "", color: "transparent" },
 };
 export const KIND_LIST = Object.keys(KINDS) as Kind[];
 export const isKind = (k: unknown): k is Kind => typeof k === "string" && k in KINDS;
 
 export type Cell = { k: Kind; h?: number };         // h: height in feet (+ hill, ledge; − pit)
-export type TerrainData = { v: 2; cells: Record<string, Cell> };
+/** light: the map's light (outdoors by day = bright; a dim cave; a dark dungeon). fog: players only see what their characters see. */
+export type Light = "bright" | "dim" | "dark";
+export type TerrainData = { v: 2; cells: Record<string, Cell>; light?: Light; fog?: boolean };
 
 const okKey = (s: string) => /^\d+,\d+$/.test(s);
 
@@ -55,12 +63,14 @@ export function readTerrain(raw: unknown): TerrainData {
     if (kind === "ground" && !h) continue;
     cells[k] = h ? { k: kind, h } : { k: kind };
   }
-  return { v: 2, cells };
+  const light: Light | undefined = r.light === "dim" || r.light === "dark" || r.light === "bright" ? r.light : undefined;
+  return { v: 2, cells, ...(light ? { light } : {}), ...(r.fog ? { fog: true } : {}) };
 }
 
 /** Paint squares: a kind (keeps the height), a height (keeps the kind), or clear. */
 export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "clear"; height?: number }): TerrainData {
   const cells = { ...t.cells };
+  const keep = { ...(t.light ? { light: t.light } : {}), ...(t.fog ? { fog: true } : {}) };
   for (const k of keys) {
     if (!okKey(k)) continue;
     const old = cells[k];
@@ -69,7 +79,7 @@ export function paint(t: TerrainData, keys: string[], what: { kind?: Kind | "cle
     const h = what.height !== undefined ? Math.max(-200, Math.min(200, Math.round(what.height))) : old?.h ?? 0;
     if (kind === "ground" && !h) delete cells[k]; else cells[k] = h ? { k: kind, h } : { k: kind };
   }
-  return { v: 2, cells };
+  return { v: 2, cells, ...keep };
 }
 
 /** The squares of a brush stroke between two points (a straight line of squares, `size` wide). */

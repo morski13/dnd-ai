@@ -3,6 +3,8 @@
 // when they're there, colours until then), heights; and the DM's paint tools.
 import { useState } from "react";
 import { KINDS, KIND_LIST, type Kind, type TerrainData } from "@/lib/engine/terrain";
+import { terrainOf } from "@/lib/engine/space";
+import { lightMap } from "@/lib/engine/vision";
 
 /**
  * Pictures in /public/terrain/<name>.png that are there (the DM's own). Grass, water, fire, lava and smoke stay
@@ -14,7 +16,7 @@ export type Brush = { kind: Kind | "clear" | null; height: number | null; size: 
 
 /** Draws the terrain (grid units). */
 export function TerrainLayer({ data }: { data: TerrainData }) {
-  const cells = Object.entries(data.cells);
+  const cells = Object.entries(data.cells).filter(([, c]) => c.k !== "smoke" && c.k !== "darkness");
   return (
     <g aria-hidden>
       <defs>
@@ -51,6 +53,50 @@ const GLYPH: Partial<Record<Kind, string>> = {
   tree: "🌳", boulder: "🪨", bush: "🌿", grass: "🌾", rocks: "·", water: "≈", "deep-water": "≋", barrel: "🛢", crate: "📦",
   fire: "🔥", lava: "🌋", spikes: "✴", acid: "☣",
 };
+
+/**
+ * Light and fog on top of everything (grid units): dim squares a little darker, dark squares much darker,
+ * smoke grey; with fog of war, what the player's characters can't see is black.
+ */
+export function LightLayer({ data, cols, rows, visible }: { data: TerrainData; cols: number; rows: number; visible: Set<string> | null }) {
+  const t = terrainOf(data);
+  const light = lightMap(t, cols, rows);
+  const out: React.ReactNode[] = [];
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const k = `${x},${y}`;
+    if (visible && !visible.has(k)) { out.push(<rect key={`f${k}`} x={x} y={y} width={1.02} height={1.02} fill="#050403" opacity={0.94} data-fog="" />); continue; }
+    if (t.heavy.has(k)) out.push(<rect key={`s${k}`} x={x} y={y} width={1} height={1} fill={t.magicDark.has(k) ? "#000" : "#b8bec4"} opacity={t.magicDark.has(k) ? 0.92 : 0.7} data-smoke="" />);
+    else if (light.get(k) === "dark") out.push(<rect key={`d${k}`} x={x} y={y} width={1} height={1} fill="#000" opacity={0.62} data-dark="" />);
+    else if (light.get(k) === "dim") out.push(<rect key={`m${k}`} x={x} y={y} width={1} height={1} fill="#000" opacity={0.32} data-dim="" />);
+  }
+  return <g aria-hidden pointerEvents="none">{out}</g>;
+}
+
+/** DM: the map's light and fog of war. */
+export function LightTools({ light, fog, pending, onChange }: { light: "bright" | "dim" | "dark"; fog: boolean; pending: boolean; onChange: (light: "bright" | "dim" | "dark", fog: boolean) => void }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface px-3 py-2" aria-label="Light and fog of war">
+      <p className="text-sm font-semibold">Light (DM)</p>
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Light on the map">
+        {([["bright", "Bright (day)"], ["dim", "Dim (dusk, cave)"], ["dark", "Dark (night)"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="radio" aria-checked={light === k} disabled={pending} onClick={() => light !== k && onChange(k, fog)}
+            className={`min-h-10 rounded-lg border px-1.5 text-xs ${light === k ? "border-accent bg-accent-surface font-bold text-accent" : "border-line text-soft"}`}>{label}</button>
+        ))}
+      </div>
+      <button type="button" role="switch" aria-checked={fog} disabled={pending} onClick={() => onChange(light, !fog)}
+        className="mt-2 flex w-full items-center justify-between gap-3 text-left">
+        <span>
+          <span className="block text-sm font-semibold">Fog of war</span>
+          <span className="block text-xs text-muted">Players see only what their characters see (light, darkvision, walls, smoke)</span>
+        </span>
+        <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${fog ? "bg-accent" : "bg-line"}`}>
+          <span className={`absolute top-1 h-5 w-5 rounded-full bg-text shadow transition-[left] duration-200 ${fog ? "left-6" : "left-1"}`} />
+        </span>
+      </button>
+      <p className="mt-1 text-[11px] text-muted">Paint Light (torch), Smoke / fog and Magical darkness with the brush below.</p>
+    </div>
+  );
+}
 
 /** The DM's paint tools: what to paint, a height, brush size. */
 export function PaintTools({ brush, setBrush }: { brush: Brush | null; setBrush: (b: Brush | null) => void }) {

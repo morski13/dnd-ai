@@ -339,6 +339,8 @@ export async function monsterRoll(
       if (geo?.cover.level === "total") return { error: `${them?.name ?? "The target"} has total cover from ${monster.name}.` };
       const within5 = geo ? geo.dist <= 5 : true;
       const m = attackMods(meW, them ?? { name: "the target", conds: [] }, { ranged: !!geo && geo.dist > 10, within5, rules });
+      if (geo && !geo.sees && !(them?.conds ?? []).includes("Invisible") && !meW.conds.includes("Blinded")) m.disadvantage.push(`${monster.name} can't see ${them?.name ?? "the target"} (darkness or smoke)`);
+      if (geo && !geo.seen && !meW.conds.includes("Invisible") && !(them?.conds ?? []).includes("Blinded")) m.advantage.push(`${them?.name ?? "the target"} can't see ${monster.name}`);
       adv = combineAdvantage(adv, m);
       coverAc = geo?.cover.ac ?? 0;
       autoCrit = m.autoCrit;

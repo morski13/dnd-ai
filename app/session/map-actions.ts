@@ -213,3 +213,18 @@ export async function paintTerrain(cells: string[], what: { kind?: Kind | "clear
   return { ok: true };
 }
 
+
+/** DM: the map's light (bright day, dim cave, dark dungeon) and fog of war for the players. */
+export async function setMapLight(light: "bright" | "dim" | "dark", fog: boolean): Promise<Fail | { ok: true }> {
+  const me = await who();
+  if (!me.campaignId || !me.isDm) return { error: "Only the DM can change the light." };
+  const b = await battleState(me.campaignId);
+  if (!b) return NO_MAP;
+  const t = readTerrain(b.terrainRaw);
+  const next = { ...t, light, ...(fog ? { fog: true } : {}) };
+  if (!fog) delete (next as { fog?: boolean }).fog;
+  const { error } = await b.admin.from("battle_maps").update({ terrain: next }).eq("id", b.map.id);
+  if (error) return { error: /terrain/.test(error.message) ? "Run supabase/36-map-terrain.sql in Supabase first." : error.message };
+  await touchCombat(b.admin, b.combat.id);
+  return { ok: true };
+}

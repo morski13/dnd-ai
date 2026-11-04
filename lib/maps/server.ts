@@ -8,6 +8,7 @@ import { coverOf, distanceFt, reachOf, terrainOf, type Diagonals, type MoveCtx }
 import { monsterReach } from "@/lib/engine/damage";
 import { cleanEffects, shownConditions } from "@/lib/engine/effects";
 import { fallDice, KINDS } from "@/lib/engine/terrain";
+import { characterSenses, lightMap, lightNote, seesBody, sensesFromText, type Senses } from "@/lib/engine/vision";
 import { roll } from "@/lib/dice";
 import { applyHp } from "@/lib/moderator/apply";
 
@@ -26,6 +27,7 @@ export type FullToken = {
   character_id: string | null; monster_id: string | null; owner: string | null; speed: number;
   name: string; side: "party" | "enemy"; conds: string[]; reach: number;
   z?: number; // flying height (feet)
+  senses: Senses;
 };
 
 /** The running fight's map and every token in it (hidden ones too: only for the server's own checks). */
@@ -48,8 +50,8 @@ export async function battleState(campaignId: string) {
     charIds.length ? admin.from("characters").select("*").in("id", charIds) : Promise.resolve({ data: [] }),
     monIds.length ? admin.from("monsters").select("id, stat_block").in("id", monIds) : Promise.resolve({ data: [] }),
   ]);
-  const ch = new Map(((chars ?? []) as { id: string; owner_user_id: string | null; speed: number | null; conditions?: string[]; attacks?: { kind?: string; name?: string; range?: string; note?: string; ranged?: boolean }[] }[]).map((x) => [x.id, x]));
-  const mo = new Map(((mons ?? []) as { id: string; stat_block: { speed?: unknown } | null }[]).map((x) => [x.id, x]));
+  const ch = new Map(((chars ?? []) as { id: string; owner_user_id: string | null; speed: number | null; conditions?: string[]; species?: string | null; features?: (string | { name: string; description?: string })[]; attacks?: { kind?: string; name?: string; range?: string; note?: string; ranged?: boolean }[] }[]).map((x) => [x.id, x]));
+  const mo = new Map(((mons ?? []) as { id: string; stat_block: { speed?: unknown; senses?: string } | null }[]).map((x) => [x.id, x]));
   const cb = new Map((cbs ?? []).map((x) => [x.id as string, x]));
   const tokens: FullToken[] = (toks ?? []).map((t) => {
     const k = cb.get(t.combatant_id as string);
@@ -66,6 +68,7 @@ export async function battleState(campaignId: string) {
       name: (k?.name as string) ?? "?", side: k?.character_id || npc ? "party" : "enemy",
       conds: shownConditions([...(c1?.conditions ?? []), ...((k?.conditions as string[] | null) ?? [])], cleanEffects((k as { effects?: unknown } | undefined)?.effects)),
       reach,
+      senses: c1 ? characterSenses(c1) : sensesFromText(m1?.stat_block?.senses),
     };
   });
   const order = sortCombatants((cbs ?? []) as { id: string; initiative: number | null; dex_mod: number; name: string }[]);
@@ -98,7 +101,11 @@ export async function attackGeometry(campaignId: string, from: { characterId?: s
   if (!a || !t) return null;
   const dist = distanceFt(a, t, b.map.feet, b.diag, b.terrain);
   const cover = coverOf(a, t, b.terrain, b.tokens.filter((k) => k.id !== a.id && k.id !== t.id));
-  return { dist, cover, feet: b.map.feet };
+  // light and sight: can each of them see the other (darkness, smoke, walls, invisibility)?
+  const light = lightMap(b.terrain, b.map.cols, b.map.rows);
+  const sees = seesBody(a, a.senses, t, b.terrain, light, t.conds.includes("Invisible"));
+  const seen = seesBody(t, t.senses, a, b.terrain, light, a.conds.includes("Invisible"));
+  return { dist, cover, feet: b.map.feet, sees, seen, light: lightNote(t, b.terrain, light) };
 }
 
 /**

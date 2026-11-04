@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Crop } from "@/lib/maps/grid";
 import { moveBudget, sizeSquares, startingSpots, walkSpeed } from "@/lib/maps/move";
 import { readTerrain, type TerrainData } from "@/lib/engine/terrain";
+import { terrainOf } from "@/lib/engine/space";
+import { characterSenses, lightMap, NO_SENSES, seesBody, sensesFromText, visibleSquares, type Senses } from "@/lib/engine/vision";
 
 export type MapRow = { id: string; name: string; image_path: string | null; image_w: number | null; image_h: number | null; cols: number; rows: number; crop: Crop | null; stretch: boolean; feet: number; updated_at: string };
 export const MAP_COLUMNS = "id, name, image_path, image_w, image_h, cols, rows, crop, stretch, feet, updated_at";
@@ -23,6 +25,8 @@ export type Battle = {
     terrain: TerrainData;  // painted by the DM (SQL 36): kinds, heights, doors
   };
   diag: "5" | "5-10-5"; rules: "2014" | "2024";
+  /** fog of war: the squares this player's characters see (null = everything: the DM, or no fog on this map) */
+  visible: string[] | null;
   tokens: BattleToken[]; lastArea: BattleArea; currentCombatantId: string | null;
 };
 
@@ -93,12 +97,13 @@ export async function loadBattle(supabase: SupabaseClient, a: {
   const charIds = a.combatants.map((x) => x.characterId).filter((x): x is string => !!x);
   const monIds = a.combatants.map((x) => x.monsterId).filter((x): x is string => !!x);
   const [{ data: chars }, { data: mons }] = await Promise.all([
-    charIds.length ? supabase.from("characters").select("id, speed, portrait").in("id", charIds) : Promise.resolve({ data: [] }),
+    charIds.length ? supabase.from("characters").select("*").in("id", charIds) : Promise.resolve({ data: [] }),
     monIds.length && a.isDm ? supabase.from("monsters").select("id, stat_block, portrait").in("id", monIds)
       : monIds.length ? createAdminClient().from("monsters").select("id, stat_block, portrait").in("id", monIds) : Promise.resolve({ data: [] }),
   ]);
-  const ch = new Map(((chars ?? []) as { id: string; speed: number | null; portrait: number | null }[]).map((x) => [x.id, x]));
-  const mo = new Map(((mons ?? []) as { id: string; stat_block: { speed?: unknown } | null; portrait: number | null }[]).map((x) => [x.id, x]));
+  const ch = new Map(((chars ?? []) as { id: string; speed: number | null; portrait: number | null; species?: string | null; features?: (string | { name: string; description?: string })[] }[]).map((x) => [x.id, x]));
+  const mo = new Map(((mons ?? []) as { id: string; stat_block: { speed?: unknown; senses?: string } | null; portrait: number | null }[]).map((x) => [x.id, x]));
+  const sensesOf = new Map<string, Senses>();
   const tokens: BattleToken[] = [];
   for (const t of (rows ?? []) as { id: string; combatant_id: string; x: number; y: number; size: number; hidden: boolean; moved_ft: number; dashes: number }[]) {
     const cb = byId.get(t.combatant_id);
@@ -106,6 +111,7 @@ export async function loadBattle(supabase: SupabaseClient, a: {
     const cRow = cb.characterId ? ch.get(cb.characterId) : null;
     const mRow = cb.monsterId ? mo.get(cb.monsterId) : null;
     const speed = cRow ? walkSpeed(cRow.speed) : walkSpeed(mRow?.stat_block?.speed);
+    sensesOf.set(t.id, cRow ? characterSenses(cRow) : sensesFromText(mRow?.stat_block?.senses));
     tokens.push({
       id: t.id, combatantId: t.combatant_id, x: t.x, y: t.y, size: t.size, hidden: t.hidden,
       name: cb.name, kind: cb.characterId ? "pc" : cb.ally ? "npc" : "monster", characterId: cb.characterId, monsterId: cb.monsterId,
@@ -115,14 +121,28 @@ export async function loadBattle(supabase: SupabaseClient, a: {
       conds: cb.conditions ?? [],
     });
   }
+  // Fog of war: players only get the squares their characters see, and only the creatures in them.
+  const terrain = terrainOf(map.terrain);
+  let visible: string[] | null = null;
+  let shown = tokens;
+  if (terrain.fog && !a.isDm) {
+    const light = lightMap(terrain, map.cols, map.rows);
+    const mine = tokens.filter((t) => t.mine);
+    const viewers = mine.length ? mine : tokens.filter((t) => t.kind === "pc");
+    const seen = new Set<string>();
+    for (const v of viewers) for (const k of visibleSquares(v, sensesOf.get(v.id) ?? NO_SENSES, terrain, light, map.cols, map.rows)) seen.add(k);
+    visible = [...seen];
+    shown = tokens.filter((t) => t.kind !== "monster" || viewers.some((v) => seesBody(v, sensesOf.get(v.id) ?? NO_SENSES, t, terrain, light, (t.conds ?? []).includes("Invisible"))));
+  }
   return {
+    visible,
     map: {
       id: map.id, name: map.name, cols: map.cols, rows: map.rows, feet: map.feet, crop: map.crop, stretch: map.stretch, image: mapImageUrl(map), imageW: map.image_w, imageH: map.image_h,
       terrain: readTerrain(map.terrain),
     },
     diag: (camp?.settings as { house_rules?: { diagonals?: string } } | null)?.house_rules?.diagonals === "5-10-5" ? "5-10-5" : "5",
     rules: camp?.rule_set === "2014" ? "2014" : "2024",
-    tokens, lastArea: (c.last_area as BattleArea) ?? null, currentCombatantId: a.currentCombatantId,
+    tokens: shown, lastArea: (c.last_area as BattleArea) ?? null, currentCombatantId: a.currentCombatantId,
   };
 }
 

@@ -11,10 +11,10 @@ import type { Battle, BattleToken } from "@/lib/maps-data";
 import type { Combatant } from "@/lib/session-data";
 import { Board, type Pt } from "../../components/map/board";
 import { PortraitButton } from "../../components/map/portrait";
-import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setTokenHidden, teleportToken } from "../map-actions";
+import { castArea, dashToken, disengageToken, moveToken, paintTerrain, setMapLight, setTokenHidden, teleportToken } from "../map-actions";
 import { paint as paintCells, strokeSquares, type TerrainData } from "@/lib/engine/terrain";
 import { terrainOf } from "@/lib/engine/space";
-import { PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
+import { LightLayer, LightTools, PaintTools, TerrainLayer, type Brush } from "./terrain-layer";
 import { useMapAim } from "./map-aim";
 
 export type Teleport = { key: string; name: string; range: number };
@@ -53,6 +53,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
   const [seenBattle, setSeenBattle] = useState(battle);
   if (seenBattle !== battle) { setSeenBattle(battle); setOptimistic({}); if (!unsaved) setLocalT(null); }
   const tData = localT ?? map.terrain;
+  const visibleSet = useMemo(() => (battle.visible ? new Set(battle.visible) : null), [battle.visible]);
   const terrain = useMemo(() => terrainOf(tData), [tData]);
   const tokens = useMemo(() => battle.tokens.map((t) => (optimistic[t.id] ? { ...t, ...optimistic[t.id] } : t)), [battle.tokens, optimistic]);
   const byCombatant = useMemo(() => new Map(combatants.map((c) => [c.id, c])), [combatants]);
@@ -252,6 +253,8 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
         );
       })}
       <defs><clipPath id="tok-round" clipPathUnits="objectBoundingBox"><circle cx={0.5} cy={0.5} r={0.5} /></clipPath></defs>
+      {/* light, smoke and (for players) fog of war over the map and the tokens */}
+      <LightLayer data={tData} cols={map.cols} rows={map.rows} visible={visibleSet} />
       {hover && !aim && reachSet.has(`${Math.floor(hover.x)},${Math.floor(hover.y)}`) && (
         <rect x={Math.floor(hover.x)} y={Math.floor(hover.y)} width={1} height={1} fill="none" stroke="#fff" strokeWidth={0.06} />
       )}
@@ -353,6 +356,7 @@ export function BattleMap({ battle, combatants, isDm, teleports = [], teleportCh
             </div>
           )}
 
+          {isDm && <LightTools light={tData.light ?? "bright"} fog={!!tData.fog} pending={pending} onChange={(l, f) => act(() => setMapLight(l, f))} />}
           {isDm && <PaintTools brush={brush} setBrush={(b) => { setBrush(b); if (b) setFree(false); }} />}
           {isDm && (
             <button type="button" role="switch" aria-checked={free} onClick={() => setFree(!free)}

@@ -494,6 +494,10 @@ async function conditionRules(admin: ReturnType<typeof createAdminClient>, c: { 
     }
     const mods = attackMods(me, them ?? { name: "the target", conds: [] }, { ranged, within5, rules: ruleSet });
     if (long) mods.disadvantage.push(long);
+    // sight on the map: darkness, smoke, walls (invisibility and blindness are already counted as conditions)
+    const tn = them?.name ?? "the target";
+    if (geo && !geo.sees && !(them?.conds ?? []).includes("Invisible") && !me.conds.includes("Blinded")) mods.disadvantage.push(`you can't see ${tn} (darkness or smoke)`);
+    if (geo && !geo.seen && !me.conds.includes("Invisible") && !(them?.conds ?? []).includes("Blinded")) mods.advantage.push(`${tn} can't see you`);
     if (geo?.cover.ac) mods.notes.unshift(`${them?.name ?? "The target"} has ${geo.cover.why}`);
     return { mods, ruleSet, coverAc: geo?.cover.ac ?? 0, dist: geo?.dist ?? null };
   }

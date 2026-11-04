@@ -17,13 +17,21 @@ export type Terrain = {
   obscured: Set<string>;   // lightly obscured (tall grass, bushes)
   hazards: Map<string, HazardRule & { kind: Kind }>;
   swim: Set<string>;       // deep water
+  heavy: Set<string>;      // heavily obscured (smoke, fog, magical darkness)
+  magicDark: Set<string>;  // magical darkness: darkvision doesn't help
+  lights: { x: number; y: number; bright: number; dim: number }[];
+  ambient: "bright" | "dim" | "dark";
+  fog: boolean;            // fog of war for the players
 };
 export const key = (x: number, y: number) => `${x},${y}`;
 
 /** Terrain as stored with a map (old { walls, difficult } lists, or v2 cells). */
 export function terrainOf(raw: unknown): Terrain {
   const d = readTerrain(raw);
-  const t: Terrain = { walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set() };
+  const t: Terrain = {
+    walls: new Set(), difficult: new Set(), sight: new Set(), capped: new Set(), half: new Set(), height: new Map(), obscured: new Set(), hazards: new Map(), swim: new Set(),
+    heavy: new Set(), magicDark: new Set(), lights: [], ambient: d.light ?? "bright", fog: !!d.fog,
+  };
   for (const [k, c] of Object.entries(d.cells)) {
     const r = KINDS[c.k];
     if (r.blocksMove) t.walls.add(k);
@@ -35,6 +43,9 @@ export function terrainOf(raw: unknown): Terrain {
     if (r.swim) t.swim.add(k);
     if (r.hazard) t.hazards.set(k, { ...r.hazard, kind: c.k });
     if (c.h) t.height.set(k, c.h);
+    if (r.heavilyObscured) t.heavy.add(k);
+    if (r.magicalDark) t.magicDark.add(k);
+    if (r.light) { const [x, y] = k.split(",").map(Number); t.lights.push({ x, y, ...r.light }); }
   }
   return t;
 }
@@ -111,7 +122,7 @@ export function checkRange(dist: number, r: Reach): RangeCheck {
 export type Cover = { level: "none" | "half" | "three-quarters" | "total"; ac: number; why: string | null };
 
 /** Does the straight line from p to q pass through the inside of a square in `cells`? */
-function lineHits(p: Pos, q: Pos, cells: (x: number, y: number) => boolean) {
+export function lineHits(p: Pos, q: Pos, cells: (x: number, y: number) => boolean) {
   const n = Math.max(8, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) * 12));
   for (let i = 1; i < n; i++) {
     const x = p.x + ((q.x - p.x) * i) / n, y = p.y + ((q.y - p.y) * i) / n;
